@@ -5,27 +5,18 @@
  *      Author: hocki
  */
 
-#include <FastLED.h>
+#include <Arduino.h>
 
 #include "Display.h"
 
+/* Delay in msec between colors */
+constexpr uint32_t mcUpdateDelay = 1000;
 
-/***************************************************************************************************
-  FastLED configuration
- **************************************************************************************************/
-/* The LED stripe type                      */
-#define LED_TYPE                    WS2812
-/* The color order or the LED stripe        */
-#define LED_COLOR_ORDER             GRB
-/* Digital LED stripe connection pin - D32  */
-#define LED_DATA_PIN                32
-/* Numberrs of LEDs                         */
-#define NUM_LEDS                    1
-/* Default LEDs brightness                  */
-#define LED_DEFAULT_BRIGHTNESS      255
+/* Lenght of fixed colors array */
+constexpr uint8_t mcColorLen = 4;
+/* Colors array */
+constexpr CRGB    mcColors[mcColorLen] = { CRGB::Red, CRGB::Green, CRGB::Blue, CRGB::Black };
 
-/* Leds */
-static CRGB mLeds[NUM_LEDS];
 
 /**
  * @brief Constructor
@@ -60,11 +51,27 @@ void Display::Init(void)
 
 void Display::Update(void)
 {
-    mLeds[0] = CRGB::Red;
-    FastLED.show();
-    delay(1000);
+    /* Get current system tick */
+    uint32_t wCurrMillis = millis();
 
-    mLeds[0] = CRGB::Black;
-    FastLED.show();
-    delay(1000);
+    //TODO handle millis rollover
+    //     e.g. https://arduino.stackexchange.com/questions/12587/how-can-i-handle-the-millis-rollover
+
+    /* Check time ticks delta */
+    if ((wCurrMillis - mPrevMillis) >= mcUpdateDelay)
+    {
+        /* Update previous time tick */
+        mPrevMillis = wCurrMillis;
+
+        /* Change LED color and update it */
+        mLeds[0] = mcColors[mColorIndex];
+        FastLED.show();
+
+        /* Incement color index and check overflow */
+        mColorIndex++;
+        if (mColorIndex == mcColorLen)
+        {
+            mColorIndex = 0;
+        }
+    }
 }
