@@ -60,6 +60,17 @@ void Display::Update(void)
 
         Clear();
 
+        // Test Wordclock: Es ist zehn nach zwölf Uhr + 4 Minuten
+        PaintLine(  3, 14,  2, CRGB::Red);          // Word: es
+        PaintLine(  4,  7,  3, CRGB::Red);          // Word: ist
+        PaintLine(  8,  0,  4, CRGB::Green);        // Word: zehn
+        PaintLine( 11,  0,  4, CRGB::Red);          // Word: nach
+        PaintLine( 14,  4,  5, CRGB::Green);        // Word: zwölf
+        PaintLine( 14, 13,  3, CRGB::Blue);         // Word: Uhr
+        PaintLine( 15,  1,  1, CRGB::DarkOrange);   // Word: +
+        PaintLine( 15,  5,  1, CRGB::DarkOrange);   // Word: 4
+        PaintLine( 15,  8,  7, CRGB::DarkOrange);   // Word: Minuten
+
         Transform();
 
         FastLED.show();
