@@ -38,7 +38,7 @@ void Display::Init(void)
 {
     /* Initialize FastLED */
     // Initialize LEDs
-    FastLED.addLeds<LED_TYPE, LED_DATA_PIN, LED_COLOR_ORDER>(mLeds, NUM_LEDS);
+    FastLED.addLeds<LED_TYPE, LED_DATA_PIN, LED_COLOR_ORDER>(mLeds, LED_NUMBER);
     // Disable dithering mode
 	FastLED.setDither(DISABLE_DITHER);
     // Color-corrected LED brightness

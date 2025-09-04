@@ -9,6 +9,14 @@
 
 
 /***************************************************************************************************
+  LED matrix configuration
+ **************************************************************************************************/
+#define MATRIX_WIDTH                16
+#define MATRIX_HEIGHT               16
+#define MATRIX_SIZE                 MATRIX_WIDTH * MATRIX_HEIGHT
+//#define MATRIX_TYPE                 HORIZONTAL_ZIGZAG_MATRIX
+
+/***************************************************************************************************
   FastLED configuration
  **************************************************************************************************/
 /* The LED stripe type                      */
@@ -17,10 +25,10 @@
 #define LED_COLOR_ORDER             GRB
 /* Digital LED stripe connection pin - D32  */
 #define LED_DATA_PIN                32
-/* Numberrs of LEDs                         */
-#define NUM_LEDS                    1
 /* Default LEDs brightness                  */
 #define LED_DEFAULT_BRIGHTNESS      255
+/* Numbers of LEDs                          */
+#define LED_NUMBER                  MATRIX_SIZE
 
 
 
@@ -38,7 +46,7 @@ public:
 
 private:
     /* Leds */
-    CRGB mLeds[NUM_LEDS];
+    CRGB mLeds[LED_NUMBER];
 
     uint32_t mPrevMillis = 0;
 
