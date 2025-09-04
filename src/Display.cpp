@@ -12,11 +12,6 @@
 /* Delay in msec between colors */
 constexpr uint32_t mcUpdateDelay = 1000;
 
-/* Lenght of fixed colors array */
-constexpr uint8_t mcColorLen = 4;
-/* Colors array */
-constexpr CRGB    mcColors[mcColorLen] = { CRGB::Red, CRGB::Green, CRGB::Blue, CRGB::Black };
-
 
 /**
  * @brief Constructor
@@ -63,15 +58,105 @@ void Display::Update(void)
         /* Update previous time tick */
         mPrevMillis = wCurrMillis;
 
-        /* Change LED color and update it */
-        mLeds[0] = mcColors[mColorIndex];
-        FastLED.show();
+        Clear();
 
-        /* Incement color index and check overflow */
-        mColorIndex++;
-        if (mColorIndex == mcColorLen)
+        Transform();
+
+        FastLED.show();
+    }
+}
+
+void Display::Clear(void)
+{
+    /* Clear mLeds array with black color */
+    for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+    {
+        mLeds[wI] = CRGB::Black;
+    }
+}
+
+void Display::Transform(void)
+{
+    for (uint8_t wRow = 0; wRow < MATRIX_HEIGHT; wRow++)
+    {
+        bool wReverseRow = false;
+
+        if ((wRow % 2) == 0)
         {
-            mColorIndex = 0;
+            // it is even row
+            wReverseRow = true;
+        }
+        else
+        {
+            // it is odd row
+        }
+
+        if (wReverseRow)
+        {
+            uint16_t wRowStart = (wRow * MATRIX_WIDTH); //  e.g. 0 / 16 / 32 / 48 ... 224 / 240
+
+            /* Pointer to first element */
+            CRGB* wLeftElem  = &mLeds[wRowStart];
+            /* Pointer to last element */
+            CRGB* wRightElem = &mLeds[wRowStart + MATRIX_WIDTH - 1] ;
+
+            while (wLeftElem < wRightElem)
+            {
+                CRGB wTemp  = *wLeftElem;
+                *wLeftElem  = *wRightElem;
+                *wRightElem = wTemp;
+
+                wLeftElem++;
+                wRightElem--;
+            }
+        }
+    }
+}
+
+void Display::SetColor(const uint16_t aLedIndex, const CRGB aColor)
+{
+    if (aLedIndex < LED_NUMBER)
+    {
+        mLeds[aLedIndex] = aColor;
+    }
+}
+
+void Display::PaintPixel(const uint16_t aRow, const uint16_t aCol, const CRGB aColor)
+{
+    /* Check input parameters */
+    if ((aRow < MATRIX_HEIGHT) &&
+        (aCol < MATRIX_WIDTH))
+    {
+        /* Calculate LED index */
+        uint16_t wLedIndex = (aRow * MATRIX_HEIGHT) + aCol;
+
+        /* Set LED color */
+        SetColor(wLedIndex, aColor);
+    }
+}
+
+void Display::PaintLine(const uint16_t aRow, const uint16_t aCol, const uint16_t aLength, const CRGB aColor)
+{
+    /* Check input parameters */
+    if ((aRow < MATRIX_HEIGHT) &&
+        (aCol < MATRIX_WIDTH)  && ((aCol + aLength) <= MATRIX_WIDTH))
+    {
+        for (uint16_t wI = 0; wI < aLength; wI++)
+        {
+            PaintPixel(aRow, (aCol + wI), aColor);
+        }
+    }
+}
+
+void Display::PaintArea(const uint16_t aRow, const uint16_t aCol, const uint16_t aWidth, const uint16_t aHeight, const CRGB aColor)
+{
+    /* Check input parameters */
+    if ((aRow < MATRIX_HEIGHT) && ((aRow + aHeight) <= MATRIX_HEIGHT) &&
+        (aCol < MATRIX_WIDTH)  && ((aCol + aWidth)  <= MATRIX_WIDTH))
+    {
+        for (uint16_t wI = 0; wI < aHeight; wI++)
+        {
+            PaintLine((aRow + wI), aCol, aWidth, aColor);
         }
     }
 }

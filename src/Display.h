@@ -31,8 +31,6 @@
 #define LED_NUMBER                  MATRIX_SIZE
 
 
-
-
 class Display
 {
 public:
@@ -50,5 +48,12 @@ private:
 
     uint32_t mPrevMillis = 0;
 
-    uint8_t mColorIndex = 0;
+    void Clear(void);
+    void Transform(void);
+
+    void SetColor(const uint16_t aLedIndex, const CRGB aColor);
+
+    void PaintPixel(const uint16_t aRow, const uint16_t aCol, const CRGB aColor);
+    void PaintLine(const uint16_t aRow, const uint16_t aCol, const uint16_t aLength, const CRGB aColor);
+    void PaintArea(const uint16_t aRow, const uint16_t aCol, const uint16_t aWidth, const uint16_t aHeight, const CRGB aColor);
 };
