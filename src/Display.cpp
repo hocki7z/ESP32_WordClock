@@ -60,16 +60,8 @@ void Display::Update(void)
 
         Clear();
 
-        // Test Wordclock: Es ist zehn nach zwölf Uhr + 4 Minuten
-        PaintLine(  3, 14,  2, CRGB::Red);          // Word: es
-        PaintLine(  4,  7,  3, CRGB::Red);          // Word: ist
-        PaintLine(  8,  0,  4, CRGB::Green);        // Word: zehn
-        PaintLine( 11,  0,  4, CRGB::Red);          // Word: nach
-        PaintLine( 14,  4,  5, CRGB::Green);        // Word: zwölf
-        PaintLine( 14, 13,  3, CRGB::Blue);         // Word: Uhr
-        PaintLine( 15,  1,  1, CRGB::DarkOrange);   // Word: +
-        PaintLine( 15,  5,  1, CRGB::DarkOrange);   // Word: 4
-        PaintLine( 15,  8,  7, CRGB::DarkOrange);   // Word: Minuten
+        // Test Wordclock
+        PaintTime(21, 51, CRGB::Red);
 
         Transform();
 
@@ -168,6 +160,74 @@ void Display::PaintArea(const uint16_t aRow, const uint16_t aCol, const uint16_t
         for (uint16_t wI = 0; wI < aHeight; wI++)
         {
             PaintLine((aRow + wI), aCol, aWidth, aColor);
+        }
+    }
+}
+
+void Display::PaintWord(const tWord aWord, const CRGB aColor)
+{
+    /* Check input parameters */
+    if ((aWord > WORD_END_OF_WORDS) &&
+        (aWord < WORD_MAX_NUMBER))
+    {
+        /* Get word data */
+        tWordData wWordData = mcWordDataArray[aWord];
+
+        if (wWordData.mLength > 0)
+        {
+            /* Paint word as a line */
+            PaintLine(wWordData.mRow, wWordData.mColumn, wWordData.mLength, aColor);
+        }
+    }
+}
+
+void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor)
+{
+    uint8_t wI;
+
+    /* Check input parameters */
+    if ((aHour < 24) &&         // we support only 24 hours format
+        (aMinute < 60))         //                 0..59 minutes
+    {
+        uint8_t wHour         = aHour;
+        uint8_t wMinute       = aMinute / 5;    // minute steps 0, 5, ... 55
+        uint8_t wMinuteExtra  = aMinute % 5;    // extra minutes 0, +1 ... +4
+
+        /* Get minute display data */
+        tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[WORDCLOCK_MODE_0][wMinute];
+
+        /* Correct hour offset */
+        if ((wMinuteDisplay.mFlags & HOUR_OFFSET_1) == HOUR_OFFSET_1)
+        {
+            wHour += 1;
+        }
+
+        /* We have only 12 hours */
+        while (wHour > HOURS_COUNT)
+        {
+            wHour -= HOURS_COUNT;
+        }
+
+        /* Paint 'Es ist' */
+        PaintWord(tWord::WORD_ES,  aColor);
+        PaintWord(tWord::WORD_IST, aColor);
+
+        /* Paint minutes */
+        for (wI = 0; wI < MAX_MINUTE_WORDS; wI++)
+        {
+            PaintWord(wMinuteDisplay.wMinuteWords[wI],  aColor);
+        }
+
+        /* Paint hours */
+        for (wI = 0; wI < MAX_HOUR_WORDS; wI++)
+        {
+            PaintWord(mcWordHoursTable[wMinuteDisplay.mHourMode][wHour][wI], aColor);
+        }
+
+        /* Paint extra minutes */
+        for (wI = 0; wI < MAX_EXTRA_MINUTE_WORDS; wI++)
+        {
+            PaintWord(mcWordExtraMinutesTable[wMinuteExtra][wI],  aColor);
         }
     }
 }

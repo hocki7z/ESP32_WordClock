@@ -342,4 +342,7 @@ private:
     void PaintPixel(const uint16_t aRow, const uint16_t aCol, const CRGB aColor);
     void PaintLine(const uint16_t aRow, const uint16_t aCol, const uint16_t aLength, const CRGB aColor);
     void PaintArea(const uint16_t aRow, const uint16_t aCol, const uint16_t aWidth, const uint16_t aHeight, const CRGB aColor);
+
+    void PaintWord(const tWord aWord, const CRGB aColor);
+    void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
 };
