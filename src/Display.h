@@ -35,6 +35,24 @@
 /***************************************************************************************************
   WordClock configuration
  **************************************************************************************************/
+/*  12-hour display time  */
+#define HOURS_COUNT                 12
+/* Number of minute steps (5min) */
+#define MINUTE_COUNT                12
+/* Number of extra minutes ( +1 ... +4 ) */
+#define EXTRA_MINUTE_COUNT          5
+
+/* Maximum number of words to display the hours */
+#define MAX_HOUR_WORDS              2
+/* Maximum number of words to display the minutes */
+#define MAX_MINUTE_WORDS            3
+/* Maximum number of words to display the minutes */
+#define MAX_EXTRA_MINUTE_WORDS      3
+
+/* Flags for minute display */
+#define NO_FLAGS                    0x00    // No flags
+#define HOUR_OFFSET_1               0x01    // Hour offset +1 (e.g. for minutes > 20)
+
 
 /* WordClock front panel layout (german) */
 static const char* mDisplayLayout[MATRIX_HEIGHT]=
@@ -123,6 +141,25 @@ typedef enum tWord
     WORD_MAX_NUMBER
 } tWord;
 
+/* Hour display modes */
+typedef enum tHourMode
+{
+    HOUR_MODE_0,          // Hours with "Uhr" (standard)
+    HOUR_MODE_1,          // Hours without "Uhr"
+    //
+    HOUR_MODE_MAX_NUMBER
+} tHourMode;
+
+/* WordClock display modes */
+typedef enum tWordClockMode
+{
+    WORDCLOCK_MODE_0 = 0,   // Wessi
+    WORDCLOCK_MODE_1,       // Rhein-Ruhr
+    //
+    WORDCLOCK_MODE_NUMBER
+} tWordClockMode;
+
+
 
 class Display
 {
@@ -146,6 +183,14 @@ private:
         /* Word length */
         uint8_t mLength;
     } tWordData;
+
+    /* Stuct to store the data to display minutes */
+    typedef struct tMinuteDisplay
+    {
+        tHourMode mHourMode;
+        uint8_t   mFlags;
+        tWord     wMinuteWords[MAX_MINUTE_WORDS];
+    } tMinuteDisplay;
 
     /* Word data array */
     const tWordData mcWordDataArray[WORD_MAX_NUMBER] =
@@ -206,6 +251,83 @@ private:
         /* WORD_TERMIN        */   { 10, 10,  6 },    // Termin
     };
 
+    /* Hour words table */
+    const tWord mcWordHoursTable[HOUR_MODE_MAX_NUMBER][HOURS_COUNT][MAX_HOUR_WORDS] =
+    {
+        {
+            { WORD_CLOCK_HOUR_12,   WORD_UHR },
+            { WORD_CLOCK_HOUR_1,    WORD_UHR },
+            { WORD_CLOCK_HOUR_2,    WORD_UHR },
+            { WORD_CLOCK_HOUR_3,    WORD_UHR },
+            { WORD_CLOCK_HOUR_4,    WORD_UHR },
+            { WORD_CLOCK_HOUR_5,    WORD_UHR },
+            { WORD_CLOCK_HOUR_6,    WORD_UHR },
+            { WORD_CLOCK_HOUR_7,    WORD_UHR },
+            { WORD_CLOCK_HOUR_8,    WORD_UHR },
+            { WORD_CLOCK_HOUR_9,    WORD_UHR },
+            { WORD_CLOCK_HOUR_10,   WORD_UHR },
+            { WORD_CLOCK_HOUR_11,   WORD_UHR }
+        },
+        {
+            { WORD_CLOCK_HOUR_12 },
+            { WORD_CLOCK_HOUR_1  },
+            { WORD_CLOCK_HOUR_2  },
+            { WORD_CLOCK_HOUR_3  },
+            { WORD_CLOCK_HOUR_4  },
+            { WORD_CLOCK_HOUR_5  },
+            { WORD_CLOCK_HOUR_6  },
+            { WORD_CLOCK_HOUR_7  },
+            { WORD_CLOCK_HOUR_8  },
+            { WORD_CLOCK_HOUR_9  },
+            { WORD_CLOCK_HOUR_10 },
+            { WORD_CLOCK_HOUR_11 }
+        },
+    };
+
+    /* Minute words table */
+    const tMinuteDisplay mcWordMinutesTable[WORDCLOCK_MODE_NUMBER][MINUTE_COUNT] =
+    {
+        /* Mode WESSI */
+        {
+            { HOUR_MODE_0, NO_FLAGS,      { WORD_GENAU                                }},       // 00
+            { HOUR_MODE_1, NO_FLAGS,      { WORD_CLOCK_MIN_5,   WORD_NACH             }},       // 05
+            { HOUR_MODE_1, NO_FLAGS,      { WORD_CLOCK_MIN_10,  WORD_NACH             }},       // 10
+            { HOUR_MODE_1, NO_FLAGS,      { WORD_VIERTEL,       WORD_NACH             }},       // 15
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_10,  WORD_VOR,   WORD_HALB }},       // 20
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_VOR,   WORD_HALB }},       // 25
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_HALB                                 }},       // 30
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_NACH,  WORD_HALB }},       // 35
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_10,  WORD_NACH,  WORD_HALB }},       // 40
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_VIERTEL,       WORD_VOR              }},       // 45
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_10,  WORD_VOR              }},       // 50
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_VOR              }},       // 55
+        },
+
+        /* Mode RHEIN-RUHR */
+        {
+            { HOUR_MODE_0, NO_FLAGS,      { WORD_GENAU                                }},       // 00
+            { HOUR_MODE_1, NO_FLAGS,      { WORD_CLOCK_MIN_5,   WORD_NACH             }},       // 05
+            { HOUR_MODE_1, NO_FLAGS,      { WORD_CLOCK_MIN_10,  WORD_NACH             }},       // 10
+            { HOUR_MODE_1, NO_FLAGS,      { WORD_VIERTEL,       WORD_NACH             }},       // 15
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_20,  WORD_NACH             }},       // 20
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_VOR,   WORD_HALB }},       // 25
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_HALB                                 }},       // 30
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_NACH,  WORD_HALB }},       // 35
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_20,  WORD_VOR              }},       // 40
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_VIERTEL,       WORD_VOR              }},       // 45
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_10,  WORD_VOR              }},       // 50
+            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_VOR              }},       // 55
+        }
+    };
+
+    const tWord mcWordExtraMinutesTable[ EXTRA_MINUTE_COUNT ][ MAX_EXTRA_MINUTE_WORDS ] =
+    {
+        { WORD_END_OF_WORDS                       },    // No extra minutes
+        { WORD_PLUS,   WORD_NUM_1,  WORD_MINUTE   },    // +1 Minute
+        { WORD_PLUS,   WORD_NUM_2,  WORD_MINUTEN  },    // +2 Minutes
+        { WORD_PLUS,   WORD_NUM_3,  WORD_MINUTEN  },    // +3 Minutes
+        { WORD_PLUS,   WORD_NUM_4,  WORD_MINUTEN  },    // +4 Minutes
+    };
 
     /* Leds */
     CRGB mLeds[LED_NUMBER];
