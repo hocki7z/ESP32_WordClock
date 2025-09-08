@@ -58,7 +58,70 @@ static const char* mDisplayLayout[MATRIX_HEIGHT]=
     /* 15 */  " S  +  1  2  3  4  O  K  M  I  N  U  T  E  N  W  "    // S + 1 2 3 4 OK Minuten W
 };
 
+/* List of all words */
+typedef enum tWord
+{
+    WORD_END_OF_WORDS,
 
+    /* WordClock: minutes words */
+    WORD_CLOCK_MIN_5,   // Fünf
+    WORD_CLOCK_MIN_10,  // Zehn
+    WORD_CLOCK_MIN_20,  // Zwanzig
+    WORD_CLOCK_MIN_30,  // Halb
+    /* WordClock: hours words */
+    WORD_CLOCK_HOUR_1,  // Eins
+    WORD_CLOCK_HOUR_2,  // Zwei
+    WORD_CLOCK_HOUR_3,  // Drei
+    WORD_CLOCK_HOUR_4,  // Vier
+    WORD_CLOCK_HOUR_5,  // Fünf
+    WORD_CLOCK_HOUR_6,  // Sechs
+    WORD_CLOCK_HOUR_7,  // Sieben
+    WORD_CLOCK_HOUR_8,  // Acht
+    WORD_CLOCK_HOUR_9,  // Neun
+    WORD_CLOCK_HOUR_10, // Zehn
+    WORD_CLOCK_HOUR_11, // Elf
+    WORD_CLOCK_HOUR_12, // Zwölf
+    /* WordClock: special words */
+    WORD_ES,
+    WORD_IST,
+    WORD_GENAU,
+    WORD_VIERTEL,
+    WORD_HALB,
+    WORD_VOR,
+    WORD_NACH,
+    WORD_UHR,
+    WORD_PLUS,
+    WORD_NUM_1,
+    WORD_NUM_2,
+    WORD_NUM_3,
+    WORD_NUM_4,
+    WORD_MINUTE,
+    WORD_MINUTEN,
+    /* Additional words */
+    WORD_ALARM,
+    WORD_GEBURTSTAG,
+    WORD_WLAN,
+    WORD_MUELL,
+    WORD_AUTO,
+    WORD_FEIERTAG,
+    WORD_FORMEL1,
+    WORD_DOWNLOAD,
+    WORD_UPDATE,
+    WORD_RAUS,
+    WORD_BRINGEN,
+    WORD_GELBER,
+    WORD_SACK,
+    WORD_ZEIT,
+    WORD_URLAUB,
+    WORD_WEKRSTATT,
+    WORD_FRISEUR,
+    WORD_ZOCKEN,
+    WORD_WORDCLOCK,
+    WORD_NEUSTART,
+    WORD_TERMIN,
+    //
+    WORD_MAX_NUMBER
+} tWord;
 
 
 class Display
@@ -73,6 +136,77 @@ public:
 
 
 private:
+    /* Struct to store word data */
+    typedef struct tWordData
+    {
+        /* Row index [0..MATRIX_HEIGHT-1] */
+        uint8_t mRow;
+        /* Column index [0..MATRIX_WIDTH-1] */
+        uint8_t mColumn;
+        /* Word length */
+        uint8_t mLength;
+    } tWordData;
+
+    /* Word data array */
+    const tWordData mcWordDataArray[WORD_MAX_NUMBER] =
+    {
+        /* WORD_END_OF_WORDS  */   {  0,  0,  0 },    // !!! End of words marker !!!
+
+        /* WORD_CLOCK_MIN_5   */   {  8,  0,  4 },    // Fünf
+        /* WORD_CLOCK_MIN_10  */   {  7,  0,  4 },    // Zehn
+        /* WORD_CLOCK_MIN_20  */   {  5,  8,  7 },    // Zwanzig
+        /* WORD_CLOCK_MIN_30  */   {  6,  0,  4 },    // Halb
+        /* WORD_CLOCK_HOUR_1  */   { 13,  0,  4 },    // Eins
+        /* WORD_CLOCK_HOUR_2  */   { 13, 12,  4 },    // Zwei
+        /* WORD_CLOCK_HOUR_3  */   { 13,  4,  4 },    // Drei
+        /* WORD_CLOCK_HOUR_4  */   { 13,  8,  4 },    // Vier
+        /* WORD_CLOCK_HOUR_5  */   { 14,  8,  4 },    // Fünf
+        /* WORD_CLOCK_HOUR_6  */   { 12,  0,  5 },    // Sechs
+        /* WORD_CLOCK_HOUR_7  */   { 11, 10,  6 },    // Sieben
+        /* WORD_CLOCK_HOUR_8  */   { 14,  0,  4 },    // Acht
+        /* WORD_CLOCK_HOUR_9  */   { 12,  5,  4 },    // Neun
+        /* WORD_CLOCK_HOUR_10 */   { 12,  9,  4 },    // Zehn
+        /* WORD_CLOCK_HOUR_11 */   { 12, 13,  3 },    // Elf
+        /* WORD_CLOCK_HOUR_12 */   { 14,  4,  5 },    // Zwölf
+        /* WORD_ES            */   {  3, 14,  2 },    // Es
+        /* WORD_IST           */   {  4,  7,  3 },    // Ist
+        /* WORD_GENAU         */   {  6, 11,  5 },    // Genau
+        /* WORD_VIERTEL       */   {  9,  9,  7 },    // Viertel
+        /* WORD_HALB          */   {  6,  0,  4 },    // Halb
+        /* WORD_VOR           */   { 10,  0,  3 },    // Vor
+        /* WORD_NACH          */   { 11,  0,  4 },    // Nach
+        /* WORD_UHR           */   { 14, 13,  3 },    // Uhr
+        /* WORD_PLUS          */   { 15,  1,  1 },    // +
+        /* WORD_NUM_1         */   { 15,  2,  1 },    // 1
+        /* WORD_NUM_2         */   { 15,  3,  1 },    // 2
+        /* WORD_NUM_3         */   { 15,  4,  1 },    // 3
+        /* WORD_NUM_4         */   { 15,  5,  1 },    // 4
+        /* WORD_MINUTE        */   { 15,  8,  6 },    // Minute
+        /* WORD_MINUTEN       */   { 15,  8,  7 },    // Minuten
+        /* WORD_ALARM         */   {  0,  0,  5 },    // Alarm
+        /* WORD_GEBURTSTAG    */   {  0,  5, 10 },    // Geburtstag
+        /* WORD_WLAN          */   {  3,  0,  4 },    // Wlan
+        /* WORD_MUELL         */   {  1,  0,  4 },    // Müll
+        /* WORD_AUTO          */   {  1,  4,  4 },    // Auto
+        /* WORD_FEIERTAG      */   {  1,  8,  8 },    // Feiertag
+        /* WORD_FORMEL1       */   {  2,  1,  7 },    // Formel1
+        /* WORD_DOWNLOAD      */   {  2,  8,  8 },    // Download
+        /* WORD_UPDATE        */   {  3,  4,  6 },    // Update
+        /* WORD_RAUS          */   {  3, 10,  4 },    // Raus
+        /* WORD_BRINGEN       */   {  4,  0,  7 },    // Bringen
+        /* WORD_GELBER        */   {  4, 10,  6 },    // Gelber
+        /* WORD_SACK          */   {  5,  0,  4 },    // Sack
+        /* WORD_ZEIT          */   {  5,  4,  4 },    // Zeit
+        /* WORD_URLAUB        */   {  6,  5,  6 },    // Urlaub
+        /* WORD_WEKRSTATT     */   {  7,  4,  9 },    // Werkstatt
+        /* WORD_FRISEUR       */   {  8,  3,  7 },    // Friesur
+        /* WORD_ZOCKEN        */   {  8, 10,  6 },    // Zocken
+        /* WORD_WORDCLOCK     */   {  9,  0,  9 },    // Wordclock
+        /* WORD_NEUSTART      */   { 10,  3,  8 },    // Neustart
+        /* WORD_TERMIN        */   { 10, 10,  6 },    // Termin
+    };
+
+
     /* Leds */
     CRGB mLeds[LED_NUMBER];
 
