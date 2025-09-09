@@ -22,7 +22,8 @@ TimeManager::TimeManager()
  */
 TimeManager::~TimeManager()
 {
-    // do nothing
+    /* Clean pointer */
+    mpMinuteEventCallback = nullptr;
 }
 
 void TimeManager::Init(void)
@@ -40,9 +41,33 @@ void TimeManager::Loop(void)
     /* Set current time */
  	DateTimeNS::tDateTime wCurrTime = GetDateTime();
 
+    /* Check if a minute event should be fired */
+    if ((mPrevTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
+        (mPrevTime.mTime.mMinute != wCurrTime.mTime.mMinute))
+    {
+        /* Notify callback */
+        if (mpMinuteEventCallback != nullptr)
+        {
+            mpMinuteEventCallback->NotifyDateTime(wCurrTime);
+        }
+    }
+
     /* Update previous time */
     mPrevTime = wCurrTime;
 };
+
+/**
+ * @brief Register a callback for minute events
+ */
+void TimeManager::RegisterMinuteEventCallback(NotifyTimeCallback* apCallback)
+{
+    /* Check input parameter */
+    if (apCallback != nullptr)
+    {
+        mpMinuteEventCallback = apCallback;
+    }
+}
+
 
 /**
  * @brief Set current time

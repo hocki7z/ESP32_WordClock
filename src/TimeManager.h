@@ -76,9 +76,21 @@ namespace DateTimeNS
     } tDateTime;
 };
 
-
 class TimeManager
 {
+public:
+    /**
+     * Class for datetime notifications
+     */
+    class NotifyTimeCallback
+    {
+    public:
+        /**
+         * @brief Notify the callback of a new datetime
+         */
+        virtual void NotifyDateTime(const DateTimeNS::tDateTime aDateTime) = 0;
+    };
+
 public:
     TimeManager();
     virtual ~TimeManager();
@@ -87,8 +99,13 @@ public:
 
     void Loop(void);
 
+    // Register a callback for minute events
+    void RegisterMinuteEventCallback(NotifyTimeCallback* apCallback);
+
 
 private:
+
+    NotifyTimeCallback* mpMinuteEventCallback = nullptr;
 
     DateTimeNS::tDateTime mPrevTime;
 
