@@ -9,6 +9,8 @@
 
 #include <FastLED.h>
 
+#include "TimeManager.h"
+
 
 /***************************************************************************************************
   LED matrix configuration
@@ -163,7 +165,7 @@ typedef enum tWordClockMode
 
 
 
-class Display
+class Display :  public TimeManager::NotifyTimeCallback
 {
 public:
     Display();
@@ -172,6 +174,9 @@ public:
     void Init(void);
 
     void Loop(void);
+
+    /* TimeManager::NotifyTimeCallback */
+    void NotifyDateTime(const DateTimeNS::tDateTime aDateTime);
 
 
 private:
@@ -335,6 +340,9 @@ private:
     CRGB mLeds[LED_NUMBER];
 
     uint32_t mPrevMillis = 0;
+
+    DateTimeNS::tDateTime mDateTime;
+    bool mDateTimeUpdated = false;
 
     void Clear(void);
     void Transform(void);

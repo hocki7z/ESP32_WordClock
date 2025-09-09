@@ -21,6 +21,9 @@ void setup()
     mpDisplay->Init();
     pmTimeManager->Init();
 
+    /* Register display as a callback for time manager */
+    pmTimeManager->RegisterMinuteEventCallback(mpDisplay);
+
     /* LOG */
     Serial.printf("Welcome to WordClock");
 }

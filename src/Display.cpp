@@ -9,8 +9,8 @@
 
 #include "Display.h"
 
-/* Delay in msec between colors */
-constexpr uint32_t mcUpdateDelay = 1000;
+/* Delay in msec between display updates */
+constexpr uint32_t mcUpdateDelay = 10;
 
 
 /**
@@ -58,15 +58,42 @@ void Display::Loop(void)
         /* Update previous time tick */
         mPrevMillis = wCurrMillis;
 
-        Clear();
+        if (mDateTimeUpdated)
+        {
+//            /* LOG */
+//            Serial.printf("Display::Loop: Update display for time %02u:%02u:%02u %02u/%02u/%04u\n",
+//                    mDateTime.mTime.mHour,  mDateTime.mTime.mMinute,    mDateTime.mTime.mSecond,
+//                    mDateTime.mDate.mDay,   mDateTime.mDate.mMonth,     mDateTime.mDate.mYear);
 
-        // Test Wordclock
-        PaintTime(21, 51, CRGB::Red);
+            /* Clear update flag */
+            mDateTimeUpdated = false;
 
-        Transform();
+            /* Update display data */
+            Clear();
+            PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, CRGB::Red);
+            Transform();
 
-        FastLED.show();
+            /* Show new data on the LED matrix */
+            FastLED.show();
+        }
+        else
+        {
+            /* LOG */
+//            Serial.printf("Display::Loop: No new time available\n");
+        }
     }
+}
+
+void Display::NotifyDateTime(const DateTimeNS::tDateTime aDateTime)
+{
+    /* LOG */
+    Serial.printf("Display::NotifyDateTime: %02u:%02u:%02u %02u/%02u/%04u\n",
+            aDateTime.mTime.mHour,  aDateTime.mTime.mMinute,    aDateTime.mTime.mSecond,
+            aDateTime.mDate.mDay,   aDateTime.mDate.mMonth,     aDateTime.mDate.mYear);
+
+    /* Store new date and time */
+    mDateTime        = aDateTime;
+    mDateTimeUpdated = true;
 }
 
 void Display::Clear(void)
