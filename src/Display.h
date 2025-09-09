@@ -4,6 +4,8 @@
  *  Created on: 02.09.2025
  *      Author: hocki
  */
+#ifndef DISPLAY_H_
+#define DISPLAY_H_
 
 #include <FastLED.h>
 
@@ -169,7 +171,7 @@ public:
 
     void Init(void);
 
-    void Update(void);
+    void Loop(void);
 
 
 private:
@@ -346,3 +348,5 @@ private:
     void PaintWord(const tWord aWord, const CRGB aColor);
     void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
 };
+
+#endif /* DISPLAY_H_ */

@@ -1,10 +1,11 @@
 #include <Arduino.h>
 
 #include "Display.h"
+#include "TimeManager.h"
 
 
 static Display* mpDisplay;
-
+static TimeManager* pmTimeManager;
 
 void setup()
 {
@@ -12,11 +13,13 @@ void setup()
     Serial.begin(115200);
     Serial.setDebugOutput(true);
 
-    /* Create display object */
-    mpDisplay = new Display();
+    /* Create objects */
+    mpDisplay       = new Display();
+    pmTimeManager   = new TimeManager();
 
-    /* Initialize display */
+    /* Initialize */
     mpDisplay->Init();
+    pmTimeManager->Init();
 
     /* LOG */
     Serial.printf("Welcome to WordClock");
@@ -24,6 +27,9 @@ void setup()
 
 void loop()
 {
+    /* Update time manager */
+    pmTimeManager->Loop();
+
     /* Update display */
-    mpDisplay->Update();
+    mpDisplay->Loop();
 }

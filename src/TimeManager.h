@@ -4,6 +4,8 @@
  *  Created on: 08.09.2025
  *      Author: hocki
  */
+#ifndef TIME_MANAGER_H_
+#define TIME_MANAGER_H_
 
 #include <Arduino.h>
 
@@ -11,8 +13,8 @@ namespace DateTimeNS
 {
     static constexpr uint16_t mYearRangeStart = 2000U;
 
-    PGM_P mMonthsStr   = PSTR("JanFebMarAprMayJunJulAugSepOctNovDec");
-    PGM_P mPrintFormat = PSTR("%02u:%02u:%02u %02u/%02u/%04u");
+    static PGM_P mMonthsStr   = PSTR("JanFebMarAprMayJunJulAugSepOctNovDec");
+    static PGM_P mPrintFormat = PSTR("%02u:%02u:%02u %02u/%02u/%04u");
 
     /**
      * @brief Date
@@ -95,3 +97,5 @@ private:
 
     DateTimeNS::tDateTime GetCompileTime(void);
 };
+
+#endif /* TIME_MANAGER_H_ */

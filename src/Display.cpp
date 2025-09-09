@@ -44,7 +44,7 @@ void Display::Init(void)
     FastLED.clear();
 }
 
-void Display::Update(void)
+void Display::Loop(void)
 {
     /* Get current system tick */
     uint32_t wCurrMillis = millis();
