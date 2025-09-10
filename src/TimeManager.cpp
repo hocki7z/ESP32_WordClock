@@ -38,7 +38,7 @@ void TimeManager::Init(void)
 
 void TimeManager::Loop(void)
 {
-    /* Set current time */
+    /* Get current time */
  	DateTimeNS::tDateTime wCurrTime = GetDateTime();
 
     /* Check if a minute event should be fired */
