@@ -1,6 +1,10 @@
 #include <Arduino.h>
 
+#include "Logger.h"
 #include "Display.h"
+
+/* Log level for this module */
+#define LOG_LEVEL   (LOG_DEBUG)
 
 
 static Display* mpDisplay;
@@ -19,7 +23,7 @@ void setup()
     mpDisplay->Init();
 
     /* LOG */
-    Serial.printf("Welcome to WordClock");
+    LOG(LOG_INFO, "Welcome to WordClock");
 }
 
 void loop()
