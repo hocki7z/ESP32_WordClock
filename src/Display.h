@@ -217,7 +217,7 @@ private:
         /* WORD_IST           */   {  4,  7,  3 },    // Ist
         /* WORD_GENAU         */   {  6, 11,  5 },    // Genau
         /* WORD_VIERTEL       */   {  9,  9,  7 },    // Viertel
-        /* WORD_HALB          */   {  6,  0,  4 },    // Halb
+        /* WORD_HALB          */   { 11,  5,  4 },    // Halb
         /* WORD_VOR           */   { 10,  0,  3 },    // Vor
         /* WORD_NACH          */   { 11,  0,  4 },    // Nach
         /* WORD_UHR           */   { 14, 13,  3 },    // Uhr
@@ -309,7 +309,7 @@ private:
             { HOUR_MODE_1, NO_FLAGS,      { WORD_CLOCK_MIN_5,   WORD_NACH             }},       // 05
             { HOUR_MODE_1, NO_FLAGS,      { WORD_CLOCK_MIN_10,  WORD_NACH             }},       // 10
             { HOUR_MODE_1, NO_FLAGS,      { WORD_VIERTEL,       WORD_NACH             }},       // 15
-            { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_20,  WORD_NACH             }},       // 20
+            { HOUR_MODE_1, NO_FLAGS,      { WORD_CLOCK_MIN_20,  WORD_NACH             }},       // 20
             { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_VOR,   WORD_HALB }},       // 25
             { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_HALB                                 }},       // 30
             { HOUR_MODE_1, HOUR_OFFSET_1, { WORD_CLOCK_MIN_5,   WORD_NACH,  WORD_HALB }},       // 35
