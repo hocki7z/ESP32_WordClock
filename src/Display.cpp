@@ -7,7 +7,12 @@
 
 #include <Arduino.h>
 
+#include "Logger.h"
 #include "Display.h"
+
+/* Log level for this module */
+#define LOG_LEVEL   (LOG_DEBUG)
+
 
 /* Delay in msec between display updates */
 constexpr uint32_t mcUpdateDelay = 10;
@@ -40,8 +45,12 @@ void Display::Init(void)
     FastLED.setCorrection(TypicalLEDStrip);
     // Set default LED brightness
     FastLED.setBrightness(LED_DEFAULT_BRIGHTNESS);
-    // Switch OFF all LEDs
+    // Clear FastLED
     FastLED.clear();
+
+    /* Switch OFF all LEDs */
+    Clear();
+    FastLED.show();
 }
 
 void Display::Loop(void)
@@ -60,10 +69,9 @@ void Display::Loop(void)
 
         if (mDateTimeUpdated)
         {
-//            /* LOG */
-//            Serial.printf("Display::Loop: Update display for time %02u:%02u:%02u %02u/%02u/%04u\n",
-//                    mDateTime.mTime.mHour,  mDateTime.mTime.mMinute,    mDateTime.mTime.mSecond,
-//                    mDateTime.mDate.mDay,   mDateTime.mDate.mMonth,     mDateTime.mDate.mYear);
+            /* LOG */
+            LOG(LOG_DEBUG, "Display.Loop() Update display for time %02u:%02u",
+                    mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
             /* Clear update flag */
             mDateTimeUpdated = false;
@@ -87,9 +95,9 @@ void Display::Loop(void)
 void Display::NotifyDateTime(const DateTimeNS::tDateTime aDateTime)
 {
     /* LOG */
-    Serial.printf("Display::NotifyDateTime: %02u:%02u:%02u %02u/%02u/%04u\n",
-            aDateTime.mTime.mHour,  aDateTime.mTime.mMinute,    aDateTime.mTime.mSecond,
-            aDateTime.mDate.mDay,   aDateTime.mDate.mMonth,     aDateTime.mDate.mYear);
+//    LOG(LOG_DEBUG, "Display.NotifyDateTime() %02u:%02u:%02u %02u/%02u/%04u",
+//            aDateTime.mTime.mHour,  aDateTime.mTime.mMinute,    aDateTime.mTime.mSecond,
+//            aDateTime.mDate.mDay,   aDateTime.mDate.mMonth,     aDateTime.mDate.mYear);
 
     /* Store new date and time */
     mDateTime        = aDateTime;
