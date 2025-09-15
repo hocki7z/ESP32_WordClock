@@ -8,6 +8,8 @@
 #define TIME_MANAGER_H_
 
 #include <Arduino.h>
+#include <ESPNtpClient.h>
+
 
 namespace DateTimeNS
 {
@@ -109,10 +111,20 @@ private:
 
     DateTimeNS::tDateTime mPrevTime;
 
-    void SetDateTime(DateTimeNS::tDateTime aDateTime);
-    DateTimeNS::tDateTime GetDateTime(void);
+    bool mNTPSyncEventTriggered = false;
 
+    DateTimeNS::tDateTime ConvertTime(time_t aTime);
+
+    void SetDateTime(time_t aTime);
+    void SetDateTime(DateTimeNS::tDateTime aDateTime);
+    void SetDateTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear);
+
+    DateTimeNS::tDateTime GetDateTime(void);
     DateTimeNS::tDateTime GetCompileTime(void);
+
+    DateTimeNS::tDateTime GetLocalTime(void);
+
+    void HandleNTPSyncEvent(NTPEvent_t aEvent);
 };
 
 #endif /* TIME_MANAGER_H_ */

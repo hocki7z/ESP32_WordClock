@@ -19,6 +19,9 @@ void setup()
     Serial.begin(115200);
     Serial.setDebugOutput(true);
 
+    /* LOG */
+    LOG(LOG_INFO, "Welcome to WordClock");
+
     /* Create objects */
     mpDisplay       = new Display();
     mpTimeManager   = new TimeManager();
@@ -30,9 +33,6 @@ void setup()
 
     /* Register display as a callback for time manager */
     mpTimeManager->RegisterMinuteEventCallback(mpDisplay);
-
-    /* LOG */
-    LOG(LOG_INFO, "Welcome to WordClock");
 }
 
 void loop()
