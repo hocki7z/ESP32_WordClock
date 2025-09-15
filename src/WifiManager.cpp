@@ -5,19 +5,19 @@
  *      Author: hocki
  */
 
-/* Start Wifi connection with defined SSID, password */
+/* Start Wifi connection with defined SSID and password */
 #define USE_CREDENTIALS
 
 #ifdef USE_CREDENTIALS
 /**
-    A template for wifi credential file
+    A template for wifi credential file credentials.h in the project root:
     -----------------------------------
         credentials.h
             #ifndef CREDENTIALS_H_
             #define CREDENTIALS_H_
 
-            #define WIFI_SSID       "    "   // SSID of accesspoint
-            #define WIFI_PASS       "    "   // *assword of access point
+            #define CRED_WIFI_SSID       "MyWiFiSSID"	// SSID of access point
+            #define CRED_WIFI_PASS       "MyWiFiPass"   // Password of access point
 
             #endif
     -----------------------------------
@@ -103,7 +103,7 @@ void WiFiManager::ProcessState(void)
 			{
 				if ((millis() - mConnectionStart) > mConnectionTimeout)
 			    {
-					LOG(LOG_ERROR, "Failed to connect after %d millis", mConnectionTimeout);
+					LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
 
                     mState  = STATE_RECONNECTING;
 					mStatus = STATUS_NOT_CONNECTED;
@@ -114,7 +114,7 @@ void WiFiManager::ProcessState(void)
 			}
 			else
 			{
-				LOG(LOG_DEBUG, "We are online after %d millis", (millis() - mConnectionStart));
+				LOG(LOG_DEBUG, "WiFiManager::ProcessState() We are online after %d millis", (millis() - mConnectionStart));
 
 				mState  = STATE_ONLINE;
 				mStatus = STATUS_ONLINE;
@@ -135,8 +135,8 @@ void WiFiManager::ProcessState(void)
 
 				switch (mWifiEvent)
 				{
-					case SYSTEM_EVENT_STA_DISCONNECTED:
-						LOG(LOG_DEBUG, "[Event] SYSTEM_EVENT_STA_DISCONNECTED, reconnecting");
+					case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+						LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event SYSTEM_EVENT_STA_DISCONNECTED, reconnecting");
 
 						mState  = STATE_RECONNECTING;
 						mStatus = STATUS_NOT_CONNECTED;
@@ -182,14 +182,13 @@ void WiFiManager::ConnectWifi(void)
     mConnectionStart = millis();
 
 #ifdef USE_CREDENTIALS
+    /* LOG */
+    LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Start WiFi Station mode, credentials SSID: %s", CRED_WIFI_SSID);
     /* Start Wifi connection */
-    LOG(LOG_DEBUG, "Start WiFi Station mode, credentials SSID: %s; password: %s",
-    		WIFI_SSID, WIFI_PASS);
-
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    WiFi.begin(CRED_WIFI_SSID, CRED_WIFI_PASS);
 #else
     /* Connect to SDK config */
-    LOG(LOG_DEBUG, "Start WiFi Station mode, connect to SDK config");
+    LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Start WiFi Station mode, connect to SDK config");
     WiFi.begin();
 #endif /* ifdef USE_CREDENTIALS */
 }
