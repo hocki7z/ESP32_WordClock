@@ -345,6 +345,8 @@ private:
     bool mDateTimeUpdated = false;
 
     void Clear(void);
+    void Fill(const CRGB aColor, const uint8_t aBrightness=100);
+
     void Transform(void);
 
     void SetColor(const uint16_t aLedIndex, const CRGB aColor);

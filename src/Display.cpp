@@ -17,6 +17,12 @@
 /* Delay in msec between display updates */
 constexpr uint32_t mcUpdateDelay = 10;
 
+static constexpr CRGB mForegroundColor = CRGB::Red;
+static constexpr CRGB mBackgroundColor = CRGB::Green;
+static constexpr uint8_t mBackgroundBrightness = 2;
+
+static constexpr CRGB mIntroColor = CRGB::Orange;
+
 
 /**
  * @brief Constructor
@@ -50,6 +56,10 @@ void Display::Init(void)
 
     /* Switch OFF all LEDs */
     Clear();
+
+    /* Display intro */
+    PaintWord(WORD_WORDCLOCK, mIntroColor);
+
     FastLED.show();
 }
 
@@ -77,17 +87,13 @@ void Display::Loop(void)
             mDateTimeUpdated = false;
 
             /* Update display data */
-            Clear();
-            PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, CRGB::Red);
+            Fill(mBackgroundColor, mBackgroundBrightness);
+
+            PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, mForegroundColor);
             Transform();
 
             /* Show new data on the LED matrix */
             FastLED.show();
-        }
-        else
-        {
-            /* LOG */
-//            Serial.printf("Display::Loop: No new time available\n");
         }
     }
 }
@@ -106,11 +112,15 @@ void Display::NotifyDateTime(const DateTimeNS::tDateTime aDateTime)
 
 void Display::Clear(void)
 {
-    /* Clear mLeds array with black color */
-    for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
-    {
-        mLeds[wI] = CRGB::Black;
-    }
+    Fill(CRGB::Black);
+}
+
+void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
+{
+    uint8_t wBrightness = (aBrightness > 100) ? 100 : aBrightness;
+    uint8_t wAlphaScale = map(wBrightness, 0, 100, 0, 255);
+
+    fill_solid(mLeds, LED_NUMBER, aColor.scale8(wAlphaScale));
 }
 
 void Display::Transform(void)
