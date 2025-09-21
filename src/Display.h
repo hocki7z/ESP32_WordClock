@@ -9,6 +9,7 @@
 
 #include <FastLED.h>
 
+#include "DateTime.h"
 #include "TimeManager.h"
 
 

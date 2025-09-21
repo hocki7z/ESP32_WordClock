@@ -5,7 +5,6 @@
  *      Author: hocki
  */
 
-#include <TimeLib64.h>
 #include <ESPNtpClient.h>
 
 #include "Logger.h"
@@ -44,9 +43,9 @@ TimeManager::~TimeManager()
 
 void TimeManager::Init(void)
 {
-    /* Initialize local time with compilation time */
-//    DateTimeNS::tDateTime wDateTime = GetCompileTime();
-//    SetDateTime(wDateTime);
+//    /* Initialize local time with compilation time */
+//    DateTimeNS::tDateTime wCompileTime = GetCompileTime();
+//    SetLocalTime(wCompileTime);
 
     /* Init time variables */
     mPrevTime = GetLocalTime();
@@ -106,66 +105,34 @@ void TimeManager::RegisterMinuteEventCallback(NotifyTimeCallback* apCallback)
     }
 }
 
-DateTimeNS::tDateTime TimeManager::ConvertTime(time_t aTime)
+void TimeManager::SetLocalTime(DateTimeNS::tDateTime aDateTime)
 {
-    DateTimeNS::tDateTime wDateTime;
-
-    /* Parse given time */
-    tmElements_t tm;
-    breakTime(aTime, tm);
-
-    /*Fill time struct with the values */
-    wDateTime.mTime.mSecond 	= tm.Second;
-    wDateTime.mTime.mMinute 	= tm.Minute;
-    wDateTime.mTime.mHour   	= tm.Hour;
-    //
-    wDateTime.mDate.mDay 	  	= tm.Day;
-    wDateTime.mDate.mWeekDay 	= tm.Wday;
-    wDateTime.mDate.mMonth  	= tm.Month;
-
-    /* Convert tm.Year (offset from 1970) to the calendar year */
-    wDateTime.mDate.mYear   	= tmYearToCalendar(tm.Year);
-
-    return wDateTime;
-}
-
-void TimeManager::SetDateTime(time_t aTime)
-{
-    DateTimeNS::tDateTime wDateTime = ConvertTime(aTime);
-
-    /* Set new local time */
-    SetDateTime(wDateTime);
-}
-
-/**
- * @brief Set current time
- */
-void TimeManager::SetDateTime(DateTimeNS::tDateTime aDateTime)
-{
-	SetDateTime(aDateTime.mTime.mHour, aDateTime.mTime.mMinute, aDateTime.mTime.mSecond,
+	SetLocalTime(aDateTime.mTime.mHour, aDateTime.mTime.mMinute, aDateTime.mTime.mSecond,
 			    aDateTime.mDate.mDay,  aDateTime.mDate.mMonth,  aDateTime.mDate.mYear);
 }
 
-void TimeManager::SetDateTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear)
+void TimeManager::SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear)
 {
-    LOG(LOG_DEBUG, "TimeManager::SetDateTime() New local datetime: " LOG_DATE_TIME_FORMAT,
-            aDay, aMonth, aYear, aHour, aMinute, aSecond);
+    /* Get local time to keep DST (Daylight Saving Time) info */
+    time_t wTime = time(nullptr);
+    tm*  wpLocalTime = localtime(&wTime);
+
+    /* Set date */
+    wpLocalTime->tm_mday = aDay;
+    wpLocalTime->tm_mon  = aMonth - 1;
+    wpLocalTime->tm_year = aYear  - 1900;
+
+    /* Set time */
+    wpLocalTime->tm_hour = aHour;
+    wpLocalTime->tm_min  = aMinute;
+    wpLocalTime->tm_sec  = aSecond;
+
+    /* Make new local time */
+    time_t  wNewTime = mktime(wpLocalTime);
+    timeval wNewTimeval = { .tv_sec = wNewTime };
 
     /* Set new local time */
-	setTime(aDay, aMonth, aYear, aHour, aMinute, aSecond);
-}
-
-/**
- * @brief Get current time
- */
-DateTimeNS::tDateTime TimeManager::GetDateTime(void)
-{
-    /* Get current time */
-    time_t wCurrTime = now();
-    /* and convert it */
-    DateTimeNS::tDateTime wDateTime = ConvertTime(wCurrTime);
-
-	return wDateTime;
+    settimeofday(&wNewTimeval, nullptr);
 }
 
 /**
@@ -196,16 +163,19 @@ DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
 {
     DateTimeNS::tDateTime wDateTime;
 
-    time_t wUtcTime = time(NULL);
-    tm*  wpCurrTime = localtime(&wUtcTime);
+    /* Get local time */
+    time_t wTime = time(NULL);
+    tm*  wpLocalTime = localtime(&wTime);
 
-    wDateTime.mDate.mDay    = wpCurrTime->tm_mday;
-    wDateTime.mDate.mMonth  = wpCurrTime->tm_mon + 1;
-    wDateTime.mDate.mYear   = wpCurrTime->tm_year + 1900;
+    /* Get date */
+    wDateTime.mDate.mDay    = wpLocalTime->tm_mday;
+    wDateTime.mDate.mMonth  = wpLocalTime->tm_mon  + 1;
+    wDateTime.mDate.mYear   = wpLocalTime->tm_year + 1900;
 
-    wDateTime.mTime.mHour   = wpCurrTime->tm_hour;
-    wDateTime.mTime.mMinute = wpCurrTime->tm_min;
-    wDateTime.mTime.mSecond = wpCurrTime->tm_sec;
+    /* Get time */
+    wDateTime.mTime.mHour   = wpLocalTime->tm_hour;
+    wDateTime.mTime.mMinute = wpLocalTime->tm_min;
+    wDateTime.mTime.mSecond = wpLocalTime->tm_sec;
 
     return wDateTime;
 }
@@ -227,15 +197,21 @@ void TimeManager::HandleNTPSyncEvent(NTPEvent_t aEvent)
 
             mNTPSyncEventTriggered = true;
 
-            //setTime(time(NULL));
-            //SetDateTime(GetNTPLocalTime());
+            uint8_t wHour, wMinute, wSecond;
+            uint8_t wDay,  wMonth;
+            uint16_t wYear;
 
-            /* Get NTP local time */
-//            time_t wUtcTime = time(NULL);
-//            tm*  wpCurrTime = localtime(&wUtcTime);
-//
-//            SetDateTime(wpCurrTime->tm_hour, wpCurrTime->tm_min, wpCurrTime->tm_sec,
-//                    wpCurrTime->tm_mday, wpCurrTime->tm_mon + 1, wpCurrTime->tm_year + 1900);
+            /* Parse time string and date strings */
+            if ((sscanf(NTP.getTimeStr(), "%d:%d:%d", &wHour, &wMinute, &wSecond) == 3) &&      // 'HH:MM:SS'  , e.g. 00:23:56
+                (sscanf(NTP.getDateStr(), "%d/%d/%d", &wDay,  &wMonth,  &wYear)   == 3))        // 'DD/MM/YYYY', e.g. 25/12/2023
+            {
+                /* Update local time */
+                SetLocalTime(wHour, wMinute, wSecond, wDay,  wMonth, wYear);
+            }
+            else
+            {
+                LOG(LOG_ERROR, "TimeManager::HandleNTPSyncEvent() Parse time error");
+            }
         }
             break;
 
