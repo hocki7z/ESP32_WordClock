@@ -4,8 +4,12 @@
  *  Created on: 02.09.2025
  *      Author: hocki
  */
+#ifndef DISPLAY_H_
+#define DISPLAY_H_
 
 #include <FastLED.h>
+
+#include "TimeManager.h"
 
 
 /***************************************************************************************************
@@ -161,7 +165,7 @@ typedef enum tWordClockMode
 
 
 
-class Display
+class Display :  public TimeManager::NotifyTimeCallback
 {
 public:
     Display();
@@ -169,7 +173,10 @@ public:
 
     void Init(void);
 
-    void Update(void);
+    void Loop(void);
+
+    /* TimeManager::NotifyTimeCallback */
+    void NotifyDateTime(const DateTimeNS::tDateTime aDateTime);
 
 
 private:
@@ -334,6 +341,9 @@ private:
 
     uint32_t mPrevMillis = 0;
 
+    DateTimeNS::tDateTime mDateTime;
+    bool mDateTimeUpdated = false;
+
     void Clear(void);
     void Transform(void);
 
@@ -346,3 +356,5 @@ private:
     void PaintWord(const tWord aWord, const CRGB aColor);
     void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
 };
+
+#endif /* DISPLAY_H_ */

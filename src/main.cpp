@@ -2,13 +2,14 @@
 
 #include "Logger.h"
 #include "Display.h"
+#include "TimeManager.h"
 
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
 
 static Display* mpDisplay;
-
+static TimeManager* pmTimeManager;
 
 void setup()
 {
@@ -16,11 +17,16 @@ void setup()
     Serial.begin(115200);
     Serial.setDebugOutput(true);
 
-    /* Create display object */
-    mpDisplay = new Display();
+    /* Create objects */
+    mpDisplay       = new Display();
+    pmTimeManager   = new TimeManager();
 
-    /* Initialize display */
+    /* Initialize */
     mpDisplay->Init();
+    pmTimeManager->Init();
+
+    /* Register display as a callback for time manager */
+    pmTimeManager->RegisterMinuteEventCallback(mpDisplay);
 
     /* LOG */
     LOG(LOG_INFO, "Welcome to WordClock");
@@ -28,6 +34,9 @@ void setup()
 
 void loop()
 {
+    /* Update time manager */
+    pmTimeManager->Loop();
+
     /* Update display */
-    mpDisplay->Update();
+    mpDisplay->Loop();
 }
