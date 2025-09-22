@@ -3,13 +3,15 @@
 #include "Logger.h"
 #include "Display.h"
 #include "TimeManager.h"
+#include "WiFiManager.h"
 
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
 
 static Display* mpDisplay;
-static TimeManager* pmTimeManager;
+static TimeManager* mpTimeManager;
+static WiFiManager* mpWiFiManager;
 
 void setup()
 {
@@ -17,25 +19,29 @@ void setup()
     Serial.begin(115200);
     Serial.setDebugOutput(true);
 
+    /* LOG */
+    LOG(LOG_INFO, "Welcome to WordClock");
+
     /* Create objects */
     mpDisplay       = new Display();
-    pmTimeManager   = new TimeManager();
+    mpTimeManager   = new TimeManager();
+    mpWiFiManager   = new WiFiManager();
 
     /* Initialize */
     mpDisplay->Init();
-    pmTimeManager->Init();
+    mpTimeManager->Init();
 
     /* Register display as a callback for time manager */
-    pmTimeManager->RegisterMinuteEventCallback(mpDisplay);
-
-    /* LOG */
-    LOG(LOG_INFO, "Welcome to WordClock");
+    mpTimeManager->RegisterMinuteEventCallback(mpDisplay);
 }
 
 void loop()
 {
+   /* Update WiFi manager */
+    mpWiFiManager->Loop();
+
     /* Update time manager */
-    pmTimeManager->Loop();
+    mpTimeManager->Loop();
 
     /* Update display */
     mpDisplay->Loop();

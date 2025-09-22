@@ -5,9 +5,24 @@
  *      Author: hocki
  */
 
-#include <TimeLib64.h>
+#include <ESPNtpClient.h>
+
+#include "Logger.h"
 
 #include "TimeManager.h"
+
+
+/* Log level for this module */
+#define LOG_LEVEL               (LOG_DEBUG)
+
+#define NTP_SERVER_NAME         PSTR("pool.ntp.org")
+#define NTP_TIMEOUT             5000    // 5 sec
+#define NTP_SYNC_PERIOD         600     // 10 min
+
+#define TIME_ZONE               TZ_Europe_Berlin
+
+#define LOG_DATE_TIME_FORMAT    "%02d/%02d/%04d %02d:%02d:%02d"
+
 
 /**
  * @brief Constructor
@@ -22,38 +37,60 @@ TimeManager::TimeManager()
  */
 TimeManager::~TimeManager()
 {
-    /* Clean pointer */
+    /* Clear pointers */
     mpMinuteEventCallback = nullptr;
 }
 
 void TimeManager::Init(void)
 {
-    /* Initialize local time with compilation time */
-    DateTimeNS::tDateTime wDateTime = GetCompileTime();
-    SetDateTime(wDateTime);
+//    /* Initialize local time with compilation time */
+//    DateTimeNS::tDateTime wCompileTime = GetCompileTime();
+//    SetLocalTime(wCompileTime);
 
     /* Init time variables */
-    mPrevTime = GetDateTime();
+    mPrevTime = GetLocalTime();
+
+    /* Register NTP sync events callback */
+	NTP.onNTPSyncEvent(
+        std::bind(&TimeManager::HandleNTPSyncEvent, this, std::placeholders::_1));
+
+    /* Set time zone */
+    NTP.setTimeZone(TIME_ZONE);
+    /* Set sync parameters */
+    NTP.setInterval(NTP_SYNC_PERIOD);
+    NTP.setNTPTimeout(NTP_TIMEOUT);
+//    NTP.setMinSyncAccuracy(5000);
+//    NTP.settimeSyncThreshold(3000);
+
+    /* Start NTP client */
+    NTP.begin(NTP_SERVER_NAME, false);
 }
 
 void TimeManager::Loop(void)
 {
-    /* Get current time */
- 	DateTimeNS::tDateTime wCurrTime = GetDateTime();
-
-    /* Check if a minute event should be fired */
-    if ((mPrevTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
-        (mPrevTime.mTime.mMinute != wCurrTime.mTime.mMinute))
+    if (mNTPSyncEventTriggered)
     {
-        /* Notify callback */
-        if (mpMinuteEventCallback != nullptr)
+        /* Get current time */
+ 	    DateTimeNS::tDateTime wCurrTime = GetLocalTime();
+
+        /* Check if a minute event should be fired */
+        if ((mPrevTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
+            (mPrevTime.mTime.mMinute != wCurrTime.mTime.mMinute))
         {
-            mpMinuteEventCallback->NotifyDateTime(wCurrTime);
+            /* Notify callback */
+            if (mpMinuteEventCallback != nullptr)
+            {
+                LOG(LOG_VERBOSE, "TimeManager::Loop() NotifyDateTime: " LOG_DATE_TIME_FORMAT,
+                        wCurrTime.mDate.mDay,  wCurrTime.mDate.mMonth,  wCurrTime.mDate.mYear,
+                        wCurrTime.mTime.mHour, wCurrTime.mTime.mMinute, wCurrTime.mTime.mSecond);
+
+                mpMinuteEventCallback->NotifyDateTime(wCurrTime);
+            }
+
+            /* Update previous time after notification sent */
+            mPrevTime = wCurrTime;
         }
     }
-
-    /* Update previous time */
-    mPrevTime = wCurrTime;
 };
 
 /**
@@ -68,42 +105,34 @@ void TimeManager::RegisterMinuteEventCallback(NotifyTimeCallback* apCallback)
     }
 }
 
-
-/**
- * @brief Set current time
- */
-void TimeManager::SetDateTime(DateTimeNS::tDateTime aDateTime)
+void TimeManager::SetLocalTime(DateTimeNS::tDateTime aDateTime)
 {
-    /* Set new local time */
-	setTime(aDateTime.mTime.mHour, aDateTime.mTime.mMinute, aDateTime.mTime.mSecond,
-			aDateTime.mDate.mDay, aDateTime.mDate.mMonth, aDateTime.mDate.mYear);
+	SetLocalTime(aDateTime.mTime.mHour, aDateTime.mTime.mMinute, aDateTime.mTime.mSecond,
+			    aDateTime.mDate.mDay,  aDateTime.mDate.mMonth,  aDateTime.mDate.mYear);
 }
 
-/**
- * @brief Get current time
- */
-DateTimeNS::tDateTime TimeManager::GetDateTime(void)
+void TimeManager::SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear)
 {
-    DateTimeNS::tDateTime wDateTime;
+    /* Get local time to keep DST (Daylight Saving Time) info */
+    time_t wTime = time(nullptr);
+    tm*  wpLocalTime = localtime(&wTime);
 
-	tmElements_t wTmElems;
+    /* Set date */
+    wpLocalTime->tm_mday = aDay;
+    wpLocalTime->tm_mon  = aMonth - 1;
+    wpLocalTime->tm_year = aYear  - 1900;
 
-	/* Parse current time */
-	breakTime(now(), wTmElems);
+    /* Set time */
+    wpLocalTime->tm_hour = aHour;
+    wpLocalTime->tm_min  = aMinute;
+    wpLocalTime->tm_sec  = aSecond;
 
-	/* Fill time struct with the values */
-	wDateTime.mTime.mSecond 	= wTmElems.Second;
-	wDateTime.mTime.mMinute 	= wTmElems.Minute;
-	wDateTime.mTime.mHour   	= wTmElems.Hour;
-	//
-	wDateTime.mDate.mDay 	  	= wTmElems.Day;
-	wDateTime.mDate.mWeekDay 	= wTmElems.Wday;
-	wDateTime.mDate.mMonth  	= wTmElems.Month;
+    /* Make new local time */
+    time_t  wNewTime = mktime(wpLocalTime);
+    timeval wNewTimeval = { .tv_sec = wNewTime };
 
-	/* Convert tm.Year (offset from 1970) to the calendar year */
-	wDateTime.mDate.mYear   	= tmYearToCalendar(wTmElems.Year);
-
-	return wDateTime;
+    /* Set new local time */
+    settimeofday(&wNewTimeval, nullptr);
 }
 
 /**
@@ -128,4 +157,65 @@ DateTimeNS::tDateTime TimeManager::GetCompileTime(void)
     wDateTime.mTime.mSecond = atoi(__TIME__ + 6);
 
     return wDateTime;
+}
+
+DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
+{
+    DateTimeNS::tDateTime wDateTime;
+
+    /* Get local time */
+    time_t wTime = time(NULL);
+    tm*  wpLocalTime = localtime(&wTime);
+
+    /* Get date */
+    wDateTime.mDate.mDay    = wpLocalTime->tm_mday;
+    wDateTime.mDate.mMonth  = wpLocalTime->tm_mon  + 1;
+    wDateTime.mDate.mYear   = wpLocalTime->tm_year + 1900;
+
+    /* Get time */
+    wDateTime.mTime.mHour   = wpLocalTime->tm_hour;
+    wDateTime.mTime.mMinute = wpLocalTime->tm_min;
+    wDateTime.mTime.mSecond = wpLocalTime->tm_sec;
+
+    return wDateTime;
+}
+
+void TimeManager::HandleNTPSyncEvent(NTPEvent_t aEvent)
+{
+    /* LOG */
+    LOG(LOG_VERBOSE, "TimeManager::HandleNTPSyncEvent() Event %d", aEvent.event);
+
+    /* Process event */
+    switch (aEvent.event)
+    {
+        case timeSyncd:
+        case partlySync:
+        {
+            /* Time successfully got from NTP server */
+            LOG(LOG_DEBUG, "TimeManager::HandleNTPSyncEvent() Successful NTP sync at: %s",
+                    NTP.getTimeDateString(NTP.getLastNTPSync()));
+
+            mNTPSyncEventTriggered = true;
+
+            uint8_t wHour, wMinute, wSecond;
+            uint8_t wDay,  wMonth;
+            uint16_t wYear;
+
+            /* Parse time string and date strings */
+            if ((sscanf(NTP.getTimeStr(), "%d:%d:%d", &wHour, &wMinute, &wSecond) == 3) &&      // 'HH:MM:SS'  , e.g. 00:23:56
+                (sscanf(NTP.getDateStr(), "%d/%d/%d", &wDay,  &wMonth,  &wYear)   == 3))        // 'DD/MM/YYYY', e.g. 25/12/2023
+            {
+                /* Update local time */
+                SetLocalTime(wHour, wMinute, wSecond, wDay,  wMonth, wYear);
+            }
+            else
+            {
+                LOG(LOG_ERROR, "TimeManager::HandleNTPSyncEvent() Parse time error");
+            }
+        }
+            break;
+
+        default:
+            break;
+    }
 }
