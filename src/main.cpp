@@ -1,5 +1,8 @@
 #include <Arduino.h>
 
+#include <ArduinoJson.h>
+#include <ESPAsyncWebServer.h>
+
 #include "Logger.h"
 #include "Display.h"
 #include "TimeManager.h"
