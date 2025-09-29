@@ -30,6 +30,7 @@ void setup()
     /* Initialize */
     mpDisplay->Init();
     mpTimeManager->Init();
+    mpWiFiManager->Init();
 
     /* Register display as a callback for time manager */
     mpTimeManager->RegisterMinuteEventCallback(mpDisplay);

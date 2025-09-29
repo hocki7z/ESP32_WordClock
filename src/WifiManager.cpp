@@ -99,40 +99,35 @@ void WiFiManager::ProcessState(void)
 
 		case STATE_CONNECTING:
 		case STATE_RECONNECTING:
-		    if (WiFi.status() != WL_CONNECTED)
+			if (mWifiEventTriggered)
 			{
-				if ((millis() - mConnectionStart) > mConnectionTimeout)
-			    {
-					LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
+				switch (mWifiEvent)
+				{
+					case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+						mState  = STATE_ONLINE;
+						mStatus = STATUS_ONLINE;
+						break;
 
-                    mState  = STATE_RECONNECTING;
-					mStatus = STATUS_NOT_CONNECTED;
-
-                    /* Try to reconnect to WiFi */
-					ReconnectWifi();
-			    }
+					default:
+						break;
+				};
 			}
-			else
+			else if (((millis() - mConnectionStart) >= mConnectionTimeout) &&
+					 (WiFi.status() != WL_CONNECTED))
 			{
-				LOG(LOG_DEBUG, "WiFiManager::ProcessState() We are online after %d millis", (millis() - mConnectionStart));
+				LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
 
-				mState  = STATE_ONLINE;
-				mStatus = STATUS_ONLINE;
+				mState  = STATE_RECONNECTING;
+				mStatus = STATUS_NOT_CONNECTED;
+
+				/* Try to reconnect to WiFi */
+				ReconnectWifi();
 			}
-
-			break;
-
-		case STATE_NOT_CONFIGURED:
-			break;
-
-		case STATE_AP_MODE:
 			break;
 
 		case STATE_ONLINE:
 			if (mWifiEventTriggered)
 			{
-                mWifiEventTriggered = false;
-
 				switch (mWifiEvent)
 				{
 					case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
@@ -147,15 +142,18 @@ void WiFiManager::ProcessState(void)
 					default:
 						break;
 				};
-
-                /* Reset event */
-                mWifiEvent = ARDUINO_EVENT_MAX;
 			}
 			break;
 
+		case STATE_NOT_CONFIGURED:
+		case STATE_AP_MODE:
 		default:
 			break;
 	}
+
+	/* Reset event */
+    mWifiEvent = ARDUINO_EVENT_MAX;
+    mWifiEventTriggered = false;
 }
 
 void WiFiManager::ConnectWifi(void)
@@ -204,20 +202,20 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
     mWifiEventTriggered = true;
     mWifiEvent = aEvent;
 
-//    LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Event: %d", event);
+    LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Event: %d", aEvent);
 
 	switch (aEvent)
 	{
 		case ARDUINO_EVENT_WIFI_STA_START:
-//			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station start");
+			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station start");
 			break;
 
 		case ARDUINO_EVENT_WIFI_STA_STOP:
-//			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station stop");
+			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station stop");
 			break;
 
 		case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station connected to AP");
+			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station connected to AP; We are online after %d millis", (millis() - mConnectionStart));
 			break;
 
 		case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
@@ -226,7 +224,7 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
 			break;
 
 		case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Auth mode of AP connected by ESP32 station changed");
+			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Auth mode of AP connected by ESP32 station changed");
 			break;
 		case ARDUINO_EVENT_WIFI_STA_GOT_IP:
 			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station got IP from connected AP %s", WiFi.localIP().toString().c_str());
