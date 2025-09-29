@@ -11,8 +11,7 @@
 #include <WiFiGeneric.h>
 #include <WiFiType.h>
 
-#include <ArduinoJson.h>
-#include <ESPAsyncWebServer.h>
+#include <ESPUI.h>
 
 
 class WebSite
@@ -27,10 +26,7 @@ public:
 
 private:
 
-    AsyncWebServer* mpWebServer;
-
     void HandleWifiEvent(WiFiEvent_t aEvent);
-
 };
 
 #endif /* WEBSITE_H_ */

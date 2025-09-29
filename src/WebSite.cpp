@@ -29,14 +29,6 @@ WebSite::~WebSite()
 
 void WebSite::Init(void)
 {
-    /* Create async web server */
-    mpWebServer = new AsyncWebServer(80);
-    /* and server routes */
-    mpWebServer->on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-        request->send(200, "text/plain", "Wordclock");
-    });
-
     /* Register WiFi events listener */
 	WiFi.onEvent(
         std::bind(&WebSite::HandleWifiEvent, this, std::placeholders::_1));
@@ -52,11 +44,10 @@ void WebSite::HandleWifiEvent(WiFiEvent_t aEvent)
 	switch (aEvent)
 	{
 		case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-            if (mpWebServer != nullptr)
-            {
-                LOG(LOG_DEBUG, "WebSite::HandleWifiEvent() Start web server");
-                mpWebServer->begin();
-            }
+            /* LOG */
+            LOG(LOG_DEBUG, "WebSite::HandleWifiEvent() Start web server");
+            /* Start web server */
+            ESPUI.begin("Wordclock");
 			break;
 
 		default:
