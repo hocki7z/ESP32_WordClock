@@ -13,6 +13,21 @@
 
 #include <ESPUI.h>
 
+typedef enum setting_type
+{
+    colorTime,
+    colorBack,
+    colorHour,
+    colorMin1,
+    colorMin2,
+    colorMin3,
+    colorMin4,
+    usenightmode,
+    day_time_start,
+    day_time_stop,
+    //
+    setting_type_count
+};
 
 class WebSite
 {
@@ -25,6 +40,7 @@ public:
     void Loop(void);
 
 private:
+    void SetupColor(const setting_type aType, const char*  apCaption);
 
     void HandleWifiEvent(WiFiEvent_t aEvent);
 };
