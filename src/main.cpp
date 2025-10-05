@@ -4,6 +4,7 @@
 #include "Display.h"
 #include "TimeManager.h"
 #include "WiFiManager.h"
+#include "Settings.h"
 
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
@@ -31,6 +32,7 @@ void setup()
     mpDisplay->Init();
     mpTimeManager->Init();
     mpWiFiManager->Init();
+    mSettings.Init();
 
     /* Register display as a callback for time manager */
     mpTimeManager->RegisterMinuteEventCallback(mpDisplay);
@@ -38,7 +40,10 @@ void setup()
 
 void loop()
 {
-   /* Update WiFi manager */
+    /* Update settings */
+    mSettings.Loop();
+
+    /* Update WiFi manager */
     mpWiFiManager->Loop();
 
     /* Update time manager */
