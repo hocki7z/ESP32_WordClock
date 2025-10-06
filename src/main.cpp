@@ -22,8 +22,8 @@ enum tTaskPriority
 	TaskPrio_Highest  = ((configMAX_PRIORITIES)-1) 						         ///< Critical Tasks, Do NOW, must be quick (Used by FreeRTOS)
 };
 
-#define TEST_TASK_DEPTH_SIZE    (4 * 1024)
-#define TEST_TASK_PRIORITY      tTaskPriority::TaskPrio_Low
+#define TEST_TASK_DEPTH_SIZE    (2 * 1024)
+#define TEST_TASK_PRIORITY      tTaskPriority::TaskPrio_HMI
 #define TEST_TASK_NAME          "TestTask"
 
 /* Task notification bits */
@@ -87,7 +87,7 @@ private:
     static void TimerCallback(TimerHandle_t aTimerHandle)
     {
         /* LOG */
-        Serial.printf("CustomTask::RouteTimer()\n");
+        //Serial.printf("CustomTask::RouteTimer()\n");
 
         NotificationTimer* wpNotificationTimer = static_cast<NotificationTimer*>(pvTimerGetTimerID(aTimerHandle));
         if (wpNotificationTimer)
@@ -174,7 +174,7 @@ private:
 
 
 static RTOS::Tasks::ITask*      mpTestTask;
-static TaskHandle_t             mpTestTaskHandle;
+static TaskHandle_t             mTestTaskHandle;
 
 static tTestTaskMailBox*        mpTestTaskMailBox;
 static TaskNotification*        mpTestTaskMailBoxNotification;
@@ -194,10 +194,10 @@ void setup()
     mpDisplay = new Display();
 
     mpTestTask = new TestTask<TEST_TASK_DEPTH_SIZE>(TEST_TASK_NAME, TEST_TASK_PRIORITY);
-    mpTestTaskHandle = mpTestTask->getHandle();
+    mTestTaskHandle = mpTestTask->getHandle();
 
     mpTestTaskMailBox = new tTestTaskMailBox();
-    mpTestTaskMailBoxNotification = new TaskNotification(mpTestTask->getHandle(), mNotificationMailbox);
+    mpTestTaskMailBoxNotification = new TaskNotification(mTestTaskHandle, mNotificationMailbox);
 
     static_cast<TestTask<TEST_TASK_DEPTH_SIZE>*>(mpTestTask)->Init(mpTestTaskMailBox);
 
@@ -208,7 +208,7 @@ void setup()
     }
 
     mpNotificationTimer = new NotificationTimer(mpTestTask->getHandle(), mNotificationTimer, 3000, true);
-    mpNotificationTimer->start();
+    //mpNotificationTimer->start();
 
     /* Initialize display */
     mpDisplay->Init();
@@ -228,6 +228,6 @@ void loop()
     wData.mId   = mMsgCount++;
     wData.mData = millis();
 
-    //mpTestTaskMailBox->add(wData, 0);
-    //mpTestTaskMailBoxNotification->notify();
+    mpTestTaskMailBox->add(wData, 0);
+    mpTestTaskMailBoxNotification->notify();
 }
