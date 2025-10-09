@@ -41,7 +41,7 @@ struct TaskStats
 
 typedef struct tTestTaskData
 {
-    uint8_t  mId;
+    uint32_t mId;
     uint32_t mData;
 } tTaskData;
 
@@ -211,7 +211,7 @@ void setup()
     mpDisplay->Init();
 
     /* LOG */
-    Serial.printf("Welcome to WordClock");
+    Serial.printf("Welcome to WordClock\n");
 }
 
 void loop()
@@ -225,12 +225,12 @@ void loop()
     wData.mId   = mMsgCount++;
     wData.mData = millis();
 
-    mpMutex->take();
-    mpSemaphore->take();
+//    mpMutex->take();
+//    mpSemaphore->take();
 
     mpTestTaskMailBox->add(wData, 0);
     mpTestTaskMailBoxNotification->notify();
 
-    mpSemaphore->give();
-    mpMutex->take();
+//    mpSemaphore->give();
+//    mpMutex->give();
 }
