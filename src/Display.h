@@ -174,7 +174,7 @@ public:
     Display(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
     virtual ~Display();
 
-    void Init(void);
+    void Init(ApplicationNS::tTaskObjects* apTaskObjects);
 
     void Loop(void);
 

@@ -52,8 +52,11 @@ WiFiManager::~WiFiManager()
 {
 }
 
-void WiFiManager::Init(void)
+void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
+	/* Initialize base class */
+	ApplicationNS::Task::Init(apTaskObjects);
+
     /* Register WiFi events listener */
 	WiFi.onEvent(
         std::bind(&WiFiManager::HandleWifiEvent, this, std::placeholders::_1));

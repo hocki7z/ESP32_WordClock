@@ -37,8 +37,12 @@ typedef enum tLogLevel
  * #define LOG_LEVEL   (LOG_ERROR)
  */
 #ifdef TRACE
-    #define LOG(level, ...)          LoggerNS::Log( level, LOG_LEVEL, __VA_ARGS__)
-    #define LOG_LINE(level, ...)     LoggerNS::LogLine( level, LOG_LEVEL, __FILE__, __LINE__, __VA_ARGS__)
+    #define LOG(level, ...)                             LoggerNS::Log( level, LOG_LEVEL, __VA_ARGS__ )
+    #define LOG_LINE(level, ...)                        LoggerNS::LogLine( level, LOG_LEVEL, __FILE__, __LINE__, __VA_ARGS__ )
+
+    #define LOG_WITH_REF(level, ref_level, ...)         LoggerNS::Log( level, ref_level, __VA_ARGS__)
+    #define LOG_LINE_WITH_REF(level, ref_level, ...)    LoggerNS::LogLine( level, ref_level, __FILE__, __LINE__, __VA_ARGS__ )
+
 
     namespace LoggerNS
     {
@@ -92,6 +96,9 @@ typedef enum tLogLevel
 #else
     #define LOG(level, ...)
     #define LOG_LINE(level, ...)
+
+    #define LOG_WITH_REF(level, ref_level, ...)
+    #define LOG_LINE_WITH_REF(level, ref_level, ...)
 
 #endif /* TRACE */
 

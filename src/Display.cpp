@@ -41,8 +41,11 @@ Display::~Display()
     // do nothing
 }
 
-void Display::Init(void)
+void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
+    /* Initialize base class */
+    ApplicationNS::Task::Init(apTaskObjects);
+
     /* Initialize FastLED */
     // Initialize LEDs
     FastLED.addLeds<LED_TYPE, LED_DATA_PIN, LED_COLOR_ORDER>(mLeds, LED_NUMBER);

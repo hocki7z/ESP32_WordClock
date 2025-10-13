@@ -42,8 +42,11 @@ TimeManager::~TimeManager()
     mpMinuteEventCallback = nullptr;
 }
 
-void TimeManager::Init(void)
+void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
+    /* Initialize base class */
+    ApplicationNS::Task::Init(apTaskObjects);
+
 //    /* Initialize local time with compilation time */
 //    DateTimeNS::tDateTime wCompileTime = GetCompileTime();
 //    SetLocalTime(wCompileTime);
