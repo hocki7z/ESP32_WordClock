@@ -1,13 +1,14 @@
 #include <Arduino.h>
 
 #include "Logger.h"
+#include "Application.h"
+
 #include "Display.h"
 #include "TimeManager.h"
 #include "WiFiManager.h"
 
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
-
 
 static Display* mpDisplay;
 static TimeManager* mpTimeManager;
@@ -22,10 +23,13 @@ void setup()
     /* LOG */
     LOG(LOG_INFO, "Welcome to WordClock");
 
-    /* Create objects */
-    mpDisplay       = new Display();
-    mpTimeManager   = new TimeManager();
-    mpWiFiManager   = new WiFiManager();
+    /* Create tasks */
+    mpDisplay     = new Display(ApplicationNS::mDisplayTaskName,
+        ApplicationNS::mDisplayTaskPriority, ApplicationNS::mDisplayTaskStackSize);
+    mpTimeManager = new TimeManager(ApplicationNS::mTimeManagerTaskName,
+        ApplicationNS::mTimeManagerTaskPriority, ApplicationNS::mTimeManagerTaskStackSize);
+    mpWiFiManager = new WiFiManager(ApplicationNS::mWifiManagerTaskName,
+        ApplicationNS::mWifiManagerTaskPriority, ApplicationNS::mWifiManagerTaskStackSize);
 
     /* Initialize */
     mpDisplay->Init();

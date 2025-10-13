@@ -27,7 +27,8 @@
 /**
  * @brief Constructor
  */
-TimeManager::TimeManager()
+TimeManager::TimeManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize)
+    : ApplicationNS::Task(apName, aPriority, aStackSize)
 {
     // do nothing
 }

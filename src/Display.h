@@ -9,6 +9,8 @@
 
 #include <FastLED.h>
 
+#include "Application.h"
+
 #include "DateTime.h"
 #include "TimeManager.h"
 
@@ -166,10 +168,10 @@ typedef enum tWordClockMode
 
 
 
-class Display :  public TimeManager::NotifyTimeCallback
+class Display : public ApplicationNS::Task, public TimeManager::NotifyTimeCallback
 {
 public:
-    Display();
+    Display(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
     virtual ~Display();
 
     void Init(void);

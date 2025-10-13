@@ -27,7 +27,8 @@ static constexpr CRGB mIntroColor = CRGB::Orange;
 /**
  * @brief Constructor
  */
-Display::Display()
+Display::Display(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize)
+    : ApplicationNS::Task(apName, aPriority, aStackSize)
 {
     // do nothing
 }

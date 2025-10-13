@@ -40,7 +40,8 @@ constexpr uint32_t mcUpdateDelay = 100;
 /**
  * @brief Constructor
  */
-WiFiManager::WiFiManager()
+WiFiManager::WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize)
+    : ApplicationNS::Task(apName, aPriority, aStackSize)
 {
 }
 

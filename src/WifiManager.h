@@ -12,8 +12,9 @@
 #include <WiFiGeneric.h>
 #include <WiFiType.h>
 
+#include "Application.h"
 
-class WiFiManager
+class WiFiManager : public ApplicationNS::Task
 {
 public:
 	typedef enum tStatus
@@ -24,7 +25,7 @@ public:
 		STATUS_AP_MODE,
 	} tStatus;
 
-	WiFiManager();
+	WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
 	virtual ~WiFiManager();
 
 	void Init(void);

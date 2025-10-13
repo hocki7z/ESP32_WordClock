@@ -10,10 +10,12 @@
 #include <Arduino.h>
 #include <ESPNtpClient.h>
 
+#include "Application.h"
+
 #include "DateTime.h"
 
 
-class TimeManager
+class TimeManager : public ApplicationNS::Task
 {
 public:
     /**
@@ -29,7 +31,7 @@ public:
     };
 
 public:
-    TimeManager();
+    TimeManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
     virtual ~TimeManager();
 
     void Init(void);
