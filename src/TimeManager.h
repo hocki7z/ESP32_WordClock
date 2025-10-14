@@ -18,45 +18,39 @@
 class TimeManager : public ApplicationNS::Task
 {
 public:
-    /**
-     * Class for datetime notifications
-     */
-    class NotifyTimeCallback
-    {
-    public:
-        /**
-         * @brief Notify the callback of a new datetime
-         */
-        virtual void NotifyDateTime(const DateTimeNS::tDateTime aDateTime) = 0;
-    };
-
-public:
     TimeManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
     virtual ~TimeManager();
 
-    void Init(ApplicationNS::tTaskObjects* apTaskObjects);
-
-    void Loop(void);
-
-    // Register a callback for minute events
-    void RegisterMinuteEventCallback(NotifyTimeCallback* apCallback);
-
+    /* ApplicationNS::Task::Init */
+    void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
+    /* Notification timer for this task */
+    ApplicationNS::NotificationTimer* mpTimer;
 
-    NotifyTimeCallback* mpMinuteEventCallback = nullptr;
+    /* Last sent datatime */
+    DateTimeNS::tDateTime mSentTime;
 
-    DateTimeNS::tDateTime mPrevTime;
+    /* Flag indicates that the NTP time is synchronized */
+    bool mNtpTimeSynced = false;
 
-    bool mNTPSyncEventTriggered = false;
+    /* ApplicationNS::Task::task() */
+    void task(void) override;
+    /* ApplicationNS::Task::ProcessTimerEvent() */
+    void ProcessTimerEvent(void) override;
+    /* ApplicationNS::Task::ProcessIncomingMessage() */
+    void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     DateTimeNS::tDateTime GetCompileTime(void);
     DateTimeNS::tDateTime GetLocalTime(void);
+    DateTimeNS::tDateTime GetNtpTime(void);
 
     void SetLocalTime(DateTimeNS::tDateTime aDateTime);
     void SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear);
 
     void HandleNTPSyncEvent(NTPEvent_t aEvent);
+
+    void SendTime(void);
 };
 
 #endif /* TIME_MANAGER_H_ */

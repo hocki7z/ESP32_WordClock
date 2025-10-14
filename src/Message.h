@@ -35,6 +35,21 @@ namespace MessageNS
     {
         NONE = 0x00,
 
+        /** Commands     */
+
+        /** Events       */
+        MGS_EVENT_DATETIME_CHANGED,         // Payload: 4 bytes - Datetime as dword
+        MGS_EVENT_NTP_LASTSYNC_TIME,        // Payload: 4 bytes - Last sync time as dword
+        MGS_EVENT_WIFI_EVENT_TRIGGERED,     // Payload: 1 byte  - WiFiEvent_t
+
+        /** Status       */
+		MGS_STATUS_WIFI_NOT_CONNECTED,
+		MGS_STATUS_WIFI_CONNECTING,
+		MGS_STATUS_WIFI_STA_CONNECTED,
+		MGS_STATUS_WIFI_AP_CONNECTED,
+
+        /** Parameters   */
+
         /** @brief Number of IDs available (do not use as actual command) */
         NB_OF_MESSAGE_IDS
     };

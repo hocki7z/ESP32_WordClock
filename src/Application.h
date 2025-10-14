@@ -13,6 +13,7 @@
 #include <FreeRTOScpp.h>
 #include <TaskCPP.h>
 #include <QueueCPP.h>
+#include <TimerCPP.h>
 
 #include "Logger.h"
 
@@ -81,6 +82,33 @@ namespace ApplicationNS
         uint32_t     mNotification;
 
     };
+
+    #define NOTIFICATION_TIMER_NAME    ((const char *)"TIMER")
+
+    class NotificationTimer : public FreeRTOScpp::TimerClass
+    {
+    public:
+        NotificationTimer(TaskHandle_t mTaskHandle, uint32_t mNotification, TickType_t aPeriod, bool aReload) :
+            FreeRTOScpp::TimerClass(nullptr, aPeriod, aReload)
+        {
+            mpTaskNotification = new TaskNotification(mTaskHandle, mNotification);
+        }
+
+        virtual ~NotificationTimer()
+        {}
+
+        void timer(void)
+        {
+            if (mpTaskNotification)
+            {
+                mpTaskNotification->Notify();
+            }
+        }
+
+    private:
+        TaskNotification* mpTaskNotification;
+    };
+
 
     /** @brief Definition of the message queue */
     using MessageQueueBase = FreeRTOScpp::QueueTypeBase<MessageNS::Message>;

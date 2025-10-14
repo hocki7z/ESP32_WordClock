@@ -17,6 +17,14 @@
 class WiFiManager : public ApplicationNS::Task
 {
 public:
+	WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
+	virtual ~WiFiManager();
+
+    /* ApplicationNS::Task::Init */
+    void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
+
+private:
+
 	typedef enum tStatus
 	{
 		STATUS_NOT_CONNECTED,
@@ -24,18 +32,6 @@ public:
 		STATUS_ONLINE,
 		STATUS_AP_MODE,
 	} tStatus;
-
-	WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
-	virtual ~WiFiManager();
-
-	void Init(ApplicationNS::tTaskObjects* apTaskObjects);
-
-	void Loop(void);
-
-	tStatus GetStatus(void);
-
-
-private:
 
 	typedef enum tState
 	{
@@ -47,7 +43,8 @@ private:
 		STATE_ONLINE,
 	} tState;
 
-	uint32_t mPrevMillis = 0;
+	/* Notification timer for this task */
+    ApplicationNS::NotificationTimer* mpTimer;
 
     tState  mState  = STATE_BOOT;
     tStatus mStatus = STATUS_NOT_CONNECTED;
@@ -56,13 +53,16 @@ private:
 	static constexpr uint32_t mConnectionTimeout = 30000U; //30seconds
     uint32_t mConnectionStart = 0;
 
-    /* Last triggered WiFi event */
-	WiFiEvent_t mWifiEvent = ARDUINO_EVENT_MAX;
-    /* True if a time even has been triggered */
-	boolean mWifiEventTriggered = false;
+	/* ApplicationNS::Task::task() */
+    void task(void) override;
+    /* ApplicationNS::Task::ProcessTimerEvent() */
+    void ProcessTimerEvent(void) override;
+    /* ApplicationNS::Task::ProcessIncomingMessage() */
+    void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
+    void ProcessState(const WiFiEvent_t aEvent = ARDUINO_EVENT_MAX);
 
-    void ProcessState(void);
+	void SendStatus(void);
 
     void ConnectWifi(void);
 	void ReconnectWifi(void);

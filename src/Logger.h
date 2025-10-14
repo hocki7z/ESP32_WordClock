@@ -105,7 +105,7 @@ typedef enum tLogLevel
 /** Defines to print a byte as binary (for logging)
  *
  * You can use the below macros like this:
- * LOG(LOG_DBG, "byte value: " PRINTF_BINARY_PATTERN_INT8, PRINTF_BYTE_TO_BINARY_INT8(value));
+ *      LOG(LOG_DEBUG, "Byte value: " PRINTF_BINARY_PATTERN_INT8, PRINTF_BYTE_TO_BINARY_INT8(value));
  */
 #define PRINTF_BINARY_PATTERN_INT8          "%c%c%c%c%c%c%c%c"
 #define PRINTF_BYTE_TO_BINARY_INT8(byte)     \

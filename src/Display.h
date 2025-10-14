@@ -12,7 +12,6 @@
 #include "Application.h"
 
 #include "DateTime.h"
-#include "TimeManager.h"
 
 
 /***************************************************************************************************
@@ -168,19 +167,14 @@ typedef enum tWordClockMode
 
 
 
-class Display : public ApplicationNS::Task, public TimeManager::NotifyTimeCallback
+class Display : public ApplicationNS::Task
 {
 public:
     Display(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
     virtual ~Display();
 
-    void Init(ApplicationNS::tTaskObjects* apTaskObjects);
-
-    void Loop(void);
-
-    /* TimeManager::NotifyTimeCallback */
-    void NotifyDateTime(const DateTimeNS::tDateTime aDateTime);
-
+    /* ApplicationNS::Task::Init */
+    void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
     /* Struct to store word data */
@@ -342,13 +336,15 @@ private:
     /* Leds */
     CRGB mLeds[LED_NUMBER];
 
-    uint32_t mPrevMillis = 0;
-
     DateTimeNS::tDateTime mDateTime;
-    bool mDateTimeUpdated = false;
+
+    /* ApplicationNS::Task::ProcessIncomingMessage() */
+    void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     void Clear(void);
     void Fill(const CRGB aColor, const uint8_t aBrightness=100);
+
+    void UpdateDisplay(void);
 
     void Transform(void);
 

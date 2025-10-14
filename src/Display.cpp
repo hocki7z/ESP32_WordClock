@@ -8,7 +8,10 @@
 #include <Arduino.h>
 
 #include "Logger.h"
+#include "Serialize.h"
+
 #include "Display.h"
+
 
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
@@ -67,51 +70,33 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     FastLED.show();
 }
 
-void Display::Loop(void)
+void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 {
-    /* Get current system tick */
-    uint32_t wCurrMillis = millis();
+    LOG(LOG_VERBOSE, "Display::ProcessIncomingMessage()");
 
-    //TODO handle millis rollover
-    //     e.g. https://arduino.stackexchange.com/questions/12587/how-can-i-handle-the-millis-rollover
-
-    /* Check time ticks delta */
-    if ((wCurrMillis - mPrevMillis) >= mcUpdateDelay)
+    switch (arMessage.mId)
     {
-        /* Update previous time tick */
-        mPrevMillis = wCurrMillis;
-
-        if (mDateTimeUpdated)
+        case MessageNS::tMessageId::MGS_EVENT_DATETIME_CHANGED:
         {
-            /* LOG */
-            LOG(LOG_DEBUG, "Display.Loop() Update display for time %02u:%02u",
-                    mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
+            /* Deserialize received time */
+            uint32_t wDword;
+            if (SerializeNS::UnserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
+            {
+                /* Store new date and time */
+                mDateTime = DateTimeNS::DwordToDateTime(&wDword);
 
-            /* Clear update flag */
-            mDateTimeUpdated = false;
+                LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Datetime changed: " PRINTF_DATETIME_PATTERN,
+                        PRINTF_DATETIME_FORMAT(mDateTime));
 
-            /* Update display data */
-            Fill(mBackgroundColor, mBackgroundBrightness);
-
-            PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, mForegroundColor);
-            Transform();
-
-            /* Show new data on the LED matrix */
-            FastLED.show();
+                UpdateDisplay();
+            }
         }
+            break;
+
+        default:
+            // do nothing
+            break;
     }
-}
-
-void Display::NotifyDateTime(const DateTimeNS::tDateTime aDateTime)
-{
-    /* LOG */
-//    LOG(LOG_DEBUG, "Display.NotifyDateTime() %02u:%02u:%02u %02u/%02u/%04u",
-//            aDateTime.mTime.mHour,  aDateTime.mTime.mMinute,    aDateTime.mTime.mSecond,
-//            aDateTime.mDate.mDay,   aDateTime.mDate.mMonth,     aDateTime.mDate.mYear);
-
-    /* Store new date and time */
-    mDateTime        = aDateTime;
-    mDateTimeUpdated = true;
 }
 
 void Display::Clear(void)
@@ -125,6 +110,22 @@ void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
     uint8_t wAlphaScale = map(wBrightness, 0, 100, 0, 255);
 
     fill_solid(mLeds, LED_NUMBER, aColor.scale8(wAlphaScale));
+}
+
+void Display::UpdateDisplay(void)
+{
+    /* LOG */
+    LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
+            mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
+
+    /* Update display data */
+    Fill(mBackgroundColor, mBackgroundBrightness);
+
+    PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, mForegroundColor);
+    Transform();
+
+    /* Show new data on the LED matrix */
+    FastLED.show();
 }
 
 void Display::Transform(void)

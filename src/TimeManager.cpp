@@ -8,6 +8,7 @@
 #include <ESPNtpClient.h>
 
 #include "Logger.h"
+#include "Serialize.h"
 
 #include "TimeManager.h"
 
@@ -20,8 +21,6 @@
 #define NTP_SYNC_PERIOD         600     // 10 min
 
 #define TIME_ZONE               TZ_Europe_Berlin
-
-#define LOG_DATE_TIME_FORMAT    "%02d/%02d/%04d %02d:%02d:%02d"
 
 
 /**
@@ -38,8 +37,7 @@ TimeManager::TimeManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 TimeManager::~TimeManager()
 {
-    /* Clear pointers */
-    mpMinuteEventCallback = nullptr;
+   // do nothing
 }
 
 void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -47,12 +45,16 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
 
+    /* Create notification timer */
+    mpTimer = new ApplicationNS::NotificationTimer(this->getTaskHandle(),
+        ApplicationNS::mTaskNotificationTimer, 1000, true); // 1 sec period
+
 //    /* Initialize local time with compilation time */
 //    DateTimeNS::tDateTime wCompileTime = GetCompileTime();
 //    SetLocalTime(wCompileTime);
 
     /* Init time variables */
-    mPrevTime = GetLocalTime();
+    mSentTime = GetLocalTime();
 
     /* Register NTP sync events callback */
 	NTP.onNTPSyncEvent(
@@ -65,47 +67,73 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     NTP.setNTPTimeout(NTP_TIMEOUT);
 //    NTP.setMinSyncAccuracy(5000);
 //    NTP.settimeSyncThreshold(3000);
-
-    /* Start NTP client */
-    NTP.begin(NTP_SERVER_NAME, false);
 }
 
-void TimeManager::Loop(void)
+void TimeManager::task(void)
 {
-    if (mNTPSyncEventTriggered)
-    {
-        /* Get current time */
- 	    DateTimeNS::tDateTime wCurrTime = GetLocalTime();
+    /* Start notification timer for this task */
+    mpTimer->start();
 
-        /* Check if a minute event should be fired */
-        if ((mPrevTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
-            (mPrevTime.mTime.mMinute != wCurrTime.mTime.mMinute))
-        {
-            /* Notify callback */
-            if (mpMinuteEventCallback != nullptr)
-            {
-                LOG(LOG_VERBOSE, "TimeManager::Loop() NotifyDateTime: " LOG_DATE_TIME_FORMAT,
-                        wCurrTime.mDate.mDay,  wCurrTime.mDate.mMonth,  wCurrTime.mDate.mYear,
-                        wCurrTime.mTime.mHour, wCurrTime.mTime.mMinute, wCurrTime.mTime.mSecond);
-
-                mpMinuteEventCallback->NotifyDateTime(wCurrTime);
-            }
-
-            /* Update previous time after notification sent */
-            mPrevTime = wCurrTime;
-        }
-    }
+    /* Execute base class task */
+    ApplicationNS::Task::task();
 };
 
-/**
- * @brief Register a callback for minute events
- */
-void TimeManager::RegisterMinuteEventCallback(NotifyTimeCallback* apCallback)
+void TimeManager::ProcessTimerEvent(void)
 {
-    /* Check input parameter */
-    if (apCallback != nullptr)
+    /* Check NTP time sync */
+    if (mNtpTimeSynced)
     {
-        mpMinuteEventCallback = apCallback;
+        /* Get current time */
+        DateTimeNS::tDateTime wCurrTime = GetLocalTime();
+
+        /* Check if a minute event should be fired */
+        if ((mSentTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
+            (mSentTime.mTime.mMinute != wCurrTime.mTime.mMinute))
+        {
+            /* Send changed time */
+            SendTime();
+
+            /* Update previous time after notification sent */
+            mSentTime = wCurrTime;
+        }
+    }
+}
+
+void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
+{
+    LOG(LOG_VERBOSE, "TimeManager::ProcessIncomingMessage()");
+
+    switch (arMessage.mId)
+    {
+        case MessageNS::tMessageId::MGS_EVENT_NTP_LASTSYNC_TIME:
+        {
+            /* Deserialize last sync time */
+            uint32_t wDword;
+            if (SerializeNS::UnserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
+            {
+                DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(&wDword);
+
+                LOG(LOG_DEBUG, "TimeManager::ProcessIncomingMessage() NTP last sync time: " PRINTF_DATETIME_PATTERN,
+                        PRINTF_DATETIME_FORMAT(wDateTime));
+
+                /* Set local time to last sync time */
+                SetLocalTime(wDateTime);
+
+                /* Set NTP sync flag */
+                mNtpTimeSynced = true;
+            }
+        }
+            break;
+
+        case MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED:
+            /* WiFi connected, start NTP sync */
+            /* Start NTP client */
+            NTP.begin(NTP_SERVER_NAME, false);
+            break;
+
+        default:
+            // do nothing
+            break;
     }
 }
 
@@ -173,7 +201,7 @@ DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
 
     /* Get date */
     wDateTime.mDate.mDay    = wpLocalTime->tm_mday;
-    wDateTime.mDate.mMonth  = wpLocalTime->tm_mon  + 1;
+    wDateTime.mDate.mMonth  = wpLocalTime->tm_mon + 1;
     wDateTime.mDate.mYear   = wpLocalTime->tm_year + 1900;
 
     /* Get time */
@@ -184,10 +212,74 @@ DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
     return wDateTime;
 }
 
+DateTimeNS::tDateTime TimeManager::GetNtpTime(void)
+{
+    DateTimeNS::tDateTime wDateTime;
+
+    /* Check if NTP sync ever happened */
+    if (NTP.getLastNTPSync() != 0)
+    {
+        uint8_t wHour, wMinute, wSecond;
+        uint8_t wDay,  wMonth;
+        uint16_t wYear;
+
+        /* Parse time string and date strings */
+        if ((sscanf(NTP.getTimeStr(), "%d:%d:%d", &wHour, &wMinute, &wSecond) == 3) &&      // 'HH:MM:SS'  , e.g. 00:23:56
+            (sscanf(NTP.getDateStr(), "%d/%d/%d", &wDay,  &wMonth,  &wYear)   == 3))        // 'DD/MM/YYYY', e.g. 25/12/2023
+        {
+            /* Set date */
+            wDateTime.mDate.mDay    = wDay;
+            wDateTime.mDate.mMonth  = wMonth;
+            wDateTime.mDate.mYear   = wYear;
+
+            /* Set time */
+            wDateTime.mTime.mHour   = wHour;
+            wDateTime.mTime.mMinute = wMinute;
+            wDateTime.mTime.mSecond = wSecond;
+        }
+    }
+    else
+    {
+        /* Return zero time if NTP sync never happened */
+        memset(&wDateTime, 0, sizeof(wDateTime));
+    }
+
+    return wDateTime;
+}
+
+void TimeManager::SendTime(void)
+{
+    DateTimeNS::tDateTime wDateTime = GetLocalTime();
+
+    LOG(LOG_VERBOSE, "TimeManager::SendTime() Time to send: " PRINTF_DATETIME_PATTERN,
+            PRINTF_DATETIME_FORMAT(wDateTime));
+
+    /* Create message */
+    MessageNS::Message wMessage;
+    wMessage.mSource = MessageNS::tAddress::TIME_MANAGER;
+    wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+
+    wMessage.mId = MessageNS::tMessageId::MGS_EVENT_DATETIME_CHANGED;
+
+    /* Serialize DateTime in message payload */
+    uint32_t wDword = DateTimeNS::DateTimeToDword(&wDateTime);
+    if (SerializeNS::SerializeData(wDword, wMessage.mPayload) == sizeof(wDword))
+    {
+        /* Set payload length */
+        wMessage.mPayloadLength = sizeof(wDword);
+        /* Send message */
+        mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+    }
+    else
+    {
+        //TODO handle serialization error
+    }
+}
+
 void TimeManager::HandleNTPSyncEvent(NTPEvent_t aEvent)
 {
     /* LOG */
-    LOG(LOG_VERBOSE, "TimeManager::HandleNTPSyncEvent() Event %d", aEvent.event);
+//    LOG(LOG_VERBOSE, "TimeManager::HandleNTPSyncEvent() Event %d", aEvent.event);
 
     /* Process event */
     switch (aEvent.event)
@@ -196,26 +288,23 @@ void TimeManager::HandleNTPSyncEvent(NTPEvent_t aEvent)
         case partlySync:
         {
             /* Time successfully got from NTP server */
-            LOG(LOG_DEBUG, "TimeManager::HandleNTPSyncEvent() Successful NTP sync at: %s",
-                    NTP.getTimeDateString(NTP.getLastNTPSync()));
+//            LOG(LOG_VERBOSE, "TimeManager::HandleNTPSyncEvent() Successful NTP sync at: %s",
+//                    NTP.getTimeDateString(NTP.getLastNTPSync()));
 
-            mNTPSyncEventTriggered = true;
+            /* Create message */
+            MessageNS::Message wMessage;
+            wMessage.mSource = MessageNS::tAddress::TIME_MANAGER;
+            wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
 
-            uint8_t wHour, wMinute, wSecond;
-            uint8_t wDay,  wMonth;
-            uint16_t wYear;
+            wMessage.mId = MessageNS::tMessageId::MGS_EVENT_NTP_LASTSYNC_TIME;
 
-            /* Parse time string and date strings */
-            if ((sscanf(NTP.getTimeStr(), "%d:%d:%d", &wHour, &wMinute, &wSecond) == 3) &&      // 'HH:MM:SS'  , e.g. 00:23:56
-                (sscanf(NTP.getDateStr(), "%d/%d/%d", &wDay,  &wMonth,  &wYear)   == 3))        // 'DD/MM/YYYY', e.g. 25/12/2023
-            {
-                /* Update local time */
-                SetLocalTime(wHour, wMinute, wSecond, wDay,  wMonth, wYear);
-            }
-            else
-            {
-                LOG(LOG_ERROR, "TimeManager::HandleNTPSyncEvent() Parse time error");
-            }
+            /* Serialize NTP DateTime in message payload */
+            DateTimeNS::tDateTime wNTPTime = GetNtpTime();
+            uint32_t wDword = DateTimeNS::DateTimeToDword(&wNTPTime);
+            SerializeNS::SerializeData(wDword, wMessage.mPayload);
+
+            /* Send message */
+            mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
         }
             break;
 

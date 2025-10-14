@@ -28,14 +28,14 @@
 #include <WiFi.h>
 
 #include "Logger.h"
+#include "Serialize.h"
+
 #include "WiFiManager.h"
 
 
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
-/* Delay in msec between updates */
-constexpr uint32_t mcUpdateDelay = 100;
 
 /**
  * @brief Constructor
@@ -43,6 +43,7 @@ constexpr uint32_t mcUpdateDelay = 100;
 WiFiManager::WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize)
     : ApplicationNS::Task(apName, aPriority, aStackSize)
 {
+    // do nothing
 }
 
 /**
@@ -50,43 +51,69 @@ WiFiManager::WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 WiFiManager::~WiFiManager()
 {
+   // do nothing
 }
 
 void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
-	/* Initialize base class */
-	ApplicationNS::Task::Init(apTaskObjects);
+    /* Initialize base class */
+    ApplicationNS::Task::Init(apTaskObjects);
+
+    /* Create notification timer */
+    mpTimer = new ApplicationNS::NotificationTimer(this->getTaskHandle(),
+        ApplicationNS::mTaskNotificationTimer, 1000, true); // 1 sec period
 
     /* Register WiFi events listener */
 	WiFi.onEvent(
         std::bind(&WiFiManager::HandleWifiEvent, this, std::placeholders::_1));
+
+	LOG(LOG_VERBOSE, "WiFiManager::Init()");
 }
 
-void WiFiManager::Loop(void)
+void WiFiManager::task(void)
 {
-	/* Yield should not be necessary, but cannot hurt eather */
-  	yield();
+	LOG(LOG_VERBOSE, "WiFiManager::task()");
 
-    /* Get current system tick */
-    uint32_t wCurrMillis = millis();
+    /* Start notification timer for this task */
+    mpTimer->start();
 
-    /* Check time ticks delta */
-    if ((wCurrMillis - mPrevMillis) >= mcUpdateDelay)
-    {
-        /* Update previous time tick */
-        mPrevMillis = wCurrMillis;
+    /* Execute base class task */
+    ApplicationNS::Task::task();
+}
 
-		/* Process current FSM state */
-		ProcessState();
+void WiFiManager::ProcessTimerEvent(void)
+{
+	LOG(LOG_VERBOSE, "WiFiManager::ProcessTimerEvent()");
+
+	/* Process current FSM state */
+	ProcessState();
+}
+
+void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
+{
+	LOG(LOG_VERBOSE, "WiFiManager::ProcessIncomingMessage()");
+
+	switch (arMessage.mId)
+	{
+		case MessageNS::tMessageId::MGS_EVENT_WIFI_EVENT_TRIGGERED:
+		{
+			/* Deserialize wifi event */
+			uint8_t wEvent;
+			if (SerializeNS::UnserializeData(arMessage.mPayload, &wEvent) == sizeof(wEvent))
+			{
+				/* Process WiFi event */
+				ProcessState(static_cast<WiFiEvent_t>(wEvent));
+			}
+		}
+			break;
+
+		default:
+			// do nothing
+			break;
 	}
 }
 
-WiFiManager::tStatus WiFiManager::GetStatus(void)
-{
-    return mStatus;
-}
-
-void WiFiManager::ProcessState(void)
+void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 {
 	switch (mState)
 	{
@@ -98,55 +125,60 @@ void WiFiManager::ProcessState(void)
             mState = STATE_CONNECTING;
             ConnectWifi();
 #endif /* USE_CREDENTIALS */
-
 			break;
 
 		case STATE_CONNECTING:
 		case STATE_RECONNECTING:
-			if (mWifiEventTriggered)
+			switch (aEvent)
 			{
-				switch (mWifiEvent)
-				{
-					case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-						mState  = STATE_ONLINE;
-						mStatus = STATUS_ONLINE;
-						break;
+				case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+					LOG(LOG_DEBUG, "WiFiManager::ProcessState() We are online");
 
-					default:
-						break;
-				};
-			}
-			else if (((millis() - mConnectionStart) >= mConnectionTimeout) &&
-					 (WiFi.status() != WL_CONNECTED))
-			{
-				LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
+					mState  = STATE_ONLINE;
+					mStatus = STATUS_ONLINE;
+					/* Notify */
+					SendStatus();
+					break;
 
-				mState  = STATE_RECONNECTING;
-				mStatus = STATUS_NOT_CONNECTED;
-
-				/* Try to reconnect to WiFi */
-				ReconnectWifi();
-			}
-			break;
-
-		case STATE_ONLINE:
-			if (mWifiEventTriggered)
-			{
-				switch (mWifiEvent)
-				{
-					case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-						LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event SYSTEM_EVENT_STA_DISCONNECTED, reconnecting");
+				default:
+					/* Check for connection timeout */
+					if (((millis() - mConnectionStart) >= mConnectionTimeout) &&
+					    (WiFi.status() != WL_CONNECTED))
+					{
+						LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
 
 						mState  = STATE_RECONNECTING;
 						mStatus = STATUS_NOT_CONNECTED;
 
-						ReconnectWifi();
-						break;
+						/* Notify */
+						SendStatus();
 
-					default:
-						break;
-				};
-			}
+						/* Try to reconnect to WiFi */
+						ReconnectWifi();
+					}
+					break;
+			};
+			break;
+
+		case STATE_ONLINE:
+			switch (aEvent)
+			{
+				case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+					LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event SYSTEM_EVENT_STA_DISCONNECTED, reconnecting");
+
+					mState  = STATE_RECONNECTING;
+					mStatus = STATUS_NOT_CONNECTED;
+
+					/* Notify */
+					SendStatus();
+
+					/* Try to reconnect to WiFi */
+					ReconnectWifi();
+					break;
+
+				default:
+					break;
+			};
 			break;
 
 		case STATE_NOT_CONFIGURED:
@@ -154,10 +186,44 @@ void WiFiManager::ProcessState(void)
 		default:
 			break;
 	}
+}
 
-	/* Reset event */
-    mWifiEvent = ARDUINO_EVENT_MAX;
-    mWifiEventTriggered = false;
+void WiFiManager::SendStatus(void)
+{
+    MessageNS::tMessageId wMessageId = MessageNS::tMessageId::NONE;
+
+    switch (mStatus)
+    {
+        case STATUS_NOT_CONNECTED:
+            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_NOT_CONNECTED;
+            break;
+        case STATUS_CONNECTING:
+            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_CONNECTING;
+            break;
+        case STATUS_ONLINE:
+            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED;
+            break;
+        case STATUS_AP_MODE:
+            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_AP_CONNECTED;
+            break;
+        default:
+            // do nothing
+            break;
+    }
+
+    if (wMessageId != MessageNS::tMessageId::NONE)
+    {
+		/* Create message */
+    	MessageNS::Message wMessage;
+    	wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
+        wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
+
+		/* Set selected message ID */
+		wMessage.mId = wMessageId;
+
+        /* Send message */
+        mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+    }
 }
 
 void WiFiManager::ConnectWifi(void)
@@ -203,8 +269,7 @@ void WiFiManager::ReconnectWifi(void)
 
 void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
 {
-    mWifiEventTriggered = true;
-    mWifiEvent = aEvent;
+    bool wNotifyTask = false;
 
     LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Event: %d", aEvent);
 
@@ -220,11 +285,13 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
 
 		case ARDUINO_EVENT_WIFI_STA_CONNECTED:
 			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station connected to AP; We are online after %d millis", (millis() - mConnectionStart));
+			wNotifyTask = true;
 			break;
 
 		case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
 //TODO there are to much disconnection events if not possible connect to STA with saved SSID isn't exist. FIX IT
 			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station disconnected from AP");
+			wNotifyTask = true;
 			break;
 
 		case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:
@@ -236,7 +303,31 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
 		case ARDUINO_EVENT_WIFI_STA_LOST_IP:
 			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station lost IP and the IP is reset to 0");
 			break;
+
 		default:
 			break;
     }
+
+	if (wNotifyTask)
+	{
+		/* Create message */
+		MessageNS::Message wMessage;
+		wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
+		wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
+
+		wMessage.mId = MessageNS::tMessageId::MGS_EVENT_WIFI_EVENT_TRIGGERED;
+
+		/* Serialize wifi event in message payload */
+		if (SerializeNS::SerializeData(static_cast<uint8_t>(aEvent), wMessage.mPayload) == sizeof(uint8_t))
+		{
+			/* Set payload length */
+			wMessage.mPayloadLength = sizeof(uint8_t);
+			/* Send message */
+			mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+		}
+		else
+		{
+			//TODO handle serialization error
+		}
+	}
 }
