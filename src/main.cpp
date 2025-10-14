@@ -27,6 +27,7 @@
     PRIVATE FUNCTION PROTOTYPES
  *****************************************************************************/
 static void InitApplication(void);
+static void RunApplication(void);
 
 
 /******************************************************************************
@@ -70,6 +71,9 @@ void setup()
 
     /* Initialize application */
     InitApplication();
+
+    /* Run application */
+    RunApplication();
 }
 
 void loop()
@@ -134,4 +138,26 @@ static void InitApplication(void)
         MessageNS::tAddress::TIME_MANAGER,    mpTimeManagerMessageReceiver);
     mpCommunicationManager->RegisterCallback(
         MessageNS::tAddress::WIFI_MANAGER,    mpWifiManagerMessageReceiver);
+}
+
+static void RunApplication(void)
+{
+    /* Trigger all tasks */
+    if ((mpDisplay != nullptr) &&
+        (mpDisplay->getTaskHandle() != nullptr))
+    {
+            xTaskNotifyGive(mpDisplay->getTaskHandle());
+    }
+
+    if ((mpTimeManager != nullptr) &&
+        (mpTimeManager->getTaskHandle() != nullptr))
+    {
+            xTaskNotifyGive(mpTimeManager->getTaskHandle());
+    }
+
+    if ((mpWiFiManager != nullptr) &&
+        (mpWiFiManager->getTaskHandle() != nullptr))
+    {
+            xTaskNotifyGive(mpWiFiManager->getTaskHandle());
+    }
 }

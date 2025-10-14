@@ -170,10 +170,7 @@ namespace ApplicationNS
     {
     public:
         Task(char const* apName, tTaskPriority aPriority, const uint32_t aStackSize) :
-            FreeRTOScpp::TaskClassS<0>(apName, aPriority, aStackSize)
-        {
-            this->give();
-        }
+            FreeRTOScpp::TaskClassS<0>(apName, aPriority, aStackSize) {}
 
         virtual void Init(tTaskObjects* apTaskObjects)
         {
