@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_system.h>
 
 #include "Logger.h"
 
@@ -82,6 +83,17 @@ void loop()
 
     /* Update display */
     mpDisplay->Loop();
+
+    /* Generate some random messages for testing purpose */
+    delay(1000);
+
+    MessageNS::Message wMessage;
+    wMessage.mSource = static_cast<MessageNS::tAddress>(
+            random(/*APPLICATION_MANAGER*/ 0, /*WIFI_MANAGER*/ 3 + 1));
+    wMessage.mDestination = static_cast<MessageNS::tAddress>(
+            random(/*DISPLAY_MANAGER*/ 1, /*WIFI_MANAGER*/ 3 + 1));
+
+    mpCommunicationManager->SendMessage(wMessage);
 }
 
 

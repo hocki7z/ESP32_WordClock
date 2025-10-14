@@ -21,7 +21,7 @@
 
 
 /* Log level for this module */
-#define LOG_LEVEL_APPLICATION_NS    (LOG_DEBUG)
+#define LOG_LEVEL_APPLICATION_NS    (LOG_VERBOSE)
 
 
 namespace ApplicationNS
