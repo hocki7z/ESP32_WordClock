@@ -247,6 +247,31 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         }
     }
 
+#if (LOG_LEVEL == LOG_VERBOSE)  // don't compile this code each time
+    /* Log the LED layout with the painted time */
+    LOG(LOG_VERBOSE, "Display::PaintTime() LED layout:");
+    for (uint16_t wRow = 0; wRow < mLedMask.GetHeight(); wRow++)
+    {
+        String wLogRow;
+
+        for (uint16_t wCol = 0; wCol < mLedMask.GetWidth(); wCol++)
+        {
+            if (mLedMask.IsBitSet(wRow, wCol))
+            {
+                wLogRow += mDisplayLayout[wRow][wCol*3 + 2];  // 2, 5, 8, ...
+            }
+            else
+            {
+                wLogRow += '.';
+            }
+
+            wLogRow += ' ';
+        }
+        /* Add row to the log */
+        LOG(LOG_VERBOSE, "    %s", wLogRow.c_str());
+    }
+#endif /* (LOG_LEVEL == LOG_VERBOSE) */
+
     /* Match the logical LED mask to the physical layout (zigzag order) */
     for (uint8_t wRow = 0; wRow < mLedMask.GetHeight(); wRow++)
     {
