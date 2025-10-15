@@ -12,6 +12,7 @@
 #include "Application.h"
 
 #include "DateTime.h"
+#include "BitMatrix.h"
 
 
 /***************************************************************************************************
@@ -336,6 +337,8 @@ private:
     /* Leds */
     CRGB mLeds[LED_NUMBER];
 
+    /* Bit mask to indicate which LEDs are used for display */
+    BitMatrix mLedMask = BitMatrix(MATRIX_WIDTH, MATRIX_HEIGHT);
     DateTimeNS::tDateTime mDateTime;
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */
