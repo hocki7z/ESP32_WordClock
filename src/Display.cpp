@@ -122,51 +122,11 @@ void Display::UpdateDisplay(void)
     Fill(mBackgroundColor, mBackgroundBrightness);
 
     PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, mForegroundColor);
-    Transform();
-
     /* Show new data on the LED matrix */
     FastLED.show();
 }
 
-void Display::Transform(void)
-{
-    for (uint8_t wRow = 0; wRow < MATRIX_HEIGHT; wRow++)
-    {
-        bool wReverseRow = false;
-
-        if ((wRow % 2) == 0)
-        {
-            // it is even row
-            wReverseRow = true;
-        }
-        else
-        {
-            // it is odd row
-        }
-
-        if (wReverseRow)
-        {
-            uint16_t wRowStart = (wRow * MATRIX_WIDTH); //  e.g. 0 / 16 / 32 / 48 ... 224 / 240
-
-            /* Pointer to first element */
-            CRGB* wLeftElem  = &mLeds[wRowStart];
-            /* Pointer to last element */
-            CRGB* wRightElem = &mLeds[wRowStart + MATRIX_WIDTH - 1] ;
-
-            while (wLeftElem < wRightElem)
-            {
-                CRGB wTemp  = *wLeftElem;
-                *wLeftElem  = *wRightElem;
-                *wRightElem = wTemp;
-
-                wLeftElem++;
-                wRightElem--;
-            }
-        }
-    }
-}
-
-void Display::SetColor(const uint16_t aLedIndex, const CRGB aColor)
+void Display::SetLedColor(const uint16_t aLedIndex, const CRGB aColor)
 {
     if (aLedIndex < LED_NUMBER)
     {
@@ -174,77 +134,66 @@ void Display::SetColor(const uint16_t aLedIndex, const CRGB aColor)
     }
 }
 
-void Display::PaintPixel(const uint16_t aRow, const uint16_t aCol, const CRGB aColor)
+void Display::SetLedColor(BitMatrix& arLedMask, const CRGB aColor)
 {
-    /* Check input parameters */
-    if ((aRow < MATRIX_HEIGHT) &&
-        (aCol < MATRIX_WIDTH))
+    if (arLedMask.GetSize() == LED_NUMBER)
     {
-        /* Calculate LED index */
-        uint16_t wLedIndex = (aRow * MATRIX_HEIGHT) + aCol;
-
-        /* Set LED color */
-        SetColor(wLedIndex, aColor);
-    }
-}
-
-void Display::PaintLine(const uint16_t aRow, const uint16_t aCol, const uint16_t aLength, const CRGB aColor)
-{
-    /* Check input parameters */
-    if ((aRow < MATRIX_HEIGHT) &&
-        (aCol < MATRIX_WIDTH)  && ((aCol + aLength) <= MATRIX_WIDTH))
-    {
-        for (uint16_t wI = 0; wI < aLength; wI++)
+        for (uint16_t wI = 0; wI < arLedMask.GetSize(); wI++)
         {
-            PaintPixel(aRow, (aCol + wI), aColor);
-        }
-    }
-}
-
-void Display::PaintArea(const uint16_t aRow, const uint16_t aCol, const uint16_t aWidth, const uint16_t aHeight, const CRGB aColor)
-{
-    /* Check input parameters */
-    if ((aRow < MATRIX_HEIGHT) && ((aRow + aHeight) <= MATRIX_HEIGHT) &&
-        (aCol < MATRIX_WIDTH)  && ((aCol + aWidth)  <= MATRIX_WIDTH))
-    {
-        for (uint16_t wI = 0; wI < aHeight; wI++)
-        {
-            PaintLine((aRow + wI), aCol, aWidth, aColor);
+            if (arLedMask.IsBitSet(wI))
+            {
+                mLeds[wI] = aColor;
+            }
         }
     }
 }
 
 void Display::PaintWord(const tWord aWord, const CRGB aColor)
 {
+    /* Prepare LED mask */
+    mLedMask.ClearAll();
+
     /* Check input parameters */
     if ((aWord > WORD_END_OF_WORDS) &&
         (aWord < WORD_MAX_NUMBER))
     {
         /* Get word data */
         tWordData wWordData = mcWordDataArray[aWord];
+        /* Set LED bits for the word */
+        mLedMask.SetLine(wWordData.mRow, wWordData.mColumn, wWordData.mLength);
+    }
 
-        if (wWordData.mLength > 0)
+    /* Match the logical LED mask to the physical layout (zigzag order) */
+    for (uint8_t wRow = 0; wRow < mLedMask.GetHeight(); wRow++)
+    {
+        if ((wRow % 2) == 0)
         {
-            /* Paint word as a line */
-            PaintLine(wWordData.mRow, wWordData.mColumn, wWordData.mLength, aColor);
+            /* It is even row -> flip it */
+            mLedMask.FlipRow(wRow);
         }
     }
+
+    /* Now paint all LEDs marked in the mask */
+    SetLedColor(mLedMask, aColor);
 }
 
 void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor)
 {
-    uint8_t wI;
+    /* Prepare LED mask */
+    mLedMask.ClearAll();
 
     /* Check input parameters */
-    if ((aHour < 24) &&         // we support only 24 hours format
-        (aMinute < 60))         //                 0..59 minutes
+    if ((aHour   < 24) &&       // Support only 24 hours format
+        (aMinute < 60))         // 0..59 minutes
     {
         uint8_t wHour         = aHour;
         uint8_t wMinute       = aMinute / 5;    // minute steps 0, 5, ... 55
         uint8_t wMinuteExtra  = aMinute % 5;    // extra minutes 0, +1 ... +4
 
+        tWordClockMode wMode  = WORDCLOCK_MODE_1;
+
         /* Get minute display data */
-        tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[WORDCLOCK_MODE_1][wMinute];
+        tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[wMode][wMinute];
 
         /* Correct hour offset */
         if ((wMinuteDisplay.mFlags & HOUR_OFFSET_1) == HOUR_OFFSET_1)
@@ -264,26 +213,50 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
             wHour = 0;
         }
 
-        /* Paint 'Es ist' */
-        PaintWord(tWord::WORD_ES,  aColor);
-        PaintWord(tWord::WORD_IST, aColor);
+        /* Prepare array of words to display the time */
+        tWord wDisplayWords[MAX_MINUTE_WORDS + MAX_HOUR_WORDS + MAX_EXTRA_MINUTE_WORDS + 2] = { WORD_END_OF_WORDS }; // +2 for "ES" and "IST" words
+        uint8_t wWordsOffset = 0;
 
-        /* Paint minutes */
-        for (wI = 0; wI < MAX_MINUTE_WORDS; wI++)
-        {
-            PaintWord(wMinuteDisplay.wMinuteWords[wI],  aColor);
-        }
+        /* Add "ES IST" words */
+        wDisplayWords[wWordsOffset++] = WORD_ES;
+        wDisplayWords[wWordsOffset++] = WORD_IST;
+        /* Add minute words */
+        memccpy(&wDisplayWords[wWordsOffset], wMinuteDisplay.wMinuteWords,
+            MAX_MINUTE_WORDS, sizeof(wMinuteDisplay.wMinuteWords));
+        wWordsOffset += MAX_MINUTE_WORDS;
+        /* Add hour words */
+        memccpy(&wDisplayWords[wWordsOffset], mcWordHoursTable[wMinuteDisplay.mHourMode][wHour],
+            MAX_HOUR_WORDS, sizeof(mcWordHoursTable[wMinuteDisplay.mHourMode][wHour]));
+        wWordsOffset += MAX_HOUR_WORDS;
+        /* Add extra minute words */
+        memccpy(&wDisplayWords[wWordsOffset], mcWordExtraMinutesTable[wMinuteExtra],
+            MAX_EXTRA_MINUTE_WORDS, sizeof(mcWordExtraMinutesTable[wMinuteExtra]));
+        wWordsOffset += MAX_EXTRA_MINUTE_WORDS;
 
-        /* Paint hours */
-        for (wI = 0; wI < MAX_HOUR_WORDS; wI++)
+        /* Set LED bits for all display words */
+        for (uint8_t wI = 0; wI < wWordsOffset; wI++)
         {
-            PaintWord(mcWordHoursTable[wMinuteDisplay.mHourMode][wHour][wI], aColor);
-        }
-
-        /* Paint extra minutes */
-        for (wI = 0; wI < MAX_EXTRA_MINUTE_WORDS; wI++)
-        {
-            PaintWord(mcWordExtraMinutesTable[wMinuteExtra][wI],  aColor);
+            if ((wDisplayWords[wI] > WORD_END_OF_WORDS) &&
+                (wDisplayWords[wI] < WORD_MAX_NUMBER))
+            {
+                /* Get word data */
+                tWordData wWordData = mcWordDataArray[wDisplayWords[wI]];
+                /* Set LED bits for the word */
+                mLedMask.SetLine(wWordData.mRow, wWordData.mColumn, wWordData.mLength);
+            }
         }
     }
+
+    /* Match the logical LED mask to the physical layout (zigzag order) */
+    for (uint8_t wRow = 0; wRow < mLedMask.GetHeight(); wRow++)
+    {
+        if ((wRow % 2) == 0)
+        {
+            /* It is even row -> flip it */
+            mLedMask.FlipRow(wRow);
+        }
+    }
+
+    /* Now paint all LEDs marked in the mask */
+    SetLedColor(mLedMask, aColor);
 }

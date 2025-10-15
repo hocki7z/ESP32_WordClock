@@ -84,9 +84,10 @@ static const char* mDisplayLayout[MATRIX_HEIGHT]=
 };
 
 /* List of all words */
-typedef enum tWord
+typedef enum tWord : uint8_t
 {
-    WORD_END_OF_WORDS,
+    /* End of words marker */
+    WORD_END_OF_WORDS = 0,
 
     /* WordClock: minutes words */
     WORD_CLOCK_MIN_5,   // Fünf
@@ -349,13 +350,8 @@ private:
 
     void UpdateDisplay(void);
 
-    void Transform(void);
-
-    void SetColor(const uint16_t aLedIndex, const CRGB aColor);
-
-    void PaintPixel(const uint16_t aRow, const uint16_t aCol, const CRGB aColor);
-    void PaintLine(const uint16_t aRow, const uint16_t aCol, const uint16_t aLength, const CRGB aColor);
-    void PaintArea(const uint16_t aRow, const uint16_t aCol, const uint16_t aWidth, const uint16_t aHeight, const CRGB aColor);
+    void SetLedColor(const uint16_t aLedIndex, const CRGB aColor);
+    void SetLedColor(BitMatrix& arLedMask, const CRGB aColor);
 
     void PaintWord(const tWord aWord, const CRGB aColor);
     void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
