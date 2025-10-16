@@ -4,7 +4,10 @@
  *  Created on: 25.09.2025
  *      Author: hocki
  */
+#include <ESPUI.h>
+
 #include "Logger.h"
+
 #include "WebSite.h"
 
 
@@ -32,14 +35,6 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
-
-    /* Create async web server */
-    mpWebServer = new AsyncWebServer(80);
-    /* and server routes */
-    mpWebServer->on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-    {
-        request->send(200, "text/plain", "Wordclock");
-    });
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -51,7 +46,8 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         case MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED:
             /* WiFi connected, start WEB server */
             LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server");
-            mpWebServer->begin();
+
+            ESPUI.begin("Wordclock");
             break;
 
         default:

@@ -9,9 +9,6 @@
 
 #include <Arduino.h>
 
-#include <ArduinoJson.h>
-#include <ESPAsyncWebServer.h>
-
 #include "Application.h"
 
 
@@ -25,8 +22,6 @@ public:
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
-
-    AsyncWebServer* mpWebServer;
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
