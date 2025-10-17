@@ -17,6 +17,14 @@
  */
 namespace SettingsNS
 {
+    /* Keys for reset counters */
+    static constexpr const char* mKeyCounterResetPowerUp  = "CNT_RST_PWR_ON";
+    static constexpr const char* mKeyCounterResetSW       = "CNT_RST_SW";
+    static constexpr const char* mKeyCounterResetWdg      = "CNT_RST_WDG";
+    static constexpr const char* mKeyCounterResetPanic    = "CNT_RST_PANIC";
+    static constexpr const char* mKeyCounterResetBrownout = "CNT_RST_BROUT";
+
+
     class Settings
     {
     public:
