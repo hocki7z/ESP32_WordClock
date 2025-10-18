@@ -99,7 +99,7 @@ void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 		{
 			/* Deserialize wifi event */
 			uint8_t wEvent;
-			if (SerializeNS::UnserializeData(arMessage.mPayload, &wEvent) == sizeof(wEvent))
+			if (SerializeNS::DeserializeData(arMessage.mPayload, &wEvent) == sizeof(wEvent))
 			{
 				/* Process WiFi event */
 				ProcessState(static_cast<WiFiEvent_t>(wEvent));

@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
 #include "Logger.h"
-#include "Settings.h"
+#include "Settings.hpp"
 
 #include "Application.h"
 #include "Communication.h"
@@ -58,6 +58,9 @@ static ApplicationNS::tTaskObjects      mWifiManagerTaskObjects;
     PUBLIC MEMBER VARIABLES
  *****************************************************************************/
 
+/* Instance of Settings class */
+SettingsNS::Settings Settings;
+
 
 /******************************************************************************
     PUBLIC FUNCTION CODE
@@ -100,30 +103,35 @@ static void CheckResetReason(void)
     switch (wReason)
     {
         case ESP_RST_POWERON:   // Power-on reset
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Power-on reset");
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetPowerUp);
+            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetPowerOn);
+            LOG(LOG_DEBUG, "Main::CheckResetReason() Power-on reset, %d times",
+                    Settings.GetCounter(SettingsNS::mKeyCounterResetPowerOn));
             break;
 
         case ESP_RST_SW:        // Software reset
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Software reset");
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetSW);
+            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetSoftware);
+            LOG(LOG_DEBUG, "Main::CheckResetReason() Software reset, %d times",
+                    Settings.GetCounter(SettingsNS::mKeyCounterResetSoftware));
             break;
 
         case ESP_RST_WDT:       // Watchdog reset
         case ESP_RST_INT_WDT:   // Interrupt watchdog reset
         case ESP_RST_TASK_WDT:  // Task watchdog reset
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Watchdog reset");
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetWdg);
+            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetWatchdog);
+            LOG(LOG_DEBUG, "Main::CheckResetReason() Watchdog reset, %d times",
+                    Settings.GetCounter(SettingsNS::mKeyCounterResetWatchdog));
             break;
 
         case ESP_RST_PANIC:     // Panic reset
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Panic reset");
             Settings.IncreaseCounter(SettingsNS::mKeyCounterResetPanic);
+            LOG(LOG_DEBUG, "Main::CheckResetReason() Panic reset, %d times",
+                    Settings.GetCounter(SettingsNS::mKeyCounterResetPanic));
             break;
 
         case ESP_RST_BROWNOUT:  // Brownout reset
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Brownout reset");
             Settings.IncreaseCounter(SettingsNS::mKeyCounterResetBrownout);
+            LOG(LOG_DEBUG, "Main::CheckResetReason() Brownout reset, %d times",
+                    Settings.GetCounter(SettingsNS::mKeyCounterResetBrownout));
             break;
 
         case ESP_RST_EXT:       // External reset
