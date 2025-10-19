@@ -4,9 +4,7 @@
  *  Created on: 12.10.2025
  *      Author: hocki
  */
-
-#ifndef SRC_APPLICATION_H_
-#define SRC_APPLICATION_H_
+#pragma once
 
 #include <Arduino.h>
 
@@ -61,21 +59,10 @@ namespace ApplicationNS
     class TaskNotification
     {
     public:
-        TaskNotification(TaskHandle_t aTaskHandle, uint32_t aNotification) :
-            mTaskHandle(aTaskHandle),
-            mNotification(aNotification) {}
-
-        virtual ~TaskNotification() {}
-
-        void Notify(void)
-        {
-            xTaskNotify(mTaskHandle, mNotification, eSetBits);
-        }
-
-        void NotifyFromISR(BaseType_t* apHigherPriorityTaskWoken)
-        {
-            xTaskNotifyFromISR(mTaskHandle, mNotification, eSetBits, apHigherPriorityTaskWoken);
-        }
+        TaskNotification(TaskHandle_t aTaskHandle, uint32_t aNotification);
+        virtual ~TaskNotification();
+        void Notify(void);
+        void NotifyFromISR(BaseType_t* apHigherPriorityTaskWoken);
 
     private:
         TaskHandle_t mTaskHandle;
@@ -88,22 +75,9 @@ namespace ApplicationNS
     class NotificationTimer : public FreeRTOScpp::TimerClass
     {
     public:
-        NotificationTimer(TaskHandle_t mTaskHandle, uint32_t mNotification, TickType_t aPeriod, bool aReload) :
-            FreeRTOScpp::TimerClass(nullptr, aPeriod, aReload)
-        {
-            mpTaskNotification = new TaskNotification(mTaskHandle, mNotification);
-        }
-
-        virtual ~NotificationTimer()
-        {}
-
-        void timer(void)
-        {
-            if (mpTaskNotification)
-            {
-                mpTaskNotification->Notify();
-            }
-        }
+        NotificationTimer(TaskHandle_t mTaskHandle, uint32_t mNotification, TickType_t aPeriod, bool aReload);
+        virtual ~NotificationTimer();
+        void timer(void) override;
 
     private:
         TaskNotification* mpTaskNotification;
@@ -120,33 +94,11 @@ namespace ApplicationNS
     class MessageReceiver : public CommunicationNS::NotificationCallback
     {
     public:
-        MessageReceiver() {};
-
-        virtual ~MessageReceiver()
-        {
-            mpMessageQueue = nullptr;
-            mpMessageQueue = nullptr;
-        };
-
-        void Init(MessageQueue* apMessageQueue, TaskNotification * apNotification)
-        {
-            assert(apMessageQueue != nullptr);
-            assert(apNotification != nullptr);
-
-            mpMessageQueue = apMessageQueue;
-            mpNotification = apNotification;
-        }
-
-        void Init(MessageQueue* apMessageQueue, TaskHandle_t aTaskHandle, uint32_t aNotificationBitsToSet)
-        {
-            Init(apMessageQueue, new TaskNotification(aTaskHandle, aNotificationBitsToSet));
-        }
-
-        void NotifyMessage(const MessageNS::Message & arMessage)
-        {
-            mpMessageQueue->add(arMessage, 0);
-            mpNotification->Notify();
-        }
+        MessageReceiver();
+        virtual ~MessageReceiver();
+        void Init(MessageQueue* apMessageQueue, TaskNotification * apNotification);
+        void Init(MessageQueue* apMessageQueue, TaskHandle_t aTaskHandle, uint32_t aNotificationBitsToSet);
+        void NotifyMessage(const MessageNS::Message & arMessage);
 
     private:
         MessageQueue*     mpMessageQueue = nullptr;
@@ -169,75 +121,18 @@ namespace ApplicationNS
     class Task : public FreeRTOScpp::TaskClassS<0>
     {
     public:
-        Task(char const* apName, tTaskPriority aPriority, const uint32_t aStackSize) :
-            FreeRTOScpp::TaskClassS<0>(apName, aPriority, aStackSize) {}
-
-        virtual void Init(tTaskObjects* apTaskObjects)
-        {
-            /* Ensure that the task has been properly initialized with a valid task objects structure */
-            assert(apTaskObjects != nullptr);
-            assert(apTaskObjects->mpMessageQueue != nullptr);
-            assert(apTaskObjects->mpCommunicationManager != nullptr);
-
-            mpTaskObjects = apTaskObjects;
-        }
+        Task(char const* apName, tTaskPriority aPriority, const uint32_t aStackSize);
+        virtual void Init(tTaskObjects* apTaskObjects);
 
     protected:
         tTaskObjects* mpTaskObjects;
 
         /* FreeRTOScpp::TaskClassS<0>::task */
-        virtual void task(void) override
-        {
-            uint32_t wNotificationValue;
-            MessageNS::Message wMessage;
+        virtual void task(void) override;
 
-            /*
-             * Task execution code
-             */
-            for (;;)
-            {
-                /* Wait to be notified */
-                if (wait(0, 0xFFFFFFFF, &wNotificationValue) == pdPASS)
-                {
-                    if ((wNotificationValue & mTaskNotificationMsgQueue) != 0)
-                    {
-                        while (mpTaskObjects->mpMessageQueue->pop(wMessage, 0))
-                        {
-                            /* Process incoming message */
-                            ProcessIncomingMessage(wMessage);
-
-                            /* Yield should not be necessary, but cannot hurt eather */
-                            yield();
-                        }
-                    }
-
-                    if ((wNotificationValue & mTaskNotificationTimer) != 0)
-                    {
-                        /* Process timer event */
-                        ProcessTimerEvent();
-                    }
-                }
-            }
-        }
-
-        virtual void ProcessIncomingMessage(const MessageNS::Message &arMessage)
-        {
-            /* LOG */
-#if (LOG_LEVEL_APPLI_NS == LOG_VERBOSE)
-            LOG_WITH_REF(LOG_VERBOSE, LOG_LEVEL_APPLICATION_NS,
-                "%s::ProcessIncomingMessage() message from %s module",
-                pcTaskGetName(NULL), MessageNS::AddressToString(arMessage.mSource));
-#endif /* (LOG_LEVEL_APPLI_NS == LOG_VERBOSE) */
-
-            // to be implemented by derived class
-        }
-
-        virtual void ProcessTimerEvent(void)
-        {
-            // to be implemented by derived class
-        }
+        virtual void ProcessIncomingMessage(const MessageNS::Message &arMessage);
+        virtual void ProcessTimerEvent(void);
     };
 
 }; /* end of namespace ApplicationNS */
 
-#endif /* SRC_APPLICATION_H_ */

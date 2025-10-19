@@ -80,7 +80,7 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         {
             /* Deserialize received time */
             uint32_t wDword;
-            if (SerializeNS::UnserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
+            if (SerializeNS::DeserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
             {
                 /* Store new date and time */
                 mDateTime = DateTimeNS::DwordToDateTime(&wDword);

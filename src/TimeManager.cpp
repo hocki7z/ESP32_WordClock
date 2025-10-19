@@ -109,7 +109,7 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         {
             /* Deserialize last sync time */
             uint32_t wDword;
-            if (SerializeNS::UnserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
+            if (SerializeNS::DeserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
             {
                 DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(&wDword);
 
