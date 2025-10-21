@@ -41,6 +41,7 @@ namespace MessageNS
         MGS_EVENT_DATETIME_CHANGED,         // Payload: 4 bytes - Datetime as dword
         MGS_EVENT_NTP_LASTSYNC_TIME,        // Payload: 4 bytes - Last sync time as dword
         MGS_EVENT_WIFI_EVENT_TRIGGERED,     // Payload: 1 byte  - WiFiEvent_t
+        MSG_EVENT_SETTINGS_CHANGED,         // No payload
 
         /** Status       */
 		MGS_STATUS_WIFI_NOT_CONNECTED,

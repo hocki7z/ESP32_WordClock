@@ -9,6 +9,7 @@
 
 #include "Logger.h"
 #include "Serialize.h"
+#include "Settings.hpp"
 
 #include "Display.h"
 
@@ -20,8 +21,6 @@
 /* Delay in msec between display updates */
 constexpr uint32_t mcUpdateDelay = 10;
 
-static constexpr CRGB mForegroundColor = CRGB::Red;
-static constexpr CRGB mBackgroundColor = CRGB::Green;
 static constexpr uint8_t mBackgroundBrightness = 2;
 
 static constexpr CRGB mIntroColor = CRGB::Orange;
@@ -88,8 +87,19 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Datetime changed: " PRINTF_DATETIME_PATTERN,
                         PRINTF_DATETIME_FORMAT(mDateTime));
 
+                /* Update display */
                 UpdateDisplay();
             }
+        }
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
+        {
+            // Settings changed, re-read settings if needed
+            LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Settings changed");
+
+            /* Update display */
+            UpdateDisplay();
         }
             break;
 
@@ -118,10 +128,19 @@ void Display::UpdateDisplay(void)
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
-    /* Update display data */
-    Fill(mBackgroundColor, mBackgroundBrightness);
+    /**
+     * Update display data
+     */
+    /* Retrieve background color from settings */
+    uint32_t wColorCode = Settings.GetValue<uint32_t>(SettingsNS::mKeyDisplayColorBkgd, SettingsNS::mDefaultDisplayColorBkgd);
+    /*     and fill background */
+    Fill(CRGB(wColorCode & 0x00FFFFFF), mBackgroundBrightness);
+    /* Retrieve time color from settings */
+    wColorCode = Settings.GetValue<uint32_t>(SettingsNS::mKeyDisplayColorTime, SettingsNS::mDefaultDisplayColorTime);
+    /*     paint time */
+    PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, CRGB(wColorCode & 0x00FFFFFF));
 
-    PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, mForegroundColor);
+    /* Transform data for LED matrix */
     Transform();
 
     /* Show new data on the LED matrix */
@@ -243,8 +262,12 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         uint8_t wMinute       = aMinute / 5;    // minute steps 0, 5, ... 55
         uint8_t wMinuteExtra  = aMinute % 5;    // extra minutes 0, +1 ... +4
 
+        tWordClockMode wClockMode = static_cast<tWordClockMode>(
+                Settings.GetValue<uint8_t>(SettingsNS::mKeyDisplayClockMode,
+                        SettingsNS::mDefaultDisplayClockMode));
+
         /* Get minute display data */
-        tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[WORDCLOCK_MODE_1][wMinute];
+        tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[wClockMode][wMinute];
 
         /* Correct hour offset */
         if ((wMinuteDisplay.mFlags & HOUR_OFFSET_1) == HOUR_OFFSET_1)
@@ -264,9 +287,13 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
             wHour = 0;
         }
 
-        /* Paint 'Es ist' */
-        PaintWord(tWord::WORD_ES,  aColor);
-        PaintWord(tWord::WORD_IST, aColor);
+        if (Settings.GetValue<bool>(
+                SettingsNS::mKeyDisplayClockItIs, SettingsNS::mDefaultDisplayClockItIs))
+        {
+            /* Paint 'Es ist' */
+            PaintWord(tWord::WORD_ES,  aColor);
+            PaintWord(tWord::WORD_IST, aColor);
+        }
 
         /* Paint minutes */
         for (wI = 0; wI < MAX_MINUTE_WORDS; wI++)
@@ -280,10 +307,14 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
             PaintWord(mcWordHoursTable[wMinuteDisplay.mHourMode][wHour][wI], aColor);
         }
 
-        /* Paint extra minutes */
-        for (wI = 0; wI < MAX_EXTRA_MINUTE_WORDS; wI++)
+        if (Settings.GetValue<bool>(
+                SettingsNS::mKeyDisplayClockSingleMins, SettingsNS::mDefaultDisplayClockSingleMins))
         {
-            PaintWord(mcWordExtraMinutesTable[wMinuteExtra][wI],  aColor);
+            /* Paint extra minutes */
+            for (wI = 0; wI < MAX_EXTRA_MINUTE_WORDS; wI++)
+            {
+                PaintWord(mcWordExtraMinutesTable[wMinuteExtra][wI],  aColor);
+            }
         }
     }
 }

@@ -88,6 +88,22 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             ESPUI.begin("Wordclock");
             break;
 
+            case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
+            {
+                /* Check if message sent by this task */
+                if (arMessage.mSource == MessageNS::tAddress::WEB_MANAGER)
+                {
+                    /* Redirect this message to display manager */
+                    MessageNS::Message wMessage = arMessage;
+                    wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+                    /* Send message */
+                    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+
+                    break;
+                }
+            }
+            break;
+
         default:
             // do nothing
             break;
@@ -126,6 +142,16 @@ void WebSite::HandleControl(Control* apControl, int aType)
         LOG(LOG_ERROR, "WebSite::HandleControl() Unknown control ID %04X", apControl->GetId());
         return;
     }
+
+    /* Create message */
+    MessageNS::Message wMessage;
+    wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
+    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+
+    wMessage.mId = MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED;
+
+    /* Send message */
+    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
 }
 
 Control::ControlId_t WebSite::AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor)
