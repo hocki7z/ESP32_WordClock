@@ -33,7 +33,8 @@ Settings::~Settings()
  */
 void Settings::Clear(void)
 {
-    if (mPrefs.begin(mcPrefsName, false))  // false - read-write mode
+    /* Open preferences in read-write mode */
+    if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
         /* Clear all keys */
         mPrefs.clear();
@@ -43,14 +44,16 @@ void Settings::Clear(void)
 
 /**
  * @brief Checks if a key exists in ESP32 Preferences storage.
+ *
  * @param arKey The name of the key to check.
  * @return true if the key exists, false otherwise.
  */
 bool Settings::HasKey(tKey arKey)
 {
     bool wRetValue = false;
-    /* Start a namespace "prefs" */
-    if (mPrefs.begin(mcPrefsName, true))  // true - read only mode
+
+    /* Open preferences in read-only mode */
+    if (mPrefs.begin(mcPrefsParamNamespace, true))
     {
         /* Check if the key exists */
         wRetValue = mPrefs.isKey(arKey);
@@ -62,16 +65,18 @@ bool Settings::HasKey(tKey arKey)
 
 /**
  * @brief Deletes a key-value pair from ESP32 Preferences storage.
+ *
  * @param arKey The name of the key to remove.
  * @return true if the key was successfully removed, false otherwise.
  */
 bool Settings::RemoveKey(tKey arKey)
 {
     bool wRetValue = false;
-    /* Start a namespace "prefs" */
-    if (mPrefs.begin(mcPrefsName, false))  // false - read-write mode
+
+    /* Open preferences in read-write mode */
+    if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
-        /* Remove the key  */
+        /* Remove the key */
         wRetValue = mPrefs.remove(arKey);
         /* Close the Preferences */
         mPrefs.end();
@@ -81,6 +86,7 @@ bool Settings::RemoveKey(tKey arKey)
 
 /**
  * @brief Retrieves a byte array from ESP32 Preferences storage.
+ *
  * @param arKey The name of the key.
  * @param apData Pointer to the buffer to store the retrieved byte array.
  * @param aDataSize Size of the buffer in bytes.
@@ -90,7 +96,8 @@ bool Settings::GetBytes(tKey arKey, uint8_t* apData, const size_t aDataSize)
 {
     size_t wRetSize = 0;
 
-    if (mPrefs.begin(mcPrefsName, true))  // true - read only mode
+    /* Open preferences in read-only mode */
+    if (mPrefs.begin(mcPrefsParamNamespace, true))
     {
         wRetSize = mPrefs.getBytes(arKey, apData, aDataSize);
 
@@ -104,6 +111,7 @@ bool Settings::GetBytes(tKey arKey, uint8_t* apData, const size_t aDataSize)
 
 /**
  * @brief Stores a byte array in ESP32 Preferences storage.
+ *
  * @param arKey The name of the key.
  * @param apData Pointer to the byte array to store.
  * @param aDataSize Size of the byte array in bytes.
@@ -113,7 +121,8 @@ bool Settings::SetBytes(tKey arKey, const uint8_t* apData, const size_t aDataSiz
 {
     size_t wRetSize = 0;
 
-    if (mPrefs.begin(mcPrefsName, false))  // false - read-write mode
+    /* Open preferences in read-write mode */
+    if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
         wRetSize = mPrefs.putBytes(arKey, apData, aDataSize);
 
@@ -124,25 +133,54 @@ bool Settings::SetBytes(tKey arKey, const uint8_t* apData, const size_t aDataSiz
 }
 
 /**
- * @brief Increases a counter stored in preferences by 1, or sets it to a new value if provided.
+ * @brief Increases or sets a counter value.
+ *
+ * @details
+ * This function increments the value of a counter stored in the "counters" preferences namespace.
+ * If aNewValue is provided and not zero, the counter is set to this value; otherwise, the counter
+ * is incremented by one. Using a dedicated namespace keeps counter values separate from other settings,
+ * improving organization and access.
+ *
  * @param arKey The name of the counter key.
- * @param aNewValue Optional new value to set the counter to. If 0, the counter is incremented by 1.
+ * @param aNewValue The new value to set for the counter (if not zero), otherwise the counter is incremented.
  */
 void Settings::IncreaseCounter(tKey arKey, const uint32_t aNewValue)
 {
-    uint32_t wCounter = GetValue<uint32_t>(arKey, 0);
+    /* Get current counter value */
+    uint32_t wCounter = GetCounter(arKey, 0);
 
-    SetValue<uint32_t>(arKey, (aNewValue != 0) ? aNewValue : (wCounter + 1));
+    /* Open preferences in read-write mode */
+    if (mPrefs.begin(mcPrefsCounterNamespace, false))
+    {
+        mPrefs.putUInt(arKey, (aNewValue != 0) ? aNewValue : (wCounter + 1));
+        mPrefs.end();
+    }
 }
 
 /**
- * @brief Retrieves the current value of a counter stored in preferences.
+ * @brief Retrieves a counter value.
+ *
+ * @details
+ * This function reads the value of a counter stored in the "counters" preferences namespace.
+ * If the key does not exist, it returns the provided default value. The use of a dedicated
+ * namespace keeps counter values separate from other settings for better organization.
+ *
  * @param arKey The name of the counter key.
- * @return The current counter value, or 0 if the key does not exist.
+ * @param aDefaultValue The value to return if the counter key does not exist.
+ * @return The counter value associated with the key, or aDefaultValue if not found.
  */
-uint32_t Settings::GetCounter(tKey arKey)
+uint32_t Settings::GetCounter(tKey arKey, const uint32_t aDefaultValue)
 {
-    return GetValue<uint32_t>(arKey, 0);
+    uint32_t wCounter = aDefaultValue;
+
+    /* Open preferences in read-only mode */
+    if (mPrefs.begin(mcPrefsCounterNamespace, true))
+    {
+        wCounter = mPrefs.getUInt(arKey, 0);
+        mPrefs.end();
+    }
+
+    return wCounter;
 }
 
 }   /* end of namespace SettingsNS */

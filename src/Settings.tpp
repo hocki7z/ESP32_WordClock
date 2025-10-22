@@ -34,8 +34,9 @@ T Settings::GetValue(tKey arKey, const T aDefaultValue)
 {
     T wRetValue = aDefaultValue;
 
-    if ((HasKey(arKey) == true) &&           // check if key exists
-        (mPrefs.begin(mcPrefsName, true)))  // true - read only mode
+    /* Check if key exists and open preferences in read-only mode */
+    if ((HasKey(arKey) == true) &&
+        (mPrefs.begin(mcPrefsParamNamespace, true)))
     {
         if constexpr (std::is_same<T, bool>::value) {
             wRetValue = mPrefs.getBool(arKey, aDefaultValue);
@@ -95,7 +96,8 @@ bool Settings::SetValue(tKey arKey, const T aValue)
 {
     size_t wRetSize = 0;
 
-    if (mPrefs.begin(mcPrefsName, false))  // false - read-write mode
+    /* Open preferences in read-write mode */
+    if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
         if constexpr (std::is_same<T, bool>::value) {
             wRetSize = mPrefs.putBool(arKey, aValue);

@@ -42,7 +42,6 @@ private:
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
-    DateTimeNS::tDateTime GetCompileTime(void);
     DateTimeNS::tDateTime GetLocalTime(void);
     DateTimeNS::tDateTime GetNtpTime(void);
 

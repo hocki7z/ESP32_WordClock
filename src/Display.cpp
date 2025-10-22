@@ -83,7 +83,7 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             if (SerializeNS::DeserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
             {
                 /* Store new date and time */
-                mDateTime = DateTimeNS::DwordToDateTime(&wDword);
+                mDateTime = DateTimeNS::DwordToDateTime(wDword);
 
                 LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Datetime changed: " PRINTF_DATETIME_PATTERN,
                         PRINTF_DATETIME_FORMAT(mDateTime));

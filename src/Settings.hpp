@@ -14,19 +14,27 @@
  */
 namespace SettingsNS
 {
-    /* Type definition for settings keys */
+    /**
+     * @typedef tKey
+     * @brief Alias for settings key type.
+     *
+     * @details
+     * The tKey type is defined as a constant character pointer and is used to represent
+     * keys for accessing settings in persistent storage. It provides a convenient and
+     * readable way to specify keys when storing or retrieving values from the Preferences API.
+     */
     typedef const char* tKey;
 
 
-    /* Keys for reset counters */
-    static constexpr tKey mKeyCounterResetPowerOn   = "CNT_RST_PWRON";
-    static constexpr tKey mKeyCounterResetSoftware  = "CNT_RST_SW";
-    static constexpr tKey mKeyCounterResetWatchdog  = "CNT_RST_WDG";
-    static constexpr tKey mKeyCounterResetPanic     = "CNT_RST_PANIC";
-    static constexpr tKey mKeyCounterResetBrownout  = "CNT_RST_BRNOUT";
-
     /**
-     * @brief Class for managing persistent settings using Preferences
+     * @brief Settings class for managing persistent configuration storage.
+     *
+     * @details
+     * The Settings class provides an interface for storing, retrieving, and managing configuration
+     * values in persistent storage using the ESP32 Preferences API. It supports various data types
+     * through templated GetValue and SetValue methods, as well as byte arrays and counters.
+     * The class also offers methods to clear all settings, check for the existence of keys,
+     * remove keys, and increment counters. All operations are performed within the "prefs" namespace.
      */
     class Settings
     {
@@ -49,10 +57,16 @@ namespace SettingsNS
         bool SetBytes(tKey arKey, const uint8_t* apData, const size_t aDataSize);
 
         void IncreaseCounter(tKey arKey, const uint32_t aNewValue = 0);
-        uint32_t GetCounter(tKey arKey);
+        uint32_t GetCounter(tKey arKey, const uint32_t aDefaultValue = 0);
 
     private:
-        static constexpr const char* mcPrefsName = "prefs";
+
+        /** @brief Namespace name for parameters storage in Preferences */
+        static constexpr const char* mcPrefsParamNamespace = "params";
+
+        /** @brief Namespace name for counter storage in Preferences */
+        static constexpr const char* mcPrefsCounterNamespace = "counters";
+
         Preferences mPrefs;
     };
 

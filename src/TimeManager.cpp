@@ -5,6 +5,8 @@
  *      Author: hocki
  */
 
+ #include <cstdio>      // for sscanf
+
 #include <ESPNtpClient.h>
 
 #include "Logger.h"
@@ -64,7 +66,7 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 	mpTimer->Init(&mTimerObjects);
 
 //    /* Initialize local time with compilation time */
-//    DateTimeNS::tDateTime wCompileTime = GetCompileTime();
+//    DateTimeNS::tDateTime wCompileTime = DateTimeNS::CompileTime();
 //    SetLocalTime(wCompileTime);
 
     /* Init time variables */
@@ -125,7 +127,7 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             uint32_t wDword;
             if (SerializeNS::DeserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
             {
-                DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(&wDword);
+                DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wDword);
 
                 LOG(LOG_DEBUG, "TimeManager::ProcessIncomingMessage() NTP last sync time: " PRINTF_DATETIME_PATTERN,
                         PRINTF_DATETIME_FORMAT(wDateTime));
@@ -179,30 +181,6 @@ void TimeManager::SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, 
 
     /* Set new local time */
     settimeofday(&wNewTimeval, nullptr);
-}
-
-/**
- * @brief Returns the compile date and time
- */
-DateTimeNS::tDateTime TimeManager::GetCompileTime(void)
-{
-    DateTimeNS::tDateTime wDateTime;
-
-    char compMon[4], *m;
-
-    strncpy(compMon, __DATE__, 3);
-    compMon[3] = '\0';
-    m = strstr(DateTimeNS::mMonthsStr, compMon);
-
-    wDateTime.mDate.mMonth  = ((m - DateTimeNS::mMonthsStr) / 3 + 1);
-    wDateTime.mDate.mDay    = atoi(__DATE__ + 4);
-    wDateTime.mDate.mYear   = atoi(__DATE__ + 7) /* - 1970*/;
-
-    wDateTime.mTime.mHour   = atoi(__TIME__);
-    wDateTime.mTime.mMinute = atoi(__TIME__ + 3);
-    wDateTime.mTime.mSecond = atoi(__TIME__ + 6);
-
-    return wDateTime;
 }
 
 DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
@@ -276,7 +254,7 @@ void TimeManager::SendTime(void)
     wMessage.mId = MessageNS::tMessageId::MGS_EVENT_DATETIME_CHANGED;
 
     /* Serialize DateTime in message payload */
-    uint32_t wDword = DateTimeNS::DateTimeToDword(&wDateTime);
+    uint32_t wDword = DateTimeNS::DateTimeToDword(wDateTime);
     if (SerializeNS::SerializeData(wDword, wMessage.mPayload) == sizeof(wDword))
     {
         /* Set payload length */
@@ -314,7 +292,7 @@ void TimeManager::HandleNTPSyncEvent(NTPEvent_t aEvent)
 
             /* Serialize NTP DateTime in message payload */
             DateTimeNS::tDateTime wNTPTime = GetNtpTime();
-            uint32_t wDword = DateTimeNS::DateTimeToDword(&wNTPTime);
+            uint32_t wDword = DateTimeNS::DateTimeToDword(wNTPTime);
             SerializeNS::SerializeData(wDword, wMessage.mPayload);
 
             /* Send message */
