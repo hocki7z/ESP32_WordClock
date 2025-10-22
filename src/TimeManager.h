@@ -25,8 +25,9 @@ public:
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
-    /* Notification timer for this task */
-    ApplicationNS::NotificationTimer* mpTimer;
+	/* Periodical timer for this task */
+	ApplicationNS::tTaskTimerObjects mTimerObjects;
+    ApplicationNS::TaskTimer* mpTimer;
 
     /* Last sent datatime */
     DateTimeNS::tDateTime mSentTime;
@@ -37,7 +38,7 @@ private:
     /* ApplicationNS::Task::task() */
     void task(void) override;
     /* ApplicationNS::Task::ProcessTimerEvent() */
-    void ProcessTimerEvent(void) override;
+    void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 

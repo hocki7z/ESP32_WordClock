@@ -22,6 +22,9 @@
 
 #define TIME_ZONE               TZ_Europe_Berlin
 
+/* Periodical task timer ID */
+static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
+
 
 /**
  * @brief Constructor
@@ -37,7 +40,15 @@ TimeManager::TimeManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 TimeManager::~TimeManager()
 {
-   // do nothing
+	/* Clean up task timer */
+    if (mpTimer)
+    {
+		/* Stop running timer */
+        mpTimer->stop();
+		/*    and destroy it */
+        delete mpTimer;
+        mpTimer = nullptr;
+    }
 }
 
 void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -45,9 +56,12 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
 
-    /* Create notification timer */
-    mpTimer = new ApplicationNS::NotificationTimer(this->getTaskHandle(),
-        ApplicationNS::mTaskNotificationTimer, 1000, true); // 1 sec period
+    /* Create periodical timer */
+	mTimerObjects.mTaskHandle = this->getTaskHandle();
+	mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
+
+    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 1000, true); // 1 sec period
+	mpTimer->Init(&mTimerObjects);
 
 //    /* Initialize local time with compilation time */
 //    DateTimeNS::tDateTime wCompileTime = GetCompileTime();
@@ -78,7 +92,7 @@ void TimeManager::task(void)
     ApplicationNS::Task::task();
 };
 
-void TimeManager::ProcessTimerEvent(void)
+void TimeManager::ProcessTimerEvent(const uint32_t aTimerId)
 {
     /* Check NTP time sync */
     if (mNtpTimeSynced)
