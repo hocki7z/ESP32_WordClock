@@ -7,6 +7,8 @@
 #pragma once
 
 #include <Arduino.h>
+#include <variant>
+
 #include <Preferences.h>
 
 /**
@@ -24,6 +26,26 @@ namespace SettingsNS
      * readable way to specify keys when storing or retrieving values from the Preferences API.
      */
     typedef const char* tKey;
+
+    enum class SettingType {
+        BOOL,
+        UINT8,
+        UINT16,
+        UINT32,
+        INT8,
+        INT16,
+        INT32,
+        FLOAT,
+        DOUBLE,
+        STRING
+    };
+
+    struct SettingItem
+    {
+        SettingsNS::tKey mKey;
+        SettingType     mType;
+        std::variant<bool, uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, float, double, String> mDefaultValue;
+    };
 
 
     /**

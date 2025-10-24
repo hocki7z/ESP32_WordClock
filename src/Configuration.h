@@ -81,4 +81,15 @@ namespace ConfigNS
         "Rhein-Ruhr"
     };
 
+
+
+    static constexpr SettingItem displaySettings[] = {
+        { ConfigNS::mKeyDisplayClockMode,       ConfigNS::mDefaultDisplayClockMode,       SettingsNS::SettingType::UINT8  },
+        { ConfigNS::mKeyDisplayClockItIs,       ConfigNS::mDefaultDisplayClockItIs        SettingsNS::SettingType::BOOL   },
+        { ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins, SettingsNS::SettingType::BOOL   },
+        { ConfigNS::mKeyDisplayColorTime,       ConfigNS::mDefaultDisplayColorTime,       SettingsNS::SettingType::UINT32 },
+        { ConfigNS::mKeyDisplayColorBkgd,       ConfigNS::mDefaultDisplayColorBkgd,       SettingsNS::SettingType::UINT32 }
+    };
+
+
 }   /* end of namespace ConfigNS */
