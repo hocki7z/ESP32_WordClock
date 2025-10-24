@@ -32,6 +32,13 @@ private:
         Control::ControlId_t mDisplayClockSingleMinutes;
         Control::ControlId_t mDisplayColorTime;
         Control::ControlId_t mDisplayColorBackground;
+
+        Control::ControlId_t mDisplayLedBrightness;
+
+        Control::ControlId_t mDisplayUseNightMode;
+        Control::ControlId_t mDisplayBrightnessNightMode;
+        Control::ControlId_t mDisplayNightModeStartTime;
+        Control::ControlId_t mDisplayNightModeEndTime;
     };
 
     /** @brief "This" pointer for created WebSite instance */
@@ -46,11 +53,16 @@ private:
     void HandleColorControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleSwitcherControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleSelectControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandlePercentageSliderControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandleTimerControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
     Control::ControlId_t AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor = 0x000000);
     Control::ControlId_t AddSwitcherControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const bool aDefaultState = false);
-    Control::ControlId_t AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount, SettingsNS::tKey aSettingsKey,
-            const uint8_t aDefaultOption = 0);
+    Control::ControlId_t AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption = 0);
+    Control::ControlId_t AddPercentageSliderControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue = 50);
+    Control::ControlId_t AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime = 0);
+
+    void UpdateLedBrightnessControls(bool aForceUpdate = false);
 
     static void ControlCallback(Control* apSender, int aType);
 

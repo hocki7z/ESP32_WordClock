@@ -7,6 +7,7 @@
 #include <ESPUI.h>
 
 #include "Logger.h"
+#include "DateTime.h"
 #include "Settings.hpp"
 
 #include "WebSite.h"
@@ -47,6 +48,9 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     /* Initialize WEB UI but do not start it yet */
 
+    /* ESPUI Log mode */
+    ESPUI.setVerbosity(Verbosity::Verbose);
+
     /* Section Wordcolock settings */
     ESPUI.addControl(Control::Type::Separator, "Wordclock settings", "", Control::Color::Alizarin, Control::noParent);
 
@@ -63,7 +67,7 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
     /* Section LED settings */
-    ESPUI.addControl(Control::Type::Separator, "LED settings", "", Control::Color::Alizarin, Control::noParent);
+    ESPUI.addControl(Control::Type::Separator, "LED colors", "", Control::Color::Alizarin, Control::noParent);
 
     /* Time color */
     mWebUIControlID.mDisplayColorTime = AddColorControl("Time color",
@@ -73,6 +77,26 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color",
             ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
 
+    /* Day/Night settings */
+    ESPUI.addControl(Control::Type::Separator, "LED brightness", "", Control::Color::Alizarin, Control::noParent);
+    /* Slider for LED brightness selection */
+    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("LED brightness",
+            ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
+    /* Switcher for day/night mode activation */
+    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("Use day/night mode",
+            ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
+    /* Slider for night brightness selection */
+    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("Night mode brightness",
+            ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
+    /* Time input for night mode start */
+    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("Night mode start time",
+            ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
+    /* Time input for night mode end */
+    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time",
+            ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
+
+    /* Update LED brightness controls */
+    UpdateLedBrightnessControls();
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -93,6 +117,9 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 /* Check if message sent by this task */
                 if (arMessage.mSource == MessageNS::tAddress::WEB_MANAGER)
                 {
+                    /* Update LED brightness controls */
+                    UpdateLedBrightnessControls();
+
                     /* Redirect this message to display manager */
                     MessageNS::Message wMessage = arMessage;
                     wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
@@ -137,6 +164,32 @@ void WebSite::HandleControl(Control* apControl, int aType)
         /* Background color changed */
         HandleColorControl(apControl, aType, ConfigNS::mKeyDisplayColorBkgd);
     }
+    else if (apControl->GetId() == mWebUIControlID.mDisplayUseNightMode)
+    {
+        /* Day/night mode switcher changed */
+        HandleSwitcherControl(apControl, aType, ConfigNS::mKeyDisplayUseNightMode);
+    }
+    else if (apControl->GetId() == mWebUIControlID.mDisplayLedBrightness)
+    {
+        /* Led brightness slider changed */
+        HandlePercentageSliderControl(apControl, aType, ConfigNS::mKeyDisplayLedBrightness);
+    }
+    else if (apControl->GetId() == mWebUIControlID.mDisplayBrightnessNightMode)
+    {
+        /* Night mode brightness slider changed */
+        HandlePercentageSliderControl(apControl, aType, ConfigNS::mKeyDisplayBrightnessNightMode);
+    }
+    else if (apControl->GetId() == mWebUIControlID.mDisplayNightModeStartTime)
+    {
+        /* Day mode start time changed */
+        HandleTimerControl(apControl, aType, ConfigNS::mKeyDisplayNightModeStartTime);
+    }
+    else if (apControl->GetId() == mWebUIControlID.mDisplayNightModeEndTime)
+    {
+        /* Day mode end time changed */
+        HandleTimerControl(apControl, aType, ConfigNS::mKeyDisplayNightModeEndTime);
+    }
+
     else
     {
         LOG(LOG_ERROR, "WebSite::HandleControl() Unknown control ID %04X", apControl->GetId());
@@ -196,6 +249,52 @@ Control::ControlId_t WebSite::AddSelectControl(const char* apTitle, const char* 
     return wControlId;
 }
 
+Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue)
+{
+    uint8_t wValue = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultValue);
+
+    Control::ControlId_t wControlId = ESPUI.slider(apTitle, WebSite::ControlCallback, Control::Color::Dark, wValue, 0, 100);
+
+    LOG(LOG_DEBUG, "WebSite::AddPercentageSliderControl() Control %04X, value %d", wControlId, wValue);
+
+    return wControlId;
+}
+
+Control::ControlId_t WebSite::AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime)
+{
+    char wTimeStr[6];
+
+    uint32_t wTimeInt = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultTime);
+    DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wTimeInt);
+
+    /* Convert time to string format HH:MM */
+    sprintf(wTimeStr, "%02u:%02u", wDateTime.mTime.mHour, wDateTime.mTime.mMinute);
+
+    Control::ControlId_t wControlId = ESPUI.text(apTitle, WebSite::ControlCallback, Control::Color::Dark, wTimeStr);
+    ESPUI.setInputType(wControlId, "time");
+
+    LOG(LOG_DEBUG, "WebSite::AddTimeControl() Control %04X, time %s", wControlId, String(wTimeStr).c_str());
+
+    return wControlId;
+}
+
+void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
+{
+    bool wUseNightMode = Settings.GetValue<bool>(ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
+
+    LOG(LOG_DEBUG, "WebSite::UpdateLedBrightnessControls() Use night mode %d, force update %d", wUseNightMode, aForceUpdate);
+
+    /* Update visibility of brightness and time controls */
+    ESPUI.updateVisibility(mWebUIControlID.mDisplayBrightnessNightMode, wUseNightMode);
+    ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
+    ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
+
+    if (aForceUpdate)
+    {
+        ESPUI.jsonReload();
+    }
+}
+
 void WebSite::HandleColorControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
 {
     /* Retreive new color value */
@@ -217,8 +316,8 @@ void WebSite::HandleSwitcherControl(Control* aControl, int aType, SettingsNS::tK
     //bool wState = (aControl->value == "true") ? true : false;
     bool wState = (aType == S_ACTIVE) ? true : false;
 
-    LOG(LOG_DEBUG, "WebSite::HandleSwitcherControl() Control %04X, new state %s",
-            aControl->GetId(), wState ? "ON" : "OFF");
+    LOG(LOG_DEBUG, "WebSite::HandleSwitcherControl() Control %04X, new state %d",
+            aControl->GetId(), wState);
 
     /* Store new state in settings */
     Settings.SetValue<bool>(aSettingsKey, wState);
@@ -234,6 +333,42 @@ void WebSite::HandleSelectControl(Control* aControl, int aType, SettingsNS::tKey
 
     /* Store new selected option in settings */
     Settings.SetValue<uint8_t>(aSettingsKey, wSelectedOption);
+}
+
+void WebSite::HandlePercentageSliderControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
+{
+    /* Retreive new slider value */
+    uint8_t wValue = static_cast<uint8_t>(std::stoi(aControl->value.c_str()));
+
+    LOG(LOG_DEBUG, "WebSite::HandlePercentageSliderControl() Control %04X, new value %d",
+            aControl->GetId(), wValue);
+
+    /* Store new slider value in settings */
+    Settings.SetValue<uint8_t>(aSettingsKey, wValue);
+}
+
+void WebSite::HandleTimerControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
+{
+    /* Retreive new time value in format HH:MM */
+    std::string wTimeStr = aControl->value.c_str();
+
+    uint8_t wHour   = static_cast<uint8_t>(std::stoi(wTimeStr.substr(0, 2)));
+    uint8_t wMinute = static_cast<uint8_t>(std::stoi(wTimeStr.substr(3, 2)));
+
+    LOG(LOG_DEBUG, "WebSite::HandleTimerControl() Control %04X, new time %02u:%02u",
+            aControl->GetId(), wHour, wMinute);
+
+    /* Store new time value in settings */
+    DateTimeNS::tDateTime wDateTime;
+    wDateTime.mTime.mHour   = wHour;
+    wDateTime.mTime.mMinute = wMinute;
+    wDateTime.mTime.mSecond = 0;
+    wDateTime.mDate.mDay    = 1;
+    wDateTime.mDate.mMonth  = 1;
+    wDateTime.mDate.mYear   = DateTimeNS::mYearRangeStart;
+
+    uint32_t wTimeDword = DateTimeNS::DateTimeToDword(wDateTime);
+    Settings.SetValue<uint32_t>(aSettingsKey, wTimeDword);
 }
 
 void WebSite::ControlCallback(Control* apSender, int aType)
