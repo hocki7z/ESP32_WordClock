@@ -43,8 +43,9 @@ private:
 		STATE_ONLINE,
 	} tState;
 
-	/* Notification timer for this task */
-    ApplicationNS::NotificationTimer* mpTimer;
+	/* Periodical timer for this task */
+	ApplicationNS::tTaskTimerObjects mTimerObjects;
+    ApplicationNS::TaskTimer* mpTimer;
 
     tState  mState  = STATE_BOOT;
     tStatus mStatus = STATUS_NOT_CONNECTED;
@@ -56,7 +57,8 @@ private:
 	/* ApplicationNS::Task::task() */
     void task(void) override;
     /* ApplicationNS::Task::ProcessTimerEvent() */
-    void ProcessTimerEvent(void) override;
+    void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
+
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 

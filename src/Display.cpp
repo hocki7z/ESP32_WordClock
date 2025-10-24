@@ -8,6 +8,7 @@
 #include <Arduino.h>
 
 #include "Logger.h"
+#include "Configuration.h"
 #include "Serialize.h"
 #include "Settings.hpp"
 
@@ -82,7 +83,7 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             if (SerializeNS::DeserializeData(arMessage.mPayload, &wDword) == sizeof(wDword))
             {
                 /* Store new date and time */
-                mDateTime = DateTimeNS::DwordToDateTime(&wDword);
+                mDateTime = DateTimeNS::DwordToDateTime(wDword);
 
                 LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Datetime changed: " PRINTF_DATETIME_PATTERN,
                         PRINTF_DATETIME_FORMAT(mDateTime));
@@ -132,11 +133,11 @@ void Display::UpdateDisplay(void)
      * Update display data
      */
     /* Retrieve background color from settings */
-    uint32_t wColorCode = Settings.GetValue<uint32_t>(SettingsNS::mKeyDisplayColorBkgd, SettingsNS::mDefaultDisplayColorBkgd);
+    uint32_t wColorCode = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
     /*     and fill background */
     Fill(CRGB(wColorCode & 0x00FFFFFF), mBackgroundBrightness);
     /* Retrieve time color from settings */
-    wColorCode = Settings.GetValue<uint32_t>(SettingsNS::mKeyDisplayColorTime, SettingsNS::mDefaultDisplayColorTime);
+    wColorCode = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
     /*     paint time */
     PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, CRGB(wColorCode & 0x00FFFFFF));
 
@@ -263,8 +264,8 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         uint8_t wMinuteExtra  = aMinute % 5;    // extra minutes 0, +1 ... +4
 
         tWordClockMode wClockMode = static_cast<tWordClockMode>(
-                Settings.GetValue<uint8_t>(SettingsNS::mKeyDisplayClockMode,
-                        SettingsNS::mDefaultDisplayClockMode));
+                Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayClockMode,
+                        ConfigNS::mDefaultDisplayClockMode));
 
         /* Get minute display data */
         tMinuteDisplay wMinuteDisplay = mcWordMinutesTable[wClockMode][wMinute];
@@ -288,7 +289,7 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         }
 
         if (Settings.GetValue<bool>(
-                SettingsNS::mKeyDisplayClockItIs, SettingsNS::mDefaultDisplayClockItIs))
+                ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs))
         {
             /* Paint 'Es ist' */
             PaintWord(tWord::WORD_ES,  aColor);
@@ -308,7 +309,7 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         }
 
         if (Settings.GetValue<bool>(
-                SettingsNS::mKeyDisplayClockSingleMins, SettingsNS::mDefaultDisplayClockSingleMins))
+                ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins))
         {
             /* Paint extra minutes */
             for (wI = 0; wI < MAX_EXTRA_MINUTE_WORDS; wI++)

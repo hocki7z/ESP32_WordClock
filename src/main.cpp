@@ -3,6 +3,8 @@
 #include "Logger.h"
 #include "Settings.hpp"
 
+#include "Configuration.h"
+
 #include "Application.h"
 #include "Communication.h"
 #include "Message.h"
@@ -109,35 +111,35 @@ static void CheckResetReason(void)
     switch (wReason)
     {
         case ESP_RST_POWERON:   // Power-on reset
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetPowerOn);
+            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPowerOn);
             LOG(LOG_DEBUG, "Main::CheckResetReason() Power-on reset, %d times",
-                    Settings.GetCounter(SettingsNS::mKeyCounterResetPowerOn));
+                    Settings.GetCounter(ConfigNS::mKeyCounterResetPowerOn));
             break;
 
         case ESP_RST_SW:        // Software reset
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetSoftware);
+            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetSoftware);
             LOG(LOG_DEBUG, "Main::CheckResetReason() Software reset, %d times",
-                    Settings.GetCounter(SettingsNS::mKeyCounterResetSoftware));
+                    Settings.GetCounter(ConfigNS::mKeyCounterResetSoftware));
             break;
 
         case ESP_RST_WDT:       // Watchdog reset
         case ESP_RST_INT_WDT:   // Interrupt watchdog reset
         case ESP_RST_TASK_WDT:  // Task watchdog reset
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetWatchdog);
+            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetWatchdog);
             LOG(LOG_DEBUG, "Main::CheckResetReason() Watchdog reset, %d times",
-                    Settings.GetCounter(SettingsNS::mKeyCounterResetWatchdog));
+                    Settings.GetCounter(ConfigNS::mKeyCounterResetWatchdog));
             break;
 
         case ESP_RST_PANIC:     // Panic reset
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetPanic);
+            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPanic);
             LOG(LOG_DEBUG, "Main::CheckResetReason() Panic reset, %d times",
-                    Settings.GetCounter(SettingsNS::mKeyCounterResetPanic));
+                    Settings.GetCounter(ConfigNS::mKeyCounterResetPanic));
             break;
 
         case ESP_RST_BROWNOUT:  // Brownout reset
-            Settings.IncreaseCounter(SettingsNS::mKeyCounterResetBrownout);
+            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetBrownout);
             LOG(LOG_DEBUG, "Main::CheckResetReason() Brownout reset, %d times",
-                    Settings.GetCounter(SettingsNS::mKeyCounterResetBrownout));
+                    Settings.GetCounter(ConfigNS::mKeyCounterResetBrownout));
             break;
 
         case ESP_RST_EXT:       // External reset
@@ -154,14 +156,14 @@ static void CheckResetReason(void)
 static void InitApplication(void)
 {
     /* Create tasks */
-    mpDisplay     = new Display(ApplicationNS::mDisplayTaskName,
-        ApplicationNS::mDisplayTaskPriority, ApplicationNS::mDisplayTaskStackSize);
-    mpTimeManager = new TimeManager(ApplicationNS::mTimeManagerTaskName,
-        ApplicationNS::mTimeManagerTaskPriority, ApplicationNS::mTimeManagerTaskStackSize);
-    mpWiFiManager = new WiFiManager(ApplicationNS::mWifiManagerTaskName,
-        ApplicationNS::mWifiManagerTaskPriority, ApplicationNS::mWifiManagerTaskStackSize);
-    mpWebSite       = new WebSite(ApplicationNS::mWebSiteTaskName,
-        ApplicationNS::mWebSiteTaskPriority, ApplicationNS::mWebSiteTaskStackSize);
+    mpDisplay = new Display(ConfigNS::mDisplayTaskName, ConfigNS::mDisplayTaskPriority,
+            ConfigNS::mDisplayTaskStackSize);
+    mpTimeManager = new TimeManager(ConfigNS::mTimeManagerTaskName, ConfigNS::mTimeManagerTaskPriority,
+            ConfigNS::mTimeManagerTaskStackSize);
+    mpWiFiManager = new WiFiManager(ConfigNS::mWifiManagerTaskName, ConfigNS::mWifiManagerTaskPriority,
+            ConfigNS::mWifiManagerTaskStackSize);
+    mpWebSite = new WebSite(ConfigNS::mWebSiteTaskName, ConfigNS::mWebSiteTaskPriority,
+            ConfigNS::mWebSiteTaskStackSize);
 
     /* Create communication manager */
     mpCommunicationManager = new CommunicationNS::CommunicationManager();

@@ -11,6 +11,7 @@
 #include <ESPUI.h>
 
 #include "Application.h"
+#include "Configuration.h"
 
 
 class WebSite : public ApplicationNS::Task
@@ -33,12 +34,6 @@ private:
         Control::ControlId_t mDisplayColorBackground;
     };
 
-    static constexpr uint8_t mcClockModeItemsCount = 2;
-    static constexpr const char* mcClockModeItems[mcClockModeItemsCount] = {
-        "Wessi",
-        "Rhein-Ruhr"
-    };
-
     /** @brief "This" pointer for created WebSite instance */
     static WebSite* mpWebSiteInstance;
 
@@ -54,8 +49,8 @@ private:
 
     Control::ControlId_t AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor = 0x000000);
     Control::ControlId_t AddSwitcherControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const bool aDefaultState = false);
-    Control::ControlId_t AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount,
-            SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption = 0);
+    Control::ControlId_t AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount, SettingsNS::tKey aSettingsKey,
+            const uint8_t aDefaultOption = 0);
 
     static void ControlCallback(Control* apSender, int aType);
 

@@ -51,27 +51,27 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     ESPUI.addControl(Control::Type::Separator, "Wordclock settings", "", Control::Color::Alizarin, Control::noParent);
 
     /* Clock mode */
-    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", mcClockModeItems, mcClockModeItemsCount,
-            SettingsNS::mKeyDisplayClockMode, SettingsNS::mDefaultDisplayClockMode);
+    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", ConfigNS::mcClockModeItems, ConfigNS::mcClockModeItemsCount,
+            ConfigNS::mKeyDisplayClockMode, ConfigNS::mDefaultDisplayClockMode);
 
     /* Switcher for 'IT IS' words */
     mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("Show 'IT IS'",
-            SettingsNS::mKeyDisplayClockItIs, SettingsNS::mDefaultDisplayClockItIs);
+            ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
 
     /* Switch for single minutes */
     mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("Show single minutes",
-            SettingsNS::mKeyDisplayClockSingleMins, SettingsNS::mDefaultDisplayClockSingleMins);
+            ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
     /* Section LED settings */
     ESPUI.addControl(Control::Type::Separator, "LED settings", "", Control::Color::Alizarin, Control::noParent);
 
     /* Time color */
     mWebUIControlID.mDisplayColorTime = AddColorControl("Time color",
-            SettingsNS::mKeyDisplayColorTime, SettingsNS::mDefaultDisplayColorTime);
+            ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
 
     /* Background color */
     mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color",
-            SettingsNS::mKeyDisplayColorBkgd, SettingsNS::mDefaultDisplayColorBkgd);
+            ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
 
 }
 
@@ -115,27 +115,27 @@ void WebSite::HandleControl(Control* apControl, int aType)
     if (apControl->GetId() == mWebUIControlID.mDisplayClockMode)
     {
         /* Clock mode changed */
-        HandleSelectControl(apControl, aType, SettingsNS::mKeyDisplayClockMode);
+        HandleSelectControl(apControl, aType, ConfigNS::mKeyDisplayClockMode);
     }
     else if (apControl->GetId() == mWebUIControlID.mDisplayClockItIs)
     {
         /* 'IT IS' switcher changed */
-        HandleSwitcherControl(apControl, aType, SettingsNS::mKeyDisplayClockItIs);
+        HandleSwitcherControl(apControl, aType, ConfigNS::mKeyDisplayClockItIs);
     }
     else if (apControl->GetId() == mWebUIControlID.mDisplayClockSingleMinutes)
     {
         /* Single minutes switcher changed */
-        HandleSwitcherControl(apControl, aType, SettingsNS::mKeyDisplayClockSingleMins);
+        HandleSwitcherControl(apControl, aType, ConfigNS::mKeyDisplayClockSingleMins);
     }
     else if (apControl->GetId() == mWebUIControlID.mDisplayColorTime)
     {
         /* Time color changed */
-        HandleColorControl(apControl, aType, SettingsNS::mKeyDisplayColorTime);
+        HandleColorControl(apControl, aType, ConfigNS::mKeyDisplayColorTime);
     }
     else if (apControl->GetId() == mWebUIControlID.mDisplayColorBackground)
     {
         /* Background color changed */
-        HandleColorControl(apControl, aType, SettingsNS::mKeyDisplayColorBkgd);
+        HandleColorControl(apControl, aType, ConfigNS::mKeyDisplayColorBkgd);
     }
     else
     {
