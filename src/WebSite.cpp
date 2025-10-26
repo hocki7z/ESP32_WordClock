@@ -284,10 +284,23 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 
     LOG(LOG_DEBUG, "WebSite::UpdateLedBrightnessControls() Use night mode %d, force update %d", wUseNightMode, aForceUpdate);
 
-    /* Update visibility of brightness and time controls */
-    ESPUI.updateVisibility(mWebUIControlID.mDisplayBrightnessNightMode, wUseNightMode);
-    ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
-    ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
+    /* Issue:
+          The UI controls have not been displayed properly after
+          the visibility was changed from false to true.
+
+          The UI controls in the web interface do not display correctly after
+          their visibility is changed (e.g. from false to true).
+
+       Workaround:
+          Instead of changing the visibility of the controls, enable/disable them. */
+
+    // ESPUI.updateVisibility(mWebUIControlID.mDisplayBrightnessNightMode, wUseNightMode);
+    // ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
+    // ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
+
+    ESPUI.setEnabled(mWebUIControlID.mDisplayBrightnessNightMode, wUseNightMode);
+    ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
+    ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
 
     if (aForceUpdate)
     {
