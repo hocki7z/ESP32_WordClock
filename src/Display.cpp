@@ -125,6 +125,8 @@ void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
 
 void Display::UpdateDisplay(void)
 {
+    uint32_t wDwordValue = 0;
+
     /* LOG */
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
@@ -132,17 +134,64 @@ void Display::UpdateDisplay(void)
     /**
      * Update display data
      */
+ 
     /* Retrieve background color from settings */
-    uint32_t wColorCode = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
+    wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
     /*     and fill background */
-    Fill(CRGB(wColorCode & 0x00FFFFFF), mBackgroundBrightness);
+    Fill(CRGB(wDwordValue & 0x00FFFFFF));
+
     /* Retrieve time color from settings */
-    wColorCode = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
+    wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
     /*     paint time */
-    PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, CRGB(wColorCode & 0x00FFFFFF));
+    PaintTime(mDateTime.mTime.mHour, mDateTime.mTime.mMinute, CRGB(wDwordValue & 0x00FFFFFF));
 
     /* Transform data for LED matrix */
     Transform();
+
+    /* Retrieve LED brightness */
+    uint8_t wBrightness = Settings.GetValue<uint8_t>(
+            ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
+
+    /* Check if night mode is enabled */
+    bool wUseNightMode = Settings.GetValue<bool>(
+            ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
+
+    if (wUseNightMode)
+    {
+        /* Retrieve night mode start and end times */
+        wDwordValue = Settings.GetValue<uint32_t>(
+                ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
+        DateTimeNS::tDateTime wNightModeStartDateTime = DateTimeNS::DwordToDateTime(wDwordValue);
+
+        wDwordValue = Settings.GetValue<uint32_t>(
+                ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
+        DateTimeNS::tDateTime wNightModeEndDateTime = DateTimeNS::DwordToDateTime(wDwordValue);
+
+        /* Determine if we are in the night mode */
+        bool wIsNightMode = DateTimeNS::IsTimeInInterval(
+                mDateTime.mTime,
+                wNightModeStartDateTime.mTime,
+                wNightModeEndDateTime.mTime);
+
+        if (wIsNightMode)
+        {
+            /* Apply night mode brightness */
+            wBrightness = Settings.GetValue<uint8_t>(
+                    ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
+        }
+    }
+
+    /* Set the brightness value to a range of 0–100% */
+    if (wBrightness > 100)
+    {
+        wBrightness = 100;
+    }
+
+    /* Convert the brightness value (0–100%) to a range of the LED hardware scale (0–255) */
+    uint8_t wAlphaScale = map(wBrightness, 0, 100, 0, 255);
+
+    /* Set LED brightness */
+    FastLED.setBrightness(wAlphaScale);
 
     /* Show new data on the LED matrix */
     FastLED.show();

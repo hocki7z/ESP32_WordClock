@@ -266,4 +266,34 @@ namespace DateTimeNS
         return wDword;
     }
 
+    /**
+     * @brief Checks if a time is within a given interval.
+     *
+     * @details
+     * Returns true if the 'current' time is within the interval [start, end).
+     * Handles intervals that cross midnight (e.g., start=22:00, end=06:00).
+     *
+     * @param arCurrentTime The current time (tTime).
+     * @param arStartTime The start time of the interval (tTime).
+     * @param arEndTime The end time of the interval (tTime).
+     * @return True if current is in the interval, false otherwise.
+     */
+    inline bool IsTimeInInterval(const tTime& arCurrentTime, const tTime& arStartTime, const tTime& arEndTime)
+    {
+        uint16_t wCurrentMinutes = 60 * arCurrentTime.mHour + arCurrentTime.mMinute;
+        uint16_t wStartMinutes   = 60 * arStartTime.mHour   + arStartTime.mMinute;
+        uint16_t wEndMinutes     = 60 * arEndTime.mHour     + arEndTime.mMinute;
+
+        if (wStartMinutes <= wEndMinutes)
+        {
+            /* Interval does not cross midnight */
+            return (wCurrentMinutes >= wStartMinutes) && (wCurrentMinutes < wEndMinutes);
+        }
+        else
+        {
+            /* Interval crosses midnight */
+            return (wCurrentMinutes >= wStartMinutes) || (wCurrentMinutes < wEndMinutes);
+        }
+    }
+
 };  /* end of namespace DateTimeNS */
