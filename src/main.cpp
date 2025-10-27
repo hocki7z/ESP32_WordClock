@@ -90,6 +90,30 @@ void setup()
 
     /* Run application */
     RunApplication();
+
+    // Test DateTimeNS::IsTimeInInterval() 
+    DateTimeNS::tTime wStartTime = { .mHour = 22, .mMinute =  0 };
+    DateTimeNS::tTime wEndTime   = { .mHour =  6, .mMinute = 30 };
+
+    bool wIsNightMode;
+    
+    wIsNightMode = DateTimeNS::IsTimeInInterval(
+            { .mHour = 23, .mMinute = 0 }, wStartTime, wEndTime);
+    LOG(LOG_INFO, "Is night mode (23:00)? %s", wIsNightMode ? "YES" : "NO");
+
+    wIsNightMode = DateTimeNS::IsTimeInInterval(
+            { .mHour = 5, .mMinute = 30 }, wStartTime, wEndTime);
+    LOG(LOG_INFO, "Is night mode (05:30)? %s", wIsNightMode ? "YES" : "NO");
+
+    wIsNightMode = DateTimeNS::IsTimeInInterval(
+            { .mHour = 21, .mMinute = 30 }, wStartTime, wEndTime);
+    LOG(LOG_INFO, "Is night mode (21:30)? %s", wIsNightMode ? "YES" : "NO");
+
+    wIsNightMode = DateTimeNS::IsTimeInInterval(
+            { .mHour = 7, .mMinute = 0 }, wStartTime, wEndTime);
+    LOG(LOG_INFO, "Is night mode (07:00)? %s", wIsNightMode ? "YES" : "NO");
+
+    // End of Test
 }
 
 void loop()
