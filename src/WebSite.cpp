@@ -95,6 +95,18 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time",
             ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
 
+
+    /* Section DateTime settings */
+    ESPUI.addControl(Control::Type::Separator, "DateTime settings", "", Control::Color::Alizarin, Control::noParent);
+    /* NTP server selection */
+    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("NTP server",
+            ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
+            ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
+    /* Timezone selection */
+    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("Time zone",
+            ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
+            ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+
     /* Update LED brightness controls */
     UpdateLedBrightnessControls();
 }
@@ -122,8 +134,13 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
                     /* Redirect this message to display manager */
                     MessageNS::Message wMessage = arMessage;
+
+                    /* Send message to display */
                     wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
-                    /* Send message */
+                    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+
+                    /* Send message to time manager */
+                    wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
                     mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
 
                     break;
@@ -188,6 +205,16 @@ void WebSite::HandleControl(Control* apControl, int aType)
     {
         /* Day mode end time changed */
         HandleTimerControl(apControl, aType, ConfigNS::mKeyDisplayNightModeEndTime);
+    }
+    else if (apControl->GetId() == mWebUIControlID.mDatetimeNtpServer)
+    {
+        /* NTP server selection changed */
+        HandleSelectControl(apControl, aType, ConfigNS::mKeyNtpServer);
+    }
+    else if (apControl->GetId() == mWebUIControlID.mDatetimeTimeZone)
+    {
+        /* Timezone selection changed */
+        HandleSelectControl(apControl, aType, ConfigNS::mKeyTimeZone);
     }
 
     else

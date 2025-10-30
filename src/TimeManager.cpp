@@ -10,7 +10,11 @@
 #include <ESPNtpClient.h>
 
 #include "Logger.h"
+#include "Configuration.h"
 #include "Serialize.h"
+#include "Settings.hpp"
+
+#include "Timezone.h"
 
 #include "TimeManager.h"
 
@@ -18,11 +22,8 @@
 /* Log level for this module */
 #define LOG_LEVEL               (LOG_DEBUG)
 
-#define NTP_SERVER_NAME         PSTR("pool.ntp.org")
 #define NTP_TIMEOUT             5000    // 5 sec
 #define NTP_SYNC_PERIOD         600     // 10 min
-
-#define TIME_ZONE               TZ_Europe_Berlin
 
 /* Periodical task timer ID */
 static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
@@ -76,9 +77,10 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 	NTP.onNTPSyncEvent(
         std::bind(&TimeManager::HandleNTPSyncEvent, this, std::placeholders::_1));
 
-    /* Set time zone */
-    NTP.setTimeZone(TIME_ZONE);
-    /* Set sync parameters */
+    /* Set time zone from settings */
+    uint8_t wTimeZoneIndex = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+    NTP.setTimeZone(ConfigNS::mcTimezones[wTimeZoneIndex]);
+   /* Set sync parameters */
     NTP.setInterval(NTP_SYNC_PERIOD);
     NTP.setNTPTimeout(NTP_TIMEOUT);
 //    NTP.setMinSyncAccuracy(5000);
@@ -142,9 +144,37 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             break;
 
         case MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED:
+        {
             /* WiFi connected, start NTP sync */
+
+            /* Get NTP server from settings */
+            uint8_t wNtpServerIndex = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
             /* Start NTP client */
-            NTP.begin(NTP_SERVER_NAME, false);
+            NTP.begin(ConfigNS::mcNtpServerItems[wNtpServerIndex], false);
+        }
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
+        {
+            // Settings changed, re-read settings if needed
+            LOG(LOG_DEBUG, "TimeManager::ProcessIncomingMessage() Settings changed");
+
+            /* Set time zone from settings */
+            uint8_t wTimeZoneIndex = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+            NTP.setTimeZone(ConfigNS::mcTimezones[wTimeZoneIndex]);
+
+            /* Update local time */
+            DateTimeNS::tDateTime wNTPTime = GetNtpTime();
+            SetLocalTime(wNTPTime);
+
+            /* Get current time */
+            DateTimeNS::tDateTime wCurrTime = GetLocalTime();
+            /* Send time */
+            SendTime();
+
+            /* Update previous time after notification sent */
+            mSentTime = wCurrTime;
+        }
             break;
 
         default:

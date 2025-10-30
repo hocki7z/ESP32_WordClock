@@ -39,6 +39,9 @@ private:
         Control::ControlId_t mDisplayBrightnessNightMode;
         Control::ControlId_t mDisplayNightModeStartTime;
         Control::ControlId_t mDisplayNightModeEndTime;
+
+        Control::ControlId_t mDatetimeNtpServer;
+        Control::ControlId_t mDatetimeTimeZone;
     };
 
     /** @brief "This" pointer for created WebSite instance */
