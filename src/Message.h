@@ -18,14 +18,18 @@ namespace MessageNS
     enum tAddress : uint8_t
     {
         APPLICATION_MANAGER = 0x00,
-
+        //
         DISPLAY_MANAGER,
         TIME_MANAGER,
         WIFI_MANAGER,
         WEB_MANAGER,
 
         /** @brief Total number of address (do not use as actual address) */
-        NB_OF_ADDRESSES
+        NB_OF_ADDRESSES,
+
+        /* Special addresses for internal use in tasks */
+        TASK,
+        TASK_TIMER,
     };
 
     /**
@@ -39,8 +43,10 @@ namespace MessageNS
 
         /** Events       */
         MGS_EVENT_DATETIME_CHANGED,         // Payload: 4 bytes - Datetime as dword
-        MGS_EVENT_NTP_LASTSYNC_TIME,        // Payload: 4 bytes - Last sync time as dword
+        MGS_EVENT_NTP_LASTSYNC_TIME,        // No payload
         MGS_EVENT_WIFI_EVENT_TRIGGERED,     // Payload: 1 byte  - WiFiEvent_t
+        MSG_EVENT_SW_TIMER_TIMEOUT,         // Payload: 4 byte  - Timer ID
+        MSG_EVENT_SETTINGS_CHANGED,         // No payload
 
         /** Status       */
 		MGS_STATUS_WIFI_NOT_CONNECTED,

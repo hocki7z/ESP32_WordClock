@@ -36,6 +36,9 @@
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
+/* Periodical task timer ID */
+static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
+
 
 /**
  * @brief Constructor
@@ -51,7 +54,15 @@ WiFiManager::WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 WiFiManager::~WiFiManager()
 {
-   // do nothing
+	/* Clean up task timer */
+    if (mpTimer)
+    {
+		/* Stop running timer */
+        mpTimer->stop();
+		/*    and destroy it */
+        delete mpTimer;
+        mpTimer = nullptr;
+    }
 }
 
 void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -59,9 +70,12 @@ void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
 
-    /* Create notification timer */
-    mpTimer = new ApplicationNS::NotificationTimer(this->getTaskHandle(),
-        ApplicationNS::mTaskNotificationTimer, 1000, true); // 1 sec period
+    /* Create periodical timer */
+	mTimerObjects.mTaskHandle = this->getTaskHandle();
+	mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
+
+    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 1000, true); // 1 sec period
+	mpTimer->Init(&mTimerObjects);
 
     /* Register WiFi events listener */
 	WiFi.onEvent(
@@ -81,12 +95,15 @@ void WiFiManager::task(void)
     ApplicationNS::Task::task();
 }
 
-void WiFiManager::ProcessTimerEvent(void)
+void WiFiManager::ProcessTimerEvent(const uint32_t aTimerId)
 {
-	LOG(LOG_VERBOSE, "WiFiManager::ProcessTimerEvent()");
+	LOG(LOG_VERBOSE, "WiFiManager::ProcessTimerEvent() Timer ID: %d", aTimerId);
 
-	/* Process current FSM state */
-	ProcessState();
+	if (aTimerId == mPeriodicalTaskTimerId)
+	{
+		/* Process current FSM state */
+		ProcessState();
+	}
 }
 
 void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -99,7 +116,7 @@ void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 		{
 			/* Deserialize wifi event */
 			uint8_t wEvent;
-			if (SerializeNS::UnserializeData(arMessage.mPayload, &wEvent) == sizeof(wEvent))
+			if (SerializeNS::DeserializeData(arMessage.mPayload, &wEvent) == sizeof(wEvent))
 			{
 				/* Process WiFi event */
 				ProcessState(static_cast<WiFiEvent_t>(wEvent));
@@ -216,12 +233,16 @@ void WiFiManager::SendStatus(void)
 		/* Create message */
     	MessageNS::Message wMessage;
     	wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
-        wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
 
 		/* Set selected message ID */
 		wMessage.mId = wMessageId;
 
-        /* Send message */
+        /* Send message to the time manager */
+		wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
+        mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+
+        /* Send message to the web manager */
+		wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
         mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
     }
 }

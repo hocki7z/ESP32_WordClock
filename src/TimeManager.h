@@ -25,8 +25,9 @@ public:
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
-    /* Notification timer for this task */
-    ApplicationNS::NotificationTimer* mpTimer;
+	/* Periodical timer for this task */
+	ApplicationNS::tTaskTimerObjects mTimerObjects;
+    ApplicationNS::TaskTimer* mpTimer;
 
     /* Last sent datatime */
     DateTimeNS::tDateTime mSentTime;
@@ -34,16 +35,20 @@ private:
     /* Flag indicates that the NTP time is synchronized */
     bool mNtpTimeSynced = false;
 
+    uint8_t mNtpServer;
+    uint8_t mTimeZone;
+
     /* ApplicationNS::Task::task() */
     void task(void) override;
     /* ApplicationNS::Task::ProcessTimerEvent() */
-    void ProcessTimerEvent(void) override;
+    void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
-    DateTimeNS::tDateTime GetCompileTime(void);
     DateTimeNS::tDateTime GetLocalTime(void);
     DateTimeNS::tDateTime GetNtpTime(void);
+
+    void SetLocalTimeFromNTP(void);
 
     void SetLocalTime(DateTimeNS::tDateTime aDateTime);
     void SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear);

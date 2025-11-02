@@ -11,9 +11,6 @@
 #include <Arduino.h>
 #include <esp32-hal-log.h>
 
-/* Deactivate TRACE to disable logger */
-#define TRACE
-
 /**
  * @brief Log level
  *
@@ -36,7 +33,7 @@ typedef enum tLogLevel
  *
  * #define LOG_LEVEL   (LOG_ERROR)
  */
-#ifdef TRACE
+#if USE_LOGGING == true
     #define LOG(level, ...)                             LoggerNS::Log( level, LOG_LEVEL, __VA_ARGS__ )
     #define LOG_LINE(level, ...)                        LoggerNS::LogLine( level, LOG_LEVEL, __FILE__, __LINE__, __VA_ARGS__ )
 
@@ -100,7 +97,7 @@ typedef enum tLogLevel
     #define LOG_WITH_REF(level, ref_level, ...)
     #define LOG_LINE_WITH_REF(level, ref_level, ...)
 
-#endif /* TRACE */
+#endif /* USE_LOGGING == true */
 
 /** Defines to print a byte as binary (for logging)
  *
