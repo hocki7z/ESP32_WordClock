@@ -22,15 +22,15 @@ namespace SettingsNS
  * @return The property value as type T, or the default value if not found.
  *
  * Exalmpes:
- *      int myInt = Settings.GetValue<int>("myIntKey", 42);
- *      bool myBool = Settings.GetValue<bool>("myBoolKey", false);
- *      String myString = Settings.GetValue<String>("myStringKey", "default");
+ *      int myInt = Settings.GetValue<int>(tKey(1234), 42);
+ *      bool myBool = Settings.GetValue<bool>(tKey(1234), false);
+ *      String myString = Settings.GetValue<String>(tKey(1234), "default");
  *
  *   Unsupported type (will cause compile-time error):
- *      std::vector<int> myVector = Settings.GetValue<std::vector<int>>("myVectorKey", {});
+ *      std::vector<int> myVector = Settings.GetValue<std::vector<int>>(tKey(1234), {});
  */
 template<typename T>
-T Settings::GetValue(tKey arKey, const T aDefaultValue)
+T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
 {
     T wRetValue = aDefaultValue;
 
@@ -38,26 +38,29 @@ T Settings::GetValue(tKey arKey, const T aDefaultValue)
     if ((HasKey(arKey) == true) &&
         (mPrefs.begin(mcPrefsParamNamespace, true)))
     {
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
+
         if constexpr (std::is_same<T, bool>::value) {
-            wRetValue = mPrefs.getBool(arKey, aDefaultValue);
+            wRetValue = mPrefs.getBool(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, uint8_t>::value)   {
-            wRetValue = mPrefs.getUChar(arKey, aDefaultValue);
+            wRetValue = mPrefs.getUChar(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, uint16_t>::value)  {
-            wRetValue = mPrefs.getUShort(arKey, aDefaultValue);
+            wRetValue = mPrefs.getUShort(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, uint32_t>::value)  {
-            wRetValue = mPrefs.getUInt(arKey, aDefaultValue);
+            wRetValue = mPrefs.getUInt(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, int8_t>::value)    {
-            wRetValue = mPrefs.getChar(arKey, aDefaultValue);
+            wRetValue = mPrefs.getChar(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, int16_t>::value)   {
-            wRetValue = mPrefs.getShort(arKey, aDefaultValue);
+            wRetValue = mPrefs.getShort(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, int32_t>::value)   {
-            wRetValue = mPrefs.getInt(arKey, aDefaultValue);
+            wRetValue = mPrefs.getInt(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, float>::value)     {
-            wRetValue = mPrefs.getFloat(arKey, aDefaultValue);
+            wRetValue = mPrefs.getFloat(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, double>::value)    {
-            wRetValue = mPrefs.getDouble(arKey, aDefaultValue);
+            wRetValue = mPrefs.getDouble(wKeyStr, aDefaultValue);
         } else if constexpr (std::is_same<T, String>::value)    {
-            wRetValue = mPrefs.getString(arKey, aDefaultValue);
+            wRetValue = mPrefs.getString(wKeyStr, aDefaultValue);
         }
         else
         {
@@ -84,41 +87,44 @@ T Settings::GetValue(tKey arKey, const T aDefaultValue)
  * @return true if the value was successfully written, false otherwise.
  *
  * Examples:
- *      bool success = Settings.SetValue<int>("myIntKey", 42);
- *      bool success = Settings.SetValue<bool>("myBoolKey", true);
- *      bool success = Settings.SetValue<String>("myStringKey", "Hello");
+ *      bool success = Settings.SetValue<int>(tKey(1234), 42);
+ *      bool success = Settings.SetValue<bool>(tKey(1234), true);
+ *      bool success = Settings.SetValue<String>(tKey(1234), "Hello");
  *
  *    Unsupported type (will cause compile-time error):
- *     bool success = settings.SetValue<std::vector<int>>("myVectorKey", {1,2,3});
+ *      bool success = settings.SetValue<std::vector<int>>(tKey(1234), {1,2,3});
  */
 template<typename T>
-bool Settings::SetValue(tKey arKey, const T aValue)
+bool Settings::SetValue(const tKey& arKey, const T aValue)
 {
     size_t wRetSize = 0;
 
     /* Open preferences in read-write mode */
     if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
+
         if constexpr (std::is_same<T, bool>::value) {
-            wRetSize = mPrefs.putBool(arKey, aValue);
+            wRetSize = mPrefs.putBool(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, uint8_t>::value)   {
-            wRetSize = mPrefs.putUChar(arKey, aValue);
+            wRetSize = mPrefs.putUChar(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, uint16_t>::value)  {
-            wRetSize = mPrefs.putUShort(arKey, aValue);
+            wRetSize = mPrefs.putUShort(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, uint32_t>::value)  {
-            wRetSize = mPrefs.putUInt(arKey, aValue);
+            wRetSize = mPrefs.putUInt(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, int8_t>::value)    {
-            wRetSize = mPrefs.putChar(arKey, aValue);
+            wRetSize = mPrefs.putChar(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, int16_t>::value)   {
-            wRetSize = mPrefs.putShort(arKey, aValue);
+            wRetSize = mPrefs.putShort(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, int32_t>::value)   {
-            wRetSize = mPrefs.putInt(arKey, aValue);
+            wRetSize = mPrefs.putInt(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, float>::value)     {
-            wRetSize = mPrefs.putFloat(arKey, aValue);
+            wRetSize = mPrefs.putFloat(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, double>::value)    {
-            wRetSize = mPrefs.putDouble(arKey, aValue);
+            wRetSize = mPrefs.putDouble(wKeyStr, aValue);
         } else if constexpr (std::is_same<T, String>::value)    {
-            wRetSize = mPrefs.putString(arKey, aValue);
+            wRetSize = mPrefs.putString(wKeyStr, aValue);
         }
         else
         {

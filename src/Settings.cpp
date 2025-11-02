@@ -48,15 +48,19 @@ void Settings::Clear(void)
  * @param arKey The name of the key to check.
  * @return true if the key exists, false otherwise.
  */
-bool Settings::HasKey(tKey arKey)
+bool Settings::HasKey(const tKey& arKey)
 {
     bool wRetValue = false;
 
     /* Open preferences in read-only mode */
     if (mPrefs.begin(mcPrefsParamNamespace, true))
     {
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
+
         /* Check if the key exists */
-        wRetValue = mPrefs.isKey(arKey);
+        wRetValue = mPrefs.isKey(wKeyStr);
+
         /* Close the Preferences */
         mPrefs.end();
     }
@@ -69,15 +73,19 @@ bool Settings::HasKey(tKey arKey)
  * @param arKey The name of the key to remove.
  * @return true if the key was successfully removed, false otherwise.
  */
-bool Settings::RemoveKey(tKey arKey)
+bool Settings::RemoveKey(const tKey& arKey)
 {
     bool wRetValue = false;
 
     /* Open preferences in read-write mode */
     if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
+
         /* Remove the key */
-        wRetValue = mPrefs.remove(arKey);
+        wRetValue = mPrefs.remove(wKeyStr);
+
         /* Close the Preferences */
         mPrefs.end();
     }
@@ -92,15 +100,20 @@ bool Settings::RemoveKey(tKey arKey)
  * @param aDataSize Size of the buffer in bytes.
  * @return true if the data was successfully read, false otherwise.
  */
-bool Settings::GetBytes(tKey arKey, uint8_t* apData, const size_t aDataSize)
+bool Settings::GetBytes(const tKey& arKey, uint8_t* apData, const size_t aDataSize)
 {
     size_t wRetSize = 0;
 
     /* Open preferences in read-only mode */
     if (mPrefs.begin(mcPrefsParamNamespace, true))
     {
-        wRetSize = mPrefs.getBytes(arKey, apData, aDataSize);
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
 
+        /* Retrieve the byte array */
+        wRetSize = mPrefs.getBytes(wKeyStr, apData, aDataSize);
+
+        /* Close the Preferences */
         mPrefs.end();
     }
 
@@ -117,15 +130,20 @@ bool Settings::GetBytes(tKey arKey, uint8_t* apData, const size_t aDataSize)
  * @param aDataSize Size of the byte array in bytes.
  * @return true if the data was successfully written, false otherwise.
  */
-bool Settings::SetBytes(tKey arKey, const uint8_t* apData, const size_t aDataSize)
+bool Settings::SetBytes(const tKey& arKey, const uint8_t* apData, const size_t aDataSize)
 {
     size_t wRetSize = 0;
 
     /* Open preferences in read-write mode */
     if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
-        wRetSize = mPrefs.putBytes(arKey, apData, aDataSize);
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
 
+        /* Store the byte array */
+        wRetSize = mPrefs.putBytes(wKeyStr, apData, aDataSize);
+
+        /* Close the Preferences */
         mPrefs.end();
     }
 
@@ -143,18 +161,36 @@ bool Settings::SetBytes(tKey arKey, const uint8_t* apData, const size_t aDataSiz
  *
  * @param arKey The name of the counter key.
  * @param aNewValue The new value to set for the counter (if not zero), otherwise the counter is incremented.
+ * @return true if the counter value was successfully written, false otherwise.
+ *
+ * Examples:
+ *   Increment the counter:
+ *      bool success = Settings.IncreaseCounter(tKey(5678), 0);
+ *
+ *   Set the counter to a specific value:
+ *      bool success = Settings.IncreaseCounter(tKey(5678), 100);
  */
-void Settings::IncreaseCounter(tKey arKey, const uint32_t aNewValue)
+bool Settings::IncreaseCounter(const tKey& arKey, const uint32_t aNewValue)
 {
+    size_t wRetSize = 0;
+
     /* Get current counter value */
-    uint32_t wCounter = GetCounter(arKey, 0);
+    uint32_t wCurrValue = GetCounter(arKey, 0);
 
     /* Open preferences in read-write mode */
     if (mPrefs.begin(mcPrefsCounterNamespace, false))
     {
-        mPrefs.putUInt(arKey, (aNewValue != 0) ? aNewValue : (wCounter + 1));
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
+
+        /* Update the counter value */
+        wRetSize = mPrefs.putUInt(wKeyStr, (aNewValue != 0) ? aNewValue : (wCurrValue + 1));
+
+        /* Close the Preferences */
         mPrefs.end();
     }
+
+    return (wRetSize == sizeof(uint32_t));
 }
 
 /**
@@ -169,14 +205,20 @@ void Settings::IncreaseCounter(tKey arKey, const uint32_t aNewValue)
  * @param aDefaultValue The value to return if the counter key does not exist.
  * @return The counter value associated with the key, or aDefaultValue if not found.
  */
-uint32_t Settings::GetCounter(tKey arKey, const uint32_t aDefaultValue)
+uint32_t Settings::GetCounter(const tKey& arKey, const uint32_t aDefaultValue)
 {
     uint32_t wCounter = aDefaultValue;
 
     /* Open preferences in read-only mode */
     if (mPrefs.begin(mcPrefsCounterNamespace, true))
     {
-        wCounter = mPrefs.getUInt(arKey, 0);
+        /* Get key string representation */
+        const char* wKeyStr = GetString(arKey);
+
+        /* Close the Preferences */
+        wCounter = mPrefs.getUInt(wKeyStr, 0);
+
+        /* Close the Preferences */
         mPrefs.end();
     }
 
