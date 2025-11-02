@@ -233,12 +233,16 @@ void WiFiManager::SendStatus(void)
 		/* Create message */
     	MessageNS::Message wMessage;
     	wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
-        wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
 
 		/* Set selected message ID */
 		wMessage.mId = wMessageId;
 
-        /* Send message */
+        /* Send message to the time manager */
+		wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
+        mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+
+        /* Send message to the web manager */
+		wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
         mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
     }
 }

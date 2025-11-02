@@ -12,6 +12,7 @@
 #include "Display.h"
 #include "TimeManager.h"
 #include "WiFiManager.h"
+#include "WebSite.h"
 
 
 /******************************************************************************
@@ -37,9 +38,10 @@ static void RunApplication(void);
 /******************************************************************************
     PRIVATE MEMBER VARIABLES
  *****************************************************************************/
-static Display* mpDisplay;
+static Display*     mpDisplay;
 static TimeManager* mpTimeManager;
 static WiFiManager* mpWiFiManager;
+static WebSite*     mpWebSite;
 
 static CommunicationNS::CommunicationManager* mpCommunicationManager = nullptr;
 
@@ -54,6 +56,10 @@ static ApplicationNS::tTaskObjects      mTimeManagerTaskObjects;
 static ApplicationNS::MessageQueue*     mpWifiManagerMessageQueue;
 static ApplicationNS::MessageReceiver*  mpWifiManagerMessageReceiver;
 static ApplicationNS::tTaskObjects      mWifiManagerTaskObjects;
+
+static ApplicationNS::MessageQueue*     mpWebSiteMessageQueue;
+static ApplicationNS::MessageReceiver*  mpWebSiteMessageReceiver;
+static ApplicationNS::tTaskObjects      mWebSiteTaskObjects;
 
 
 /******************************************************************************
@@ -156,6 +162,8 @@ static void InitApplication(void)
             ConfigNS::mTimeManagerTaskStackSize);
     mpWiFiManager = new WiFiManager(ConfigNS::mWifiManagerTaskName, ConfigNS::mWifiManagerTaskPriority,
             ConfigNS::mWifiManagerTaskStackSize);
+    mpWebSite = new WebSite(ConfigNS::mWebSiteTaskName, ConfigNS::mWebSiteTaskPriority,
+            ConfigNS::mWebSiteTaskStackSize);
 
     /* Create communication manager */
     mpCommunicationManager = new CommunicationNS::CommunicationManager();
@@ -170,6 +178,9 @@ static void InitApplication(void)
     mpWifiManagerMessageQueue    = new ApplicationNS::MessageQueue();
     mpWifiManagerMessageReceiver = new ApplicationNS::MessageReceiver();
 
+    mpWebSiteMessageQueue        = new ApplicationNS::MessageQueue();
+    mpWebSiteMessageReceiver     = new ApplicationNS::MessageReceiver();
+
     /* Initialize task objects */
     mpDisplayMessageReceiver->Init(mpDisplayMessageQueue,
         mpDisplay->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
@@ -177,6 +188,8 @@ static void InitApplication(void)
         mpTimeManager->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
     mpWifiManagerMessageReceiver->Init(mpWifiManagerMessageQueue,
         mpWiFiManager->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
+    mpWebSiteMessageReceiver->Init(mpWebSiteMessageQueue,
+        mpWebSite->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
 
     mDisplayTaskObjects.mpMessageQueue             = mpDisplayMessageQueue;
     mDisplayTaskObjects.mpCommunicationManager     = mpCommunicationManager;
@@ -187,10 +200,14 @@ static void InitApplication(void)
     mWifiManagerTaskObjects.mpMessageQueue         = mpWifiManagerMessageQueue;
     mWifiManagerTaskObjects.mpCommunicationManager = mpCommunicationManager;
 
+    mWebSiteTaskObjects.mpMessageQueue             = mpWebSiteMessageQueue;
+    mWebSiteTaskObjects.mpCommunicationManager     = mpCommunicationManager;
+
     /* Initialize tasks */
     mpDisplay->Init(&mDisplayTaskObjects);
     mpTimeManager->Init(&mTimeManagerTaskObjects);
     mpWiFiManager->Init(&mWifiManagerTaskObjects);
+    mpWebSite->Init(&mWebSiteTaskObjects);
 
     /* Register messages receiver an communication manager */
     mpCommunicationManager->RegisterCallback(
@@ -199,11 +216,14 @@ static void InitApplication(void)
         MessageNS::tAddress::TIME_MANAGER,    mpTimeManagerMessageReceiver);
     mpCommunicationManager->RegisterCallback(
         MessageNS::tAddress::WIFI_MANAGER,    mpWifiManagerMessageReceiver);
+    mpCommunicationManager->RegisterCallback(
+        MessageNS::tAddress::WEB_MANAGER,     mpWebSiteMessageReceiver);
 }
 
 static void RunApplication(void)
 {
     /* Trigger all tasks */
+
     if ((mpDisplay != nullptr) &&
         (mpDisplay->getTaskHandle() != nullptr))
     {
@@ -220,5 +240,11 @@ static void RunApplication(void)
         (mpWiFiManager->getTaskHandle() != nullptr))
     {
             xTaskNotifyGive(mpWiFiManager->getTaskHandle());
+    }
+
+    if ((mpWebSite != nullptr) &&
+        (mpWebSite->getTaskHandle() != nullptr))
+    {
+            xTaskNotifyGive(mpWebSite->getTaskHandle());
     }
 }
