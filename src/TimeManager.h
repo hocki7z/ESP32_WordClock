@@ -35,6 +35,9 @@ private:
     /* Flag indicates that the NTP time is synchronized */
     bool mNtpTimeSynced = false;
 
+    uint8_t mNtpServer;
+    uint8_t mTimeZone;
+
     /* ApplicationNS::Task::task() */
     void task(void) override;
     /* ApplicationNS::Task::ProcessTimerEvent() */
@@ -44,6 +47,8 @@ private:
 
     DateTimeNS::tDateTime GetLocalTime(void);
     DateTimeNS::tDateTime GetNtpTime(void);
+
+    void SetLocalTimeFromNTP(void);
 
     void SetLocalTime(DateTimeNS::tDateTime aDateTime);
     void SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear);

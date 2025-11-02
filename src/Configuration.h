@@ -75,8 +75,8 @@ namespace ConfigNS
     static constexpr SettingsNS::tKey  mKeyDisplayNightModeEndTime      = "DSP_NITE_END";
 
     static constexpr SettingsNS::tKey  mKeyNtpServer                    = "NTP_SERVER";
-    // static constexpr SettingsNS::tKey  mKeyNtpSyncPeriod                = "NTP_PERIOD";
-    // static constexpr SettingsNS::tKey  mKeyNtpSyncTimeout               = "NTP_TIMEOUT";
+    static constexpr SettingsNS::tKey  mKeyNtpSyncPeriod                = "NTP_PERIOD";
+    static constexpr SettingsNS::tKey  mKeyNtpSyncTimeout               = "NTP_TIMEOUT";
 
     static constexpr SettingsNS::tKey  mKeyTimeZone                     = "TIME_ZONE";
 
@@ -108,6 +108,8 @@ namespace ConfigNS
     /* Default values for datetime settings */
     static constexpr uint8_t mDefaultNtpServer                          = 0;            // "pool.ntp.org"
     static constexpr uint8_t mDefaultTimeZone                           = 6;            // CET timezone
+    static constexpr uint32_t mDefaultNtpSyncPeriod                     = 600;          // 10 minutes
+    static constexpr uint32_t mDefaultNtpSyncTimeout                    = 5000;         // 5 seconds
 
 
 
