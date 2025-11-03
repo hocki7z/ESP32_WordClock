@@ -4,6 +4,7 @@
  *  Created on: 25.09.2025
  *      Author: hocki
  */
+#include <WiFi.h>
 #include <ESPUI.h>
 
 #include "Logger.h"
@@ -15,6 +16,13 @@
 
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
+
+
+inline String IpAddress2String(const IPAddress& arIpAddress)
+{
+    return String(arIpAddress[0]) + String(".") + String(arIpAddress[1]) + String(".") +
+           String(arIpAddress[2]) + String(".") + String(arIpAddress[3]);
+}
 
 /**
  * Initialize the private static pointer
@@ -30,6 +38,8 @@ WebSite::WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, con
 {
     /* Set "this" static pointer */
     mpWebSiteInstance = this;
+
+    mpConfigWebServer = new AsyncWebServer(2025);
 }
 
 /**
@@ -37,6 +47,10 @@ WebSite::WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 WebSite::~WebSite()
 {
+    /* Delete web server instance */
+    delete mpConfigWebServer;
+    mpConfigWebServer = nullptr;
+
     /* Clear "this" static pointer */
     mpWebSiteInstance = nullptr;
 }
@@ -109,6 +123,14 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     /* Update LED brightness controls */
     UpdateLedBrightnessControls();
+
+    mpConfigWebServer->on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+        String message = "WordClock web configuration interface.\n\n";
+        message = message + "General:\n";
+        message = message + "http://" + IpAddress2String(WiFi.localIP()) + ":2025 --> Shows this text\n\n";
+
+        request->send(200, "text/plain", message);
+    });
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -122,6 +144,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server");
 
             ESPUI.begin("Wordclock");
+            mpConfigWebServer->begin();
             break;
 
             case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:

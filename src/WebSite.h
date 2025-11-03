@@ -49,6 +49,9 @@ private:
 
     tWebUIControlID mWebUIControlID;
 
+    /* Web server for HTML commands */
+    AsyncWebServer* mpConfigWebServer = nullptr;
+
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
