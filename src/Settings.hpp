@@ -167,9 +167,10 @@ namespace SettingsNS
          */
         const char* GetString(const tKey& arKey) const
         {
-            static char wKeyStr[9]; // 2 + 2 + 4 + null terminator
+            static char wKeyStr[14]; // 6 (prefix) + 2 + 2 + 4
 
-            snprintf(wKeyStr, sizeof(wKeyStr), "%02X%02X%04X",
+            /* Format with prefix "HEXKEY" */
+            snprintf(wKeyStr, sizeof(wKeyStr), "HEXKEY%02X%02X%04X",
                     arKey.mParts.mRegion,
                     arKey.mParts.mGroup,
                     arKey.mParts.mId);
