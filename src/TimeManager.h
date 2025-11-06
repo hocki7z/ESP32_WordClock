@@ -25,15 +25,27 @@ public:
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
+
+    /* Time source enumeration */
+    enum tTimeSource
+    {
+        TIME_SOURCE_NONE = 0,       // Time not set
+        TIME_SOURCE_COMPILE_TIME,   // Time set from compilation time
+        TIME_SOURCE_NTP,            // Time set and managed from NTP server
+        TIME_SOURCE_MANUAL,         // Time set manually by user
+        //
+        NB_TIME_SOURCES
+    };
+
 	/* Periodical timer for this task */
 	ApplicationNS::tTaskTimerObjects mTimerObjects;
     ApplicationNS::TaskTimer* mpTimer;
 
-    /* Last sent datatime */
-    DateTimeNS::tDateTime mSentTime;
+    /* Current time source */
+    tTimeSource mTimeSource = TIME_SOURCE_NONE;
 
-    /* Flag indicates that the NTP time is synchronized */
-    bool mNtpTimeSynced = false;
+    /* Last sent datatime */
+    DateTimeNS::tDateTime mSentTime = DateTimeNS::tDateTime();
 
     uint8_t mNtpServer;
     uint8_t mTimeZone;
@@ -52,6 +64,9 @@ private:
 
     void SetLocalTime(DateTimeNS::tDateTime aDateTime);
     void SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, uint8_t aDay, uint8_t aMonth, uint16_t aYear);
+
+    void ResetTimeZone(void);
+
 
     void HandleNTPSyncEvent(NTPEvent_t aEvent);
 

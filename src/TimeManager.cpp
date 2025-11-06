@@ -4,8 +4,9 @@
  *  Created on: 08.09.2025
  *      Author: hocki
  */
-
- #include <cstdio>      // for sscanf
+#include <cstdio>       // for sscanf
+#include <cstdlib>      // for setenv
+#include <ctime>        // for tzset
 
 #include <ESPNtpClient.h>
 
@@ -64,29 +65,33 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, mPeriodicalTaskTimerPeriodMs, true);
 	mpTimer->Init(&mTimerObjects);
 
-//    /* Initialize local time with compilation time */
-//    DateTimeNS::tDateTime wCompileTime = DateTimeNS::CompileTime();
-//    SetLocalTime(wCompileTime);
+    /* No need to set timezone yet, reset to system default */
+    ResetTimeZone();
 
-    /* Init variables */
-    mSentTime = GetLocalTime();
+    /* Initialize local time with compilation time */
+    DateTimeNS::tDateTime wCompileTime = DateTimeNS::CompileTime();
+    SetLocalTime(wCompileTime);
+
+    /* Set new time source */
+    mTimeSource = TIME_SOURCE_COMPILE_TIME;
+
 
     /* Register NTP sync events callback */
 	NTP.onNTPSyncEvent(
         std::bind(&TimeManager::HandleNTPSyncEvent, this, std::placeholders::_1));
 
-    /* Get NTP server from settings */
-    mNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
+//     /* Get NTP server from settings */
+//     mNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
 
-    /* Set time zone from settings */
-    mTimeZone = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
-    NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
+//     /* Set time zone from settings */
+//     mTimeZone = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+//     NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
 
-   /* Set sync parameters */
-    NTP.setInterval(Settings.GetValue<uint32_t>(
-            ConfigNS::mKeyNtpSyncPeriod, ConfigNS::mDefaultNtpSyncPeriod));
-    NTP.setNTPTimeout(Settings.GetValue<uint32_t>(
-            ConfigNS::mKeyNtpSyncTimeout, ConfigNS::mDefaultNtpSyncTimeout));
+//    /* Set sync parameters */
+//     NTP.setInterval(Settings.GetValue<uint32_t>(
+//             ConfigNS::mKeyNtpSyncPeriod, ConfigNS::mDefaultNtpSyncPeriod));
+//     NTP.setNTPTimeout(Settings.GetValue<uint32_t>(
+//             ConfigNS::mKeyNtpSyncTimeout, ConfigNS::mDefaultNtpSyncTimeout));
 //    NTP.setMinSyncAccuracy(5000);
 //    NTP.settimeSyncThreshold(3000);
 }
@@ -124,21 +129,33 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         {
             /* WiFi connected, start NTP sync */
 
+            /* Set sync parameters */
+            NTP.setInterval(Settings.GetValue<uint32_t>(
+                    ConfigNS::mKeyNtpSyncPeriod, ConfigNS::mDefaultNtpSyncPeriod));
+            NTP.setNTPTimeout(Settings.GetValue<uint32_t>(
+                    ConfigNS::mKeyNtpSyncTimeout, ConfigNS::mDefaultNtpSyncTimeout));
+
             /* Get NTP server from settings */
             mNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
             /* Start NTP client */
             NTP.begin(ConfigNS::mcNtpServerItems[mNtpServer], false);
+
+            /* Set new time source */
+            mTimeSource = TIME_SOURCE_NTP;
         }
             break;
 
         case MessageNS::tMessageId::MGS_EVENT_NTP_LASTSYNC_TIME:
             LOG(LOG_DEBUG, "TimeManager::ProcessIncomingMessage() Event NTP last sync time");
 
-            /* Set sync flag */
-            mNtpTimeSynced = true;
-
             /* Set local time from the last NTP sync time */
             SetLocalTimeFromNTP();
+
+            // Stop NTP client to save resources
+            NTP.stop();
+
+            mTimeSource = TIME_SOURCE_MANUAL;
+
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
@@ -166,14 +183,11 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 mTimeZone = wTimeZone;
                 NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
 
-                if (mNtpTimeSynced)
-                {
-                    /* Update local time */
-                    SetLocalTimeFromNTP();
+                /* Clear sent time to force sending updated time */
+                mSentTime = DateTimeNS::tDateTime();
 
-                    /* Send time */
-                    SendTime();
-                }
+                /* Update local time */
+                SetLocalTimeFromNTP();
             }
         }
             break;
@@ -186,11 +200,10 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
 void TimeManager::SetLocalTimeFromNTP(void)
 {
-    if (mNtpTimeSynced)
-    {
-        DateTimeNS::tDateTime wNTPTime = GetNtpTime();
-        SetLocalTime(wNTPTime);
-    }
+    mTimeSource = TIME_SOURCE_NTP;
+
+    DateTimeNS::tDateTime wNTPTime = GetNtpTime();
+    SetLocalTime(wNTPTime);
 }
 
 void TimeManager::SetLocalTime(DateTimeNS::tDateTime aDateTime)
@@ -223,9 +236,22 @@ void TimeManager::SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, 
     settimeofday(&wNewTimeval, nullptr);
 }
 
+/** @brief Reset timezone to system default */
+void TimeManager::ResetTimeZone(void)
+{
+    setenv("TZ", "", 1);        // clear timezone setting
+//    setenv("TZ", "UTC", 1);     //   or explicitly set to UTC
+//    unsetenv("TZ");             // alternative way to reset to system default
+
+    /* Apply new timezone setting */
+    tzset();
+}
+
 DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
 {
     DateTimeNS::tDateTime wDateTime;
+
+    ResetTimeZone();
 
     /* Get local time */
     time_t wTime = time(NULL);
@@ -251,6 +277,10 @@ DateTimeNS::tDateTime TimeManager::GetNtpTime(void)
     /* Check if NTP sync ever happened */
     if (NTP.getLastNTPSync() != 0)
     {
+        /* Set time zone from settings */
+        mTimeZone = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+        NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
+
         uint8_t wHour, wMinute, wSecond;
         uint8_t wDay,  wMonth;
         uint16_t wYear;
@@ -281,8 +311,9 @@ DateTimeNS::tDateTime TimeManager::GetNtpTime(void)
 
 void TimeManager::SendTime(void)
 {
-    /* Check NTP time sync */
-    if (mNtpTimeSynced)
+    /* Check if time source is valid */
+    if ((mTimeSource > TIME_SOURCE_NONE) &&
+        (mTimeSource < NB_TIME_SOURCES))
     {
         /* Get current time */
         DateTimeNS::tDateTime wCurrTime = GetLocalTime();
@@ -315,7 +346,6 @@ void TimeManager::SendTime(void)
             {
                 //TODO handle serialization error
             }
-
 
             /* Update previous time*/
             mSentTime = wCurrTime;
