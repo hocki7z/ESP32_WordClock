@@ -39,13 +39,21 @@ namespace ConfigNS
 
     /* WiFi manager task configuration */
     static constexpr tTaskPriority mWifiManagerTaskPriority  = mDefaultTaskPriority;
-    static constexpr uint32_t      mWifiManagerTaskStackSize = mDefaultTaskStackSize;
+    static constexpr uint32_t      mWifiManagerTaskStackSize = mDefaultTaskStackSize + 512;
     static constexpr const char*   mWifiManagerTaskName      = "WifiManagerTask";
 
     /* Web site task configuration */
     static constexpr tTaskPriority mWebSiteTaskPriority      = mDefaultTaskPriority;
     static constexpr uint32_t      mWebSiteTaskStackSize     = mDefaultTaskStackSize;
     static constexpr const char*   mWebSiteTaskName          = "WebSiteTask";
+
+
+    /**
+     * WiFi configurations
+     */
+    /** @brief WiFi access point SSID and password */
+    static constexpr const char*   mWiFiApSSID               = "ESP32_WORDCLOCK";
+    static constexpr const char*   mWiFiApPASS               = "12345678";         // Leave empty for open network
 
 
     /**

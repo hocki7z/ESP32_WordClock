@@ -6,7 +6,7 @@
  */
 
 /* Start Wifi connection with defined SSID and password */
-#define USE_CREDENTIALS
+//#define USE_CREDENTIALS
 
 #ifdef USE_CREDENTIALS
 /**
@@ -26,8 +26,12 @@
 #endif /* USE_CREDENTIALS */
 
 #include <WiFi.h>
+#include <WiFiClient.h>
+
+#include <esp_wifi.h>
 
 #include "Logger.h"
+#include "Configuration.h"
 #include "Serialize.h"
 
 #include "WiFiManager.h"
@@ -135,13 +139,21 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 	switch (mState)
 	{
 		case STATE_BOOT:
+			/* Move to next state */
+			mState = STATE_CONNECTING;
+			/* Set status */
 			mStatus = STATUS_NOT_CONNECTED;
 
-#ifdef USE_CREDENTIALS
-            /* Try to connect to WiFi */
-            mState = STATE_CONNECTING;
-            ConnectWifi();
-#endif /* USE_CREDENTIALS */
+			if (IsWifiModePossible())
+			{
+				/* Try connect to STA */
+				ConnectWifi();
+			}
+			else
+			{
+                /* Connect AP */
+                ConnectAP();
+			}
 			break;
 
 		case STATE_CONNECTING:
@@ -153,6 +165,16 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 
 					mState  = STATE_ONLINE;
 					mStatus = STATUS_ONLINE;
+					/* Notify */
+					SendStatus();
+					break;
+
+				case ARDUINO_EVENT_WIFI_AP_START:
+					LOG(LOG_DEBUG, "WiFiManager::ProcessState() Access Point started");
+
+					mState  = STATE_AP_MODE;
+					mStatus = STATUS_AP_MODE;
+
 					/* Notify */
 					SendStatus();
 					break;
@@ -201,6 +223,7 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 		case STATE_NOT_CONFIGURED:
 		case STATE_AP_MODE:
 		default:
+			// do nothing
 			break;
 	}
 }
@@ -247,12 +270,50 @@ void WiFiManager::SendStatus(void)
     }
 }
 
+/*
+ * @brief Returns true if connection to the a wireless router is possible
+ */
+bool WiFiManager::IsWifiModePossible(void)
+{
+    bool wRetValue = false;
+
+#if defined(USE_CREDENTIALS)
+	if ((strlen(CRED_WIFI_SSID) > 0) &&
+	    (CRED_WIFI_SSID[0] != ' '))
+	{
+		/* CRED_WIFI_SSID is valid */
+		wRetValue = true;
+	}
+
+#else
+	wifi_config_t wWifiConfig;
+
+	/* Get WiFi configuration from SDK */
+	if (esp_wifi_get_config(WIFI_IF_STA, &wWifiConfig) == ESP_OK)
+	{
+		LOG(LOG_VERBOSE, "WiFiManager::isWifiModePossible() SSID from SDK config: %s",
+			reinterpret_cast<const char*>(wWifiConfig.sta.ssid));
+
+		/* Wifi config in SDK is valid */
+		wRetValue = true;
+	}
+	else
+	{
+		LOG(LOG_DEBUG, "WiFiManager::isWifiModePossible() Failed to get WiFi config from SDK");
+	}
+#endif /* defined(USE_CREDENTIALS) */
+
+	return wRetValue;
+}
+
 void WiFiManager::ConnectWifi(void)
 {
     /* Disconnect from the network (close AP) */
     WiFi.softAPdisconnect(true);
     /* Disconnect from the network */
     WiFi.disconnect(true);
+
+	/* Wait a moment */
     delay(100);
 
     /* FIX problem:
@@ -265,9 +326,11 @@ void WiFiManager::ConnectWifi(void)
 
     /* Start WiFi Station mode */
     WiFi.mode(WIFI_STA);
+
+	/* Wait a moment */
     delay(100);
 
-    /* Ste connection start time */
+    /* Set connection start time */
     mConnectionStart = millis();
 
 #ifdef USE_CREDENTIALS
@@ -284,8 +347,41 @@ void WiFiManager::ConnectWifi(void)
 
 void WiFiManager::ReconnectWifi(void)
 {
+	/* Update connection start time */
 	mConnectionStart = millis();
+
+	/* Reconnect to WiFi */
 	WiFi.reconnect();
+}
+
+/**
+ * @brief Set the ESP32 as an access point
+ */
+void WiFiManager::ConnectAP(void)
+{
+    /* Disconnect from the network (close AP) */
+    WiFi.softAPdisconnect(true);
+    /* Disconnect from the network */
+    WiFi.disconnect(true);
+	/* Wait a moment */
+    delay(100);
+
+    /* Set WiFi soft-AP mode */
+    LOG(LOG_DEBUG, "WifiMangerClass::ConnectAP() Start AP mode");
+    WiFi.mode(WIFI_AP);
+	/* Wait a moment */
+    delay(100);
+
+    /* Start WiFi AP connection */
+    if (WiFi.softAP(ConfigNS::mWiFiApSSID, ConfigNS::mWiFiApPASS) == true)
+    {
+        LOG(LOG_VERBOSE, "WifiMangerClass::ConnectAP() Access Point %s [%s] started",
+                ConfigNS::mWiFiApSSID, WiFi.softAPIP().toString().c_str());
+    }
+	else
+    {
+        LOG(LOG_ERROR, "WifiMangerClass::ConnectAP() Setup access point failed");
+    }
 }
 
 void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
@@ -325,6 +421,26 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
 			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station lost IP and the IP is reset to 0");
 			break;
 
+		case ARDUINO_EVENT_WIFI_AP_START:
+			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Access Point start, IP %s", WiFi.softAPIP().toString().c_str());
+			wNotifyTask = true;
+			break;
+		case ARDUINO_EVENT_WIFI_AP_STOP:
+			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Access Point stop");
+			wNotifyTask = true;
+			break;
+		case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station connected to Access Point");
+			break;
+		case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station disconnected from Access Point");
+			break;
+		case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station assigned IP from Access Point");
+			break;
+		case ARDUINO_EVENT_WIFI_AP_PROBEREQRECVED:
+			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Access Point received probe request");
+			break;
 		default:
 			break;
     }
