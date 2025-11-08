@@ -172,6 +172,12 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 				case ARDUINO_EVENT_WIFI_AP_START:
 					LOG(LOG_DEBUG, "WiFiManager::ProcessState() Access Point started");
 
+					/* Start DNS server for captive portal */
+					if (mDnsServer.start(ConfigNS::mDnsPort, "*", WiFi.softAPIP()) == false)
+					{
+						LOG(LOG_ERROR, "WebSite::ProcessIncomingMessage() Start DNS server for captive portal failed");
+					}
+
 					mState  = STATE_AP_MODE;
 					mStatus = STATUS_AP_MODE;
 
@@ -244,7 +250,7 @@ void WiFiManager::SendStatus(void)
             wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED;
             break;
         case STATUS_AP_MODE:
-            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_AP_CONNECTED;
+            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_AP_STARTED;
             break;
         default:
             // do nothing

@@ -12,7 +12,10 @@
 #include <WiFiGeneric.h>
 #include <WiFiType.h>
 
+#include <DNSServer.h>
+
 #include "Application.h"
+
 
 class WiFiManager : public ApplicationNS::Task
 {
@@ -46,6 +49,9 @@ private:
 	/* Periodical timer for this task */
 	ApplicationNS::tTaskTimerObjects mTimerObjects;
     ApplicationNS::TaskTimer* mpTimer;
+
+    /** @brief DNS server instance */
+    DNSServer mDnsServer;
 
     tState  mState  = STATE_BOOT;
     tStatus mStatus = STATUS_NOT_CONNECTED;

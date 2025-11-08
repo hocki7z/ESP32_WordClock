@@ -54,6 +54,8 @@ namespace ConfigNS
     /** @brief WiFi access point SSID and password */
     static constexpr const char*   mWiFiApSSID               = "ESP32_WORDCLOCK";
     static constexpr const char*   mWiFiApPASS               = "12345678";         // Leave empty for open network
+    /** @brief DNS server port */
+    static constexpr uint8_t       mDnsPort                  =  53;
 
 
     /**

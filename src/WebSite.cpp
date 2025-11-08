@@ -121,31 +121,44 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             /* WiFi connected, start WEB server */
             LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server");
 
+            /* Normal Mode - no captive portal */
+            ESPUI.captivePortal = false;
+            /* Start WEB UI */
             ESPUI.begin("Wordclock");
             break;
 
-            case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
+        case MessageNS::tMessageId::MGS_STATUS_WIFI_AP_STARTED:
+            /* Access point started, start WEB server */
+            LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server in AP mode");
+
+            /* Offline Mode - enable captive portal */
+            ESPUI.captivePortal = true;
+            /* Start WEB UI */
+            ESPUI.begin("Wordclock");
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
+        {
+            /* Check if message sent by this task */
+            if (arMessage.mSource == MessageNS::tAddress::WEB_MANAGER)
             {
-                /* Check if message sent by this task */
-                if (arMessage.mSource == MessageNS::tAddress::WEB_MANAGER)
-                {
-                    /* Update LED brightness controls */
-                    UpdateLedBrightnessControls();
+                /* Update LED brightness controls */
+                UpdateLedBrightnessControls();
 
-                    /* Redirect this message to display manager */
-                    MessageNS::Message wMessage = arMessage;
+                /* Redirect this message to display manager */
+                MessageNS::Message wMessage = arMessage;
 
-                    /* Send message to display */
-                    wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
-                    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+                /* Send message to display */
+                wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+                mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
 
-                    /* Send message to time manager */
-                    wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
-                    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+                /* Send message to time manager */
+                wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
+                mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
 
-                    break;
-                }
+                break;
             }
+        }
             break;
 
         default:
