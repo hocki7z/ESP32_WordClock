@@ -6,7 +6,7 @@
  */
 
 /* Start Wifi connection with defined SSID and password */
-//#define USE_CREDENTIALS
+#define USE_CREDENTIALS
 
 #ifdef USE_CREDENTIALS
 /**
@@ -58,12 +58,12 @@ WiFiManager::WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 WiFiManager::~WiFiManager()
 {
-	/* Clean up task timer */
+    /* Clean up task timer */
     if (mpTimer)
     {
-		/* Stop running timer */
+        /* Stop running timer */
         mpTimer->stop();
-		/*    and destroy it */
+        /*    and destroy it */
         delete mpTimer;
         mpTimer = nullptr;
     }
@@ -75,22 +75,22 @@ void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     ApplicationNS::Task::Init(apTaskObjects);
 
     /* Create periodical timer */
-	mTimerObjects.mTaskHandle = this->getTaskHandle();
-	mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
+    mTimerObjects.mTaskHandle = this->getTaskHandle();
+    mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
 
-    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 1000, true); // 1 sec period
-	mpTimer->Init(&mTimerObjects);
+    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 10000, true); // Period 10 seconds
+    mpTimer->Init(&mTimerObjects);
 
     /* Register WiFi events listener */
-	WiFi.onEvent(
+    WiFi.onEvent(
         std::bind(&WiFiManager::HandleWifiEvent, this, std::placeholders::_1));
 
-	LOG(LOG_VERBOSE, "WiFiManager::Init()");
+    LOG(LOG_VERBOSE, "WiFiManager::Init()");
 }
 
 void WiFiManager::task(void)
 {
-	LOG(LOG_VERBOSE, "WiFiManager::task()");
+    LOG(LOG_VERBOSE, "WiFiManager::task()");
 
     /* Start notification timer for this task */
     mpTimer->start();
@@ -101,179 +101,168 @@ void WiFiManager::task(void)
 
 void WiFiManager::ProcessTimerEvent(const uint32_t aTimerId)
 {
-	LOG(LOG_VERBOSE, "WiFiManager::ProcessTimerEvent() Timer ID: %d", aTimerId);
+    LOG(LOG_VERBOSE, "WiFiManager::ProcessTimerEvent() Timer ID: %d", aTimerId);
 
-	if (aTimerId == mPeriodicalTaskTimerId)
-	{
-		/* Process current FSM state */
-		ProcessState();
-	}
+    if (aTimerId == mPeriodicalTaskTimerId)
+    {
+        /* Process current FSM state */
+        ProcessState();
+    }
 }
 
 void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 {
-	LOG(LOG_VERBOSE, "WiFiManager::ProcessIncomingMessage()");
+    LOG(LOG_VERBOSE, "WiFiManager::ProcessIncomingMessage()");
 
-	switch (arMessage.mId)
-	{
-		case MessageNS::tMessageId::MGS_EVENT_WIFI_EVENT_TRIGGERED:
-		{
-			/* Deserialize wifi event */
-			uint8_t wEvent;
-			if (SerializeNS::DeserializeData(arMessage.mPayload, &wEvent) == sizeof(wEvent))
-			{
-				/* Process WiFi event */
-				ProcessState(static_cast<WiFiEvent_t>(wEvent));
-			}
-		}
-			break;
-
-		default:
-			// do nothing
-			break;
-	}
-}
-
-void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
-{
-	switch (mState)
-	{
-		case STATE_BOOT:
-			/* Move to next state */
-			mState = STATE_CONNECTING;
-			/* Set status */
-			mStatus = STATUS_NOT_CONNECTED;
-
-			if (IsWifiModePossible())
-			{
-				/* Try connect to STA */
-				ConnectWifi();
-			}
-			else
-			{
-                /* Connect AP */
-                ConnectAP();
-			}
-			break;
-
-		case STATE_CONNECTING:
-		case STATE_RECONNECTING:
-			switch (aEvent)
-			{
-				case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-					LOG(LOG_DEBUG, "WiFiManager::ProcessState() We are online");
-
-					mState  = STATE_ONLINE;
-					mStatus = STATUS_ONLINE;
-					/* Notify */
-					SendStatus();
-					break;
-
-				case ARDUINO_EVENT_WIFI_AP_START:
-					LOG(LOG_DEBUG, "WiFiManager::ProcessState() Access Point started");
-
-					/* Start DNS server for captive portal */
-					if (mDnsServer.start(ConfigNS::mDnsPort, "*", WiFi.softAPIP()) == false)
-					{
-						LOG(LOG_ERROR, "WebSite::ProcessIncomingMessage() Start DNS server for captive portal failed");
-					}
-
-					mState  = STATE_AP_MODE;
-					mStatus = STATUS_AP_MODE;
-
-					/* Notify */
-					SendStatus();
-					break;
-
-				default:
-					/* Check for connection timeout */
-					if (((millis() - mConnectionStart) >= mConnectionTimeout) &&
-					    (WiFi.status() != WL_CONNECTED))
-					{
-						LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
-
-						mState  = STATE_RECONNECTING;
-						mStatus = STATUS_NOT_CONNECTED;
-
-						/* Notify */
-						SendStatus();
-
-						/* Try to reconnect to WiFi */
-						ReconnectWifi();
-					}
-					break;
-			};
-			break;
-
-		case STATE_ONLINE:
-			switch (aEvent)
-			{
-				case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-					LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event SYSTEM_EVENT_STA_DISCONNECTED, reconnecting");
-
-					mState  = STATE_RECONNECTING;
-					mStatus = STATUS_NOT_CONNECTED;
-
-					/* Notify */
-					SendStatus();
-
-					/* Try to reconnect to WiFi */
-					ReconnectWifi();
-					break;
-
-				default:
-					break;
-			};
-			break;
-
-		case STATE_NOT_CONFIGURED:
-		case STATE_AP_MODE:
-		default:
-			// do nothing
-			break;
-	}
-}
-
-void WiFiManager::SendStatus(void)
-{
-    MessageNS::tMessageId wMessageId = MessageNS::tMessageId::NONE;
-
-    switch (mStatus)
+    switch (arMessage.mId)
     {
-        case STATUS_NOT_CONNECTED:
-            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_NOT_CONNECTED;
+        case MessageNS::tMessageId::MGS_EVENT_WIFI_EVENT_TRIGGERED:
+        {
+            /* Deserialize wifi event */
+            uint8_t wEvent;
+            if (SerializeNS::DeserializeData(arMessage.mPayload, &wEvent) == sizeof(wEvent))
+            {
+                /* Process WiFi event */
+                ProcessState(static_cast<WiFiEvent_t>(wEvent));
+            }
+        }
             break;
-        case STATUS_CONNECTING:
-            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_CONNECTING;
-            break;
-        case STATUS_ONLINE:
-            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED;
-            break;
-        case STATUS_AP_MODE:
-            wMessageId = MessageNS::tMessageId::MGS_STATUS_WIFI_AP_STARTED;
-            break;
+
         default:
             // do nothing
             break;
     }
+}
 
-    if (wMessageId != MessageNS::tMessageId::NONE)
+void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
+{
+    switch (mState)
     {
-		/* Create message */
-    	MessageNS::Message wMessage;
-    	wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
+        case STATE_IDLE:
+            /* Try connect to wifi router or start access point */
+            if (IsWifiModePossible())
+            {
+                ConnectWifi();
+            }
+            else
+            {
+                ConnectAP();
+            }
 
-		/* Set selected message ID */
-		wMessage.mId = wMessageId;
+            /* Move to next state */
+            mState = STATE_CONNECTING;
+            break;
 
-        /* Send message to the time manager */
-		wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
-        mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+        case STATE_CONNECTING:
+        case STATE_RECONNECTING:
+            switch (aEvent)
+            {
+                case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+                    /* LOG */
+                    LOG(LOG_DEBUG, "WiFiManager::ProcessState() Connected to wifi router after %d millis", (millis() - mConnectionStart));
+                    /* Move to the next state*/
+                    mState  = STATE_STA_CONNECTED;
+                    /* Notify */
+                    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_STA_CONNECTED);
+                    break;
 
-        /* Send message to the web manager */
-		wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
-        mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+                case ARDUINO_EVENT_WIFI_AP_START:
+                    /* LOG */
+                    LOG(LOG_DEBUG, "WiFiManager::ProcessState() Access point started");
+
+                    /* Start DNS server for captive portal */
+                    if (mDnsServer.start(ConfigNS::mDnsPort, "*", WiFi.softAPIP()) == false)
+                    {
+                        LOG(LOG_ERROR, "WebSite::ProcessState() Start DNS server for captive portal failed");
+                    }
+
+                    /* Move to the next state*/
+                    mState  = STATE_AP_STARTED;
+                    /* Notify */
+                    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED);
+                    break;
+
+                default:
+                    /* Check for connection timeout */
+                    if (((millis() - mConnectionStart) >= mConnectionTimeout) &&
+                        (WiFi.status() != WL_CONNECTED))
+                    {
+                        /* LOG */
+                        LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
+
+                        /* Update connection start time */
+                        mConnectionStart = millis();
+
+                        /* Reconnect to wifi router */
+                        WiFi.reconnect();
+
+                        /* Move or stay in reconnecting state */
+                        mState  = STATE_RECONNECTING;
+
+                        /* Notify */
+                        SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_STA_DISCONNECTED);
+                    }
+                    break;
+            };
+            break;
+
+        case STATE_STA_CONNECTED:
+            switch (aEvent)
+            {
+                case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+                    /* LOG */
+                    LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event got IP from connected wifi router %s",
+                            WiFi.localIP().toString().c_str());
+
+                    if (IsInternetAvailable())
+                    {
+                        LOG(LOG_DEBUG, "WiFiManager::ProcessState() We are online");
+                        /* Notify */
+                        SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_INTERNET_AVAILABLE);
+                    }
+                    else
+                    {
+                        LOG(LOG_ERROR, "WiFiManager::ProcessState() Internet is NOT available");
+                    }
+                    break;
+
+                case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+                    /* LOG */
+                    LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event disconnected from wifi router");
+
+                    /* Move to the next state */
+                    mState  = STATE_RECONNECTING;
+                    /* Notify */
+                    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_STA_DISCONNECTED);
+                    break;
+
+                default:
+                    break;
+            };
+            break;
+
+        default:
+            // do nothing
+            break;
     }
+}
+
+void WiFiManager::SendMessage(MessageNS::tMessageId wMessageId)
+{
+    /* Create message */
+    MessageNS::Message wMessage;
+    wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
+
+    /* Set selected message ID */
+    wMessage.mId = wMessageId;
+
+    /* Send message to the time manager */
+    wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
+    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+
+    /* Send message to the web manager */
+    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
 }
 
 /*
@@ -284,32 +273,59 @@ bool WiFiManager::IsWifiModePossible(void)
     bool wRetValue = false;
 
 #if defined(USE_CREDENTIALS)
-	if ((strlen(CRED_WIFI_SSID) > 0) &&
-	    (CRED_WIFI_SSID[0] != ' '))
-	{
-		/* CRED_WIFI_SSID is valid */
-		wRetValue = true;
-	}
+    if ((strlen(CRED_WIFI_SSID) > 0) &&
+        (CRED_WIFI_SSID[0] != ' '))
+    {
+        /* CRED_WIFI_SSID is valid */
+        wRetValue = true;
+    }
 
 #else
-	wifi_config_t wWifiConfig;
+    wifi_config_t wWifiConfig;
 
-	/* Get WiFi configuration from SDK */
-	if (esp_wifi_get_config(WIFI_IF_STA, &wWifiConfig) == ESP_OK)
-	{
-		LOG(LOG_VERBOSE, "WiFiManager::isWifiModePossible() SSID from SDK config: %s",
-			reinterpret_cast<const char*>(wWifiConfig.sta.ssid));
+    /* Get WiFi configuration from SDK */
+    if (esp_wifi_get_config(WIFI_IF_STA, &wWifiConfig) == ESP_OK)
+    {
+        LOG(LOG_VERBOSE, "WiFiManager::isWifiModePossible() SSID from SDK config: %s",
+            reinterpret_cast<const char*>(wWifiConfig.sta.ssid));
 
-		/* Wifi config in SDK is valid */
-		wRetValue = true;
-	}
-	else
-	{
-		LOG(LOG_DEBUG, "WiFiManager::isWifiModePossible() Failed to get WiFi config from SDK");
-	}
+        /* Wifi config in SDK is valid */
+        wRetValue = true;
+    }
+    else
+    {
+        LOG(LOG_DEBUG, "WiFiManager::isWifiModePossible() Failed to get WiFi config from SDK");
+    }
 #endif /* defined(USE_CREDENTIALS) */
 
-	return wRetValue;
+    return wRetValue;
+}
+
+/**
+ * @brief Check if internet is available by connecting to the Google's DNS server
+ *
+ * @return true if internet is available, false otherwise
+ */
+bool WiFiManager::IsInternetAvailable(void)
+{
+    bool wRetValue = false;
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        /* Create a client object */
+        WiFiClient wWiFiClient;
+
+        /* Set a short timeout (e.g. 500 ms) */
+        wWiFiClient.setTimeout(500);
+
+        /* Try to connect to Google's DNS server */
+        wRetValue = wWiFiClient.connect("8.8.8.8", 53);
+
+        /* Disconnect */
+        wWiFiClient.stop();
+    }
+
+    return wRetValue;
 }
 
 void WiFiManager::ConnectWifi(void)
@@ -319,7 +335,7 @@ void WiFiManager::ConnectWifi(void)
     /* Disconnect from the network */
     WiFi.disconnect(true);
 
-	/* Wait a moment */
+    /* Wait a moment */
     delay(100);
 
     /* FIX problem:
@@ -333,7 +349,7 @@ void WiFiManager::ConnectWifi(void)
     /* Start WiFi Station mode */
     WiFi.mode(WIFI_STA);
 
-	/* Wait a moment */
+    /* Wait a moment */
     delay(100);
 
     /* Set connection start time */
@@ -351,15 +367,6 @@ void WiFiManager::ConnectWifi(void)
 #endif /* ifdef USE_CREDENTIALS */
 }
 
-void WiFiManager::ReconnectWifi(void)
-{
-	/* Update connection start time */
-	mConnectionStart = millis();
-
-	/* Reconnect to WiFi */
-	WiFi.reconnect();
-}
-
 /**
  * @brief Set the ESP32 as an access point
  */
@@ -369,13 +376,13 @@ void WiFiManager::ConnectAP(void)
     WiFi.softAPdisconnect(true);
     /* Disconnect from the network */
     WiFi.disconnect(true);
-	/* Wait a moment */
+    /* Wait a moment */
     delay(100);
 
     /* Set WiFi soft-AP mode */
     LOG(LOG_DEBUG, "WifiMangerClass::ConnectAP() Start AP mode");
     WiFi.mode(WIFI_AP);
-	/* Wait a moment */
+    /* Wait a moment */
     delay(100);
 
     /* Start WiFi AP connection */
@@ -384,7 +391,7 @@ void WiFiManager::ConnectAP(void)
         LOG(LOG_VERBOSE, "WifiMangerClass::ConnectAP() Access Point %s [%s] started",
                 ConfigNS::mWiFiApSSID, WiFi.softAPIP().toString().c_str());
     }
-	else
+    else
     {
         LOG(LOG_ERROR, "WifiMangerClass::ConnectAP() Setup access point failed");
     }
@@ -396,81 +403,51 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
 
     LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Event: %d", aEvent);
 
-	switch (aEvent)
-	{
-		case ARDUINO_EVENT_WIFI_STA_START:
-			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station start");
-			break;
-
-		case ARDUINO_EVENT_WIFI_STA_STOP:
-			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station stop");
-			break;
-
-		case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station connected to AP; We are online after %d millis", (millis() - mConnectionStart));
-			wNotifyTask = true;
-			break;
-
-		case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+    switch (aEvent)
+    {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
 //TODO there are to much disconnection events if not possible connect to STA with saved SSID isn't exist. FIX IT
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station disconnected from AP");
-			wNotifyTask = true;
-			break;
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+        case ARDUINO_EVENT_WIFI_AP_START:
+        case ARDUINO_EVENT_WIFI_AP_STOP:
+            /* Notify WifiManager task */
+            wNotifyTask = true;
+            break;
 
-		case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:
-			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Auth mode of AP connected by ESP32 station changed");
-			break;
-		case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station got IP from connected AP %s", WiFi.localIP().toString().c_str());
-			break;
-		case ARDUINO_EVENT_WIFI_STA_LOST_IP:
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Station lost IP and the IP is reset to 0");
-			break;
-
-		case ARDUINO_EVENT_WIFI_AP_START:
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Access Point start, IP %s", WiFi.softAPIP().toString().c_str());
-			wNotifyTask = true;
-			break;
-		case ARDUINO_EVENT_WIFI_AP_STOP:
-			LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Access Point stop");
-			wNotifyTask = true;
-			break;
-		case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
-			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station connected to Access Point");
-			break;
-		case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
-			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station disconnected from Access Point");
-			break;
-		case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
-			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Station assigned IP from Access Point");
-			break;
-		case ARDUINO_EVENT_WIFI_AP_PROBEREQRECVED:
-			LOG(LOG_VERBOSE, "WiFiManager::HandleWifiEvent() Access Point received probe request");
-			break;
-		default:
-			break;
+        case ARDUINO_EVENT_WIFI_STA_START:
+        case ARDUINO_EVENT_WIFI_STA_STOP:
+        case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:
+        case ARDUINO_EVENT_WIFI_STA_LOST_IP:
+        case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+        case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+        case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+        case ARDUINO_EVENT_WIFI_AP_PROBEREQRECVED:
+        default:
+            // do nothing
+            break;
     }
 
-	if (wNotifyTask)
-	{
-		/* Create message */
-		MessageNS::Message wMessage;
-		wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
-		wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
+    if (wNotifyTask)
+    {
+        /* Create message */
+        MessageNS::Message wMessage;
+        wMessage.mSource = MessageNS::tAddress::WIFI_MANAGER;
+        wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
 
-		wMessage.mId = MessageNS::tMessageId::MGS_EVENT_WIFI_EVENT_TRIGGERED;
+        wMessage.mId = MessageNS::tMessageId::MGS_EVENT_WIFI_EVENT_TRIGGERED;
 
-		/* Serialize wifi event in message payload */
-		if (SerializeNS::SerializeData(static_cast<uint8_t>(aEvent), wMessage.mPayload) == sizeof(uint8_t))
-		{
-			/* Set payload length */
-			wMessage.mPayloadLength = sizeof(uint8_t);
-			/* Send message */
-			mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
-		}
-		else
-		{
-			//TODO handle serialization error
-		}
-	}
+        /* Serialize wifi event in message payload */
+        if (SerializeNS::SerializeData(static_cast<uint8_t>(aEvent), wMessage.mPayload) == sizeof(uint8_t))
+        {
+            /* Set payload length */
+            wMessage.mPayloadLength = sizeof(uint8_t);
+            /* Send message */
+            mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+        }
+        else
+        {
+            //TODO handle serialization error
+        }
+    }
 }
