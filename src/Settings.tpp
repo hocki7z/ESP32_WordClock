@@ -69,6 +69,10 @@ T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
         }
 
         mPrefs.end();
+
+        /* LOG */
+        LOG_WITH_REF(LOG_DEBUG, LOG_LEVEL_SETTINGS, "Settings::GetValue() Key %08X (str %s); Value %s", 
+            arKey.mRaw, wKeyStr, String(wRetValue).c_str());
     }
 
     return wRetValue;
@@ -133,6 +137,10 @@ bool Settings::SetValue(const tKey& arKey, const T aValue)
         }
 
         mPrefs.end();
+
+        /* LOG */
+        LOG_WITH_REF(LOG_DEBUG, LOG_LEVEL_SETTINGS, "Settings::SetValue() Key %08X (str %s); Value %s", 
+            arKey.mRaw, wKeyStr, String(aValue).c_str());
     }
 
     return (wRetSize == sizeof(T));
