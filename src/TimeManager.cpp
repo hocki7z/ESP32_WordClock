@@ -120,7 +120,7 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
     switch (arMessage.mId)
     {
-        case MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED:
+        case MessageNS::tMessageId::MSG_EVENT_WIFI_INTERNET_AVAILABLE:
         {
             /* WiFi connected, start NTP sync */
 

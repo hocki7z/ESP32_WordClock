@@ -117,7 +117,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
     switch (arMessage.mId)
     {
-        case MessageNS::tMessageId::MGS_STATUS_WIFI_STA_CONNECTED:
+        case MessageNS::tMessageId::MSG_EVENT_WIFI_STA_CONNECTED:
             /* WiFi connected, start WEB server */
             LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server");
 
@@ -127,7 +127,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             ESPUI.begin("Wordclock");
             break;
 
-        case MessageNS::tMessageId::MGS_STATUS_WIFI_AP_STARTED:
+        case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
             /* Access point started, start WEB server */
             LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server in AP mode");
 

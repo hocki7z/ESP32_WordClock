@@ -48,11 +48,13 @@ namespace MessageNS
         MSG_EVENT_SW_TIMER_TIMEOUT,         // Payload: 4 byte  - Timer ID
         MSG_EVENT_SETTINGS_CHANGED,         // No payload
 
+        MSG_EVENT_WIFI_STA_CONNECTED,
+        MSG_EVENT_WIFI_STA_DISCONNECTED,
+        MSG_EVENT_WIFI_AP_STARTED,
+        MSG_EVENT_WIFI_AP_STOPPED,
+        MSG_EVENT_WIFI_INTERNET_AVAILABLE,
+
         /** Status       */
-		MGS_STATUS_WIFI_NOT_CONNECTED,
-		MGS_STATUS_WIFI_CONNECTING,
-		MGS_STATUS_WIFI_STA_CONNECTED,
-		MGS_STATUS_WIFI_AP_STARTED,
 
         /** Parameters   */
 
