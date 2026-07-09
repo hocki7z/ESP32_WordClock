@@ -9,6 +9,11 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
+#include "Logger.h"
+
+/* Log level for this module */
+#define LOG_LEVEL_SETTINGS   (LOG_NONE)
+
 /**
  * @brief Namespace for settings related definitions
  */
@@ -167,13 +172,10 @@ namespace SettingsNS
          */
         const char* GetString(const tKey& arKey) const
         {
-            static char wKeyStr[14]; // 6 (prefix) + 2 + 2 + 4
+            static char wKeyStr[15]; // "HEXKEY" (6) + 8 hex digits + null terminator
 
-            /* Format with prefix "HEXKEY" */
-            snprintf(wKeyStr, sizeof(wKeyStr), "HEXKEY%02X%02X%04X",
-                    arKey.mParts.mRegion,
-                    arKey.mParts.mGroup,
-                    arKey.mParts.mId);
+            /* Format with prefix "HEXKEY" using raw key value */
+            snprintf(wKeyStr, sizeof(wKeyStr), "HEXKEY%08X", arKey.mRaw);
 
             return wKeyStr;
         }

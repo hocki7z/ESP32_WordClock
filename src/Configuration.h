@@ -39,7 +39,7 @@ namespace ConfigNS
 
     /* WiFi manager task configuration */
     static constexpr tTaskPriority mWifiManagerTaskPriority  = mDefaultTaskPriority;
-    static constexpr uint32_t      mWifiManagerTaskStackSize = mDefaultTaskStackSize;
+    static constexpr uint32_t      mWifiManagerTaskStackSize = mDefaultTaskStackSize + 1024;  // Add extra stack for WiFi operations
     static constexpr const char*   mWifiManagerTaskName      = "WifiManagerTask";
 
     /* Web site task configuration */
