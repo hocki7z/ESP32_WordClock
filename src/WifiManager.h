@@ -66,8 +66,12 @@ private:
 
 	void SendStatus(void);
 
+	bool IsWifiModePossible(void);
+
     void ConnectWifi(void);
 	void ReconnectWifi(void);
+
+	void ConnectAP(void);
 
     void HandleWifiEvent(WiFiEvent_t aEvent);
 };

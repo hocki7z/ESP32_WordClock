@@ -49,6 +49,14 @@ namespace ConfigNS
 
 
     /**
+     * WiFi configurations
+     */
+    /** @brief WiFi access point SSID and password */
+    static constexpr const char*   mWiFiApSSID               = "ESP32_WORDCLOCK";
+    static constexpr const char*   mWiFiApPASS               = "12345678";         // Leave empty for open network
+
+
+    /**
      * Settings configurations
      */
     static constexpr uint8_t      mParamsConfig                     = 0x00;
