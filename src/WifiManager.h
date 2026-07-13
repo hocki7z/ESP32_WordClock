@@ -63,6 +63,9 @@ private:
     /** @brief Start time of connection attempt */
     uint32_t mConnectionStart = 0;
 
+    /** @brief Flag to indicate if WiFi scan has been run once */
+    bool mWifiScanRunOnce = false;
+
     /* ApplicationNS::Task::task() */
     void task(void) override;
     /* ApplicationNS::Task::ProcessTimerEvent() */
@@ -72,6 +75,8 @@ private:
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     void ProcessState(const WiFiEvent_t aEvent = ARDUINO_EVENT_MAX);
+
+    void HandleWiFiScanFinished(void);
 
     void SendMessage(MessageNS::tMessageId wMessageId);
 

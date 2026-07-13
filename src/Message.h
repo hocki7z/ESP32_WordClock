@@ -54,6 +54,8 @@ namespace MessageNS
         MSG_EVENT_WIFI_AP_STOPPED,
         MSG_EVENT_WIFI_INTERNET_AVAILABLE,
 
+        MSG_EVENT_WIFI_SCAN_DONE,           // No payload
+
         /** Status       */
 
         /** Parameters   */

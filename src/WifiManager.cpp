@@ -136,6 +136,41 @@ void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
 void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 {
+    /* Process some events without changing current state */
+    switch (aEvent)
+    {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+        case ARDUINO_EVENT_WIFI_AP_START:
+            if (!mWifiScanRunOnce)
+            {   
+                /* LOG */
+                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Start async scan (non-blocking)");
+                /* Start async scan (non-blocking) */
+                WiFi.scanNetworks(true); // true = async
+
+                /* Set flag to indicate that WiFi scan has been run once */
+                mWifiScanRunOnce = true;
+            }
+            else
+            {
+                /* LOG */
+                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() WiFi scan already run once, skipping");
+            }
+            break;
+
+        case ARDUINO_EVENT_WIFI_SCAN_DONE:
+            /* LOG */
+            LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() WiFi scan done, found %d networks", WiFi.scanComplete());
+            /* Handle scan finished */
+            HandleWiFiScanFinished();
+            break;
+
+        default:  
+            // do nothing here
+            break;
+    }
+
+    /* Process state machine */
     switch (mState)
     {
         case STATE_IDLE:
@@ -261,6 +296,52 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
     }
 }
 
+void WiFiManager::HandleWiFiScanFinished(void)
+{
+    /* Save scan results */
+    for (int wI = 0; wI < WiFi.scanComplete(); wI++)
+    {
+        ConfigNS::tSSIDEntry wEntry;
+
+        // Put SSID, RSSI and encryption type
+        strncpy(wEntry.mSsid, WiFi.SSID(wI).c_str(), sizeof(wEntry.mSsid) - 1);
+        wEntry.mSsid[sizeof(wEntry.mSsid) - 1] = '\0';
+        wEntry.mRssi = WiFi.RSSI(wI);
+        wEntry.mEncrypted = WiFi.encryptionType(wI) != WIFI_AUTH_OPEN;
+
+        // Search for duplicates in the list
+        bool wDuplicateFound = false;
+        for (const auto& existingEntry : ConfigNS::mSSSIDList)
+        {
+            if (strcmp(existingEntry.mSsid, wEntry.mSsid) == 0)
+            {
+                wDuplicateFound = true;
+                break;
+            }
+        }
+
+        if (!wDuplicateFound)
+        {
+            // Add entry to the list
+            ConfigNS::mSSSIDList.push_back(wEntry);
+        }
+    }
+
+    /* LOG */
+    LOG(LOG_DEBUG, "WiFiManager::HandleWiFiScanFinished() WiFi scan done, found %d networks", ConfigNS::mSSSIDList.size());
+
+#if (LOG_LEVEL == LOG_VERBOSE)  // don't compile this code each time
+    /* Log all found network */
+    for (const auto& entry : ConfigNS::mSSSIDList)
+    {
+        LOG(LOG_VERBOSE, "WiFiManager::HandleWiFiScanFinished()     %s, RSSI: %d dBm, Encryption: %s",
+                entry.mSsid, entry.mRssi, entry.mEncrypted ? "Encrypted" : "Open");
+    }
+#endif /* (LOG_LEVEL == LOG_VERBOSE) */
+
+    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE);
+}
+
 void WiFiManager::SendMessage(MessageNS::tMessageId wMessageId)
 {
     /* Create message */
@@ -374,8 +455,8 @@ void WiFiManager::ConnectAP(void)
     delay(100);
 
     /* Set WiFi soft-AP mode */
-    LOG(LOG_DEBUG, "WifiMangerClass::ConnectAP() Start AP mode");
-    WiFi.mode(WIFI_AP);
+    LOG(LOG_DEBUG, "WifiMangerClass::ConnectAP() Start AP/STA mode");
+    WiFi.mode(WIFI_AP_STA);
     /* Wait a moment */
     delay(100);
 
@@ -405,6 +486,7 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
         case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         case ARDUINO_EVENT_WIFI_AP_START:
         case ARDUINO_EVENT_WIFI_AP_STOP:
+        case ARDUINO_EVENT_WIFI_SCAN_DONE:
             /* Notify WifiManager task */
             wNotifyTask = true;
             break;

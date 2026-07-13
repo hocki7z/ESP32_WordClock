@@ -192,4 +192,17 @@ namespace ConfigNS
         /* WAT  */  "WAT-1",
         /* WET  */  "WET0WEST,M3.5.0/1,M10.5.0",
     };
+
+    /** @brief Single WiFi scan result entry */
+    struct tSSIDEntry
+    {
+        char     mSsid[33];        // Max SSID length is 32 + null terminator
+        int32_t  mRssi;
+        bool     mEncrypted;
+    };
+
+    /** @brief List of WiFi scan results */
+    extern std::vector<tSSIDEntry> mSSSIDList;
+
+
 }   /* end of namespace ConfigNS */
