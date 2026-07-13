@@ -16,6 +16,33 @@
 
 
 /******************************************************************************
+    Multi Reset Detector Library
+ *****************************************************************************/
+/* These definitions must be placed before #include <ESP_MultiResetDetector.h> to be used.
+ * Otherwise, default values (MRD_TIMES = 3, MRD_TIMEOUT = 10 seconds and MRD_ADDRESS = 0)
+ * will be used
+ */
+// Number of subsequent resets during MRD_TIMEOUT to activate
+#define MRD_TIMES                   3
+
+// Number of seconds after reset during which a subsequent reset will be considered a multi reset.
+#define MRD_TIMEOUT                 10
+
+// RTC/EEPROM Memory Address for the MultiResetDetector to use
+#define MRD_ADDRESS                 0
+
+// Enable debug output from the MultiResetDetector library
+#define MULTIRESETDETECTOR_DEBUG    false
+
+// Enable/Disable the use of LittleFS, SPIFFS or EEPROM for storing the MultiResetDetector data
+#define ESP_MRD_USE_LITTLEFS        false
+#define ESP_MRD_USE_SPIFFS          false
+#define ESP_MRD_USE_EEPROM          true
+
+#include <ESP_MultiResetDetector.h>
+
+
+/******************************************************************************
     PRIVATE SYMBOLIC CONSTANTS AND MACROS
  *****************************************************************************/
 /* Log level for this module */
@@ -30,6 +57,8 @@
 /******************************************************************************
     PRIVATE FUNCTION PROTOTYPES
  *****************************************************************************/
+
+static void MultiResetDetection(void);
 static void CheckResetReason(void);
 static void InitApplication(void);
 static void RunApplication(void);
@@ -38,6 +67,9 @@ static void RunApplication(void);
 /******************************************************************************
     PRIVATE MEMBER VARIABLES
  *****************************************************************************/
+
+static MultiResetDetector* mpMultiResetDetector;
+
 static Display*     mpDisplay;
 static TimeManager* mpTimeManager;
 static WiFiManager* mpWiFiManager;
@@ -82,6 +114,9 @@ void setup()
     /* LOG */
     LOG(LOG_INFO, "Welcome to WordClock");
 
+    /* Check multi reset */
+    MultiResetDetection();
+
     /* Check the reason for the last system reset */
     CheckResetReason();
 
@@ -94,14 +129,48 @@ void setup()
 
 void loop()
 {
-    /* Do nothing, everything is handled in tasks */
-    vTaskDelay(portMAX_DELAY);
+    /* Call the multi reset detector loop method every so often, 
+       so that it can recognise when the timeout expires. */
+    if ((mpMultiResetDetector != nullptr) &&
+        (mpMultiResetDetector->waitingForMRD()))
+    {
+        mpMultiResetDetector->loop();
+
+        /* Waiting during multi reset detection */
+        vTaskDelay(10);
+    }
+    else
+    {
+        /* Do nothing, everything is handled in tasks */
+        vTaskDelay(portMAX_DELAY);
+    }
 }
 
 
 /******************************************************************************
     PRIVATE FUNCTION CODE
  *****************************************************************************/
+
+static void MultiResetDetection(void)
+{
+    /* Create instance of MultiResetDetector */
+    mpMultiResetDetector = new MultiResetDetector(MRD_TIMEOUT, MRD_ADDRESS);
+
+    /* Check if a multi reset has been detected */
+    if (mpMultiResetDetector->detectMultiReset())
+    {
+        /* LOG */
+        LOG(LOG_DEBUG, "Main::MultiResetDetection() Multi Reset Detected");
+
+        /* Stop detection */
+        mpMultiResetDetector->stop();
+
+        /* Clear WiFi settings to force the device to enter WIFI AP mode */
+        Settings.RemoveKey(ConfigNS::mKeyWifiSSID);
+        Settings.RemoveKey(ConfigNS::mKeyWifiPassword);
+    }
+}
+
 static void CheckResetReason(void)
 {
     /* Determine the reason for the last system reset */
