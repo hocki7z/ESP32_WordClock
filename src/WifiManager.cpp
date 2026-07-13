@@ -296,10 +296,14 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                     /* LOG */
                     LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event access point stopped");
 
-                    /* Move to the next state */
-                    mState  = STATE_IDLE;
-                    /* Notify */
-                    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STOPPED);
+                    /* Move to the IDLE state only if the scan is not running */
+                    if (WiFi.scanComplete() != WIFI_SCAN_RUNNING)
+                    {
+                        /* Move to the next state */
+                        mState = STATE_IDLE;
+                        /* Notify */
+                        SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STOPPED);
+                    }
                     break;
 
                 default:
