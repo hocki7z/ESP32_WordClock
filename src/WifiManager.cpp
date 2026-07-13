@@ -128,6 +128,22 @@ void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         }
             break;
 
+        case MessageNS::tMessageId::CMD_WIFI_CONNECT:
+        {
+            /* Reset state to idle */
+            mState = STATE_IDLE;
+            /* Process state machine */
+            ProcessState();
+        }
+            break;
+
+        case MessageNS::tMessageId::CMD_WIFI_START_SCAN:
+        {
+            /* Start async scan (non-blocking) */
+            WiFi.scanNetworks(true); // true = async
+        }
+            break;
+
         default:
             // do nothing
             break;
@@ -136,6 +152,9 @@ void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
 void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 {
+    /* LOG */
+    LOG(LOG_VERBOSE, "WiFiManager::ProcessState() Current state: %d, Event: %d", mState, aEvent);
+
     /* Process some events without changing current state */
     switch (aEvent)
     {
@@ -159,8 +178,6 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
             break;
 
         case ARDUINO_EVENT_WIFI_SCAN_DONE:
-            /* LOG */
-            LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() WiFi scan done, found %d networks", WiFi.scanComplete());
             /* Handle scan finished */
             HandleWiFiScanFinished();
             break;
@@ -432,11 +449,25 @@ bool WiFiManager::ConnectWifi(void)
 
     wRetValue = true;
 #else
-    /* Connect to SDK config */
-    LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Start WiFi Station mode, connect to SDK config");
-    WiFi.begin();
-    
-    wRetValue = true;
+
+    /* Get SSID and password from settings */
+    String wSsid  = Settings.GetValue<String>(ConfigNS::mKeyWifiSSID, "");
+    String wPassw = Settings.GetValue<String>(ConfigNS::mKeyWifiPassword, "");
+
+    /* Check if SSID is valid */
+    if (wSsid.length() > 0)
+    {
+        /* LOG */
+        LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Start WiFi Station mode, SSID: %s", wSsid.c_str());
+        /* Start Wifi connection */
+        WiFi.begin(wSsid.c_str(), wPassw.c_str());
+        
+        wRetValue = true;
+    }
+    else
+    {
+        LOG(LOG_ERROR, "WiFiManager::ConnectWifi() Failed to get WiFi SSID from settings");
+    }
 #endif /* ifdef USE_CREDENTIALS */
 
     return wRetValue;

@@ -42,6 +42,16 @@ private:
 
         Control::ControlId_t mDatetimeNtpServer;
         Control::ControlId_t mDatetimeTimeZone;
+
+        Control::ControlId_t mWifiSSIDs;
+        Control::ControlId_t mWifiPassword;
+        Control::ControlId_t mWifiPasswordShowHide;
+
+        std::vector<Control::ControlId_t> mWifiSSIDList;
+
+        Control::ControlId_t mWifiScanButton;
+        Control::ControlId_t mWifiConnectButton;
+
     };
 
     /** @brief "This" pointer for created WebSite instance */
@@ -49,10 +59,14 @@ private:
 
     tWebUIControlID mWebUIControlID;
 
+    std::vector<ConfigNS::tSSIDEntry> mLocalSsidList;
+
+
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     void HandleControl(Control* apControl, int aType);
+
     void HandleColorControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleSwitcherControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleSelectControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
@@ -60,12 +74,18 @@ private:
     void HandleTimerControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
     Control::ControlId_t AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor = 0x000000);
+    Control::ControlId_t AddSwitcherControl(const char* apTitle, const bool aDefaultState = false);
     Control::ControlId_t AddSwitcherControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const bool aDefaultState = false);
+    Control::ControlId_t AddSelectControl(const char* apTitle);
     Control::ControlId_t AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption = 0);
     Control::ControlId_t AddPercentageSliderControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue = 50);
     Control::ControlId_t AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime = 0);
+    Control::ControlId_t AddPasswordControl(const char* apTitle);
+    Control::ControlId_t AddButtonControl(const char* apTitle);
 
     void UpdateLedBrightnessControls(bool aForceUpdate = false);
+
+    void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
     static void ControlCallback(Control* apSender, int aType);
 

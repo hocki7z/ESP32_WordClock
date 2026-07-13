@@ -67,6 +67,7 @@ namespace ConfigNS
     static constexpr uint8_t      mApplicationGroup                 = MessageNS::tAddress::APPLICATION_MANAGER;
     static constexpr uint8_t      mDisplayGroup                     = MessageNS::tAddress::DISPLAY_MANAGER;
     static constexpr uint8_t      mTimeManagerGroup                 = MessageNS::tAddress::TIME_MANAGER;
+    static constexpr uint8_t      mWifiManagerGroup                 = MessageNS::tAddress::WIFI_MANAGER;
 
     /* Keys for reset counters */
     static const SettingsNS::tKey mKeyCounterResetPowerOn           = SettingsNS::tKey(mCountersConfig, mApplicationGroup, 0x00);
@@ -95,6 +96,8 @@ namespace ConfigNS
 
     static const SettingsNS::tKey  mKeyTimeZone                     = SettingsNS::tKey(mParamsConfig, mTimeManagerGroup, 0x10);
 
+    static const SettingsNS::tKey  mKeyWifiSSID                     = SettingsNS::tKey(mParamsConfig, mWifiManagerGroup, 0x00);
+    static const SettingsNS::tKey  mKeyWifiPassword                 = SettingsNS::tKey(mParamsConfig, mWifiManagerGroup, 0x01);
 
     /* Default values for display settings */
     static constexpr uint8_t  mDefaultDisplayClockMode              = 1;            // Rhein-Ruhr

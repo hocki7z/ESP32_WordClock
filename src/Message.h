@@ -40,20 +40,24 @@ namespace MessageNS
         NONE = 0x00,
 
         /** Commands     */
+        CMD_WIFI_CONNECT,                   // No payload
+        CMD_WIFI_START_SCAN,                // No payload
 
         /** Events       */
-        MGS_EVENT_DATETIME_CHANGED,         // Payload: 4 bytes - Datetime as dword
-        MGS_EVENT_NTP_LASTSYNC_TIME,        // No payload
-        MGS_EVENT_WIFI_EVENT_TRIGGERED,     // Payload: 1 byte  - WiFiEvent_t
         MSG_EVENT_SW_TIMER_TIMEOUT,         // Payload: 4 byte  - Timer ID
+
         MSG_EVENT_SETTINGS_CHANGED,         // No payload
 
-        MSG_EVENT_WIFI_STA_CONNECTED,
-        MSG_EVENT_WIFI_STA_DISCONNECTED,
-        MSG_EVENT_WIFI_AP_STARTED,
-        MSG_EVENT_WIFI_AP_STOPPED,
-        MSG_EVENT_WIFI_INTERNET_AVAILABLE,
+        MGS_EVENT_DATETIME_CHANGED,         // Payload: 4 bytes - Datetime as dword
 
+        MGS_EVENT_NTP_LASTSYNC_TIME,        // No payload
+
+        MGS_EVENT_WIFI_EVENT_TRIGGERED,     // Payload: 1 byte  - WiFiEvent_t
+        MSG_EVENT_WIFI_STA_CONNECTED,       // No payload
+        MSG_EVENT_WIFI_STA_DISCONNECTED,    // No payload
+        MSG_EVENT_WIFI_AP_STARTED,          // No payload
+        MSG_EVENT_WIFI_AP_STOPPED,          // No payload
+        MSG_EVENT_WIFI_INTERNET_AVAILABLE,  // No payload
         MSG_EVENT_WIFI_SCAN_DONE,           // No payload
 
         /** Status       */

@@ -107,6 +107,20 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
             ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
             ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
+    /* Section WiFi settings */
+    ESPUI.addControl(Control::Type::Separator, "WiFi settings", "", Control::Color::Alizarin, Control::noParent);
+
+    // Add WiFi settings controls here (e.g., SSID, password, etc.)
+    mWebUIControlID.mWifiSSIDs = AddSelectControl("SSID");
+
+    mWebUIControlID.mWifiPassword = AddPasswordControl("Password");
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password", ConfigNS::mKeyWifiPassword, false);
+
+    // Add buttons for scanning WiFi networks and connecting to the selected network
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network");
+    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks");
+
+    
     /* Update LED brightness controls */
     UpdateLedBrightnessControls();
 }
@@ -161,6 +175,11 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         }
             break;
 
+        case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
+            /* WiFi scan finished, update WiFi settings */
+            UpdateWiFiSettingsControls();
+            break;
+
         default:
             // do nothing
             break;
@@ -169,6 +188,8 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
 void WebSite::HandleControl(Control* apControl, int aType)
 {
+    MessageNS::Message wMessage;
+
     if (apControl->GetId() == mWebUIControlID.mDisplayClockMode)
     {
         /* Clock mode changed */
@@ -229,7 +250,104 @@ void WebSite::HandleControl(Control* apControl, int aType)
         /* Timezone selection changed */
         HandleSelectControl(apControl, aType, ConfigNS::mKeyTimeZone);
     }
+    else if (apControl->GetId() == mWebUIControlID.mWifiSSIDs)
+    {
+        /* WiFi SSID selection changed */
+        
+        // Get selected SSID and password from the controls
+        uint8_t wSsidIndex = static_cast<uint8_t>(std::stoi(ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->value.c_str()));
 
+        if (wSsidIndex < mLocalSsidList.size() && (mLocalSsidList[wSsidIndex].mEncrypted))
+        {
+            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->value;
+
+            // De-/activate button mWifiConnectButton
+            ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wPassw.length() > 0));
+        }
+
+        return;
+    }
+    else if (apControl->GetId() == mWebUIControlID.mWifiPassword)
+    {
+        /* WiFi password changed */
+        String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->value;
+        
+        // De-/activate button mWifiConnectButton
+        ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wPassw.length() > 0));
+
+        return;
+    }
+    else if (apControl->GetId() == mWebUIControlID.mWifiPasswordShowHide)
+    {
+        /* WiFi password show/hide switcher changed */
+        //bool wShowPassword = ESPUI.getControl(mWebUIControlID.mWifiPasswordShowHide)->value == "true";
+        bool wState = (aType == S_ACTIVE) ? true : false;
+
+        if (wState)
+        {
+            // Show password
+            ESPUI.setInputType(mWebUIControlID.mWifiPassword, "text");
+        }
+        else
+        {
+            // Hide password
+            ESPUI.setInputType(mWebUIControlID.mWifiPassword, "password");
+        }
+
+        return;
+    }
+    else if (apControl->GetId() == mWebUIControlID.mWifiConnectButton)
+    {
+        /* Connect to selected network button pressed */
+        if (aType == B_UP)
+        {
+            LOG(LOG_DEBUG, "WebSite::HandleWiFiSettingsControls() WiFi connect button pressed");
+            
+            // Implement connect logic using selected SSID and password
+            wifi_config_t wifi_config = {0};
+            
+            // Get selected SSID and password from the controls
+            uint8_t wSsidIndex = static_cast<uint8_t>(std::stoi(ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->value.c_str()));
+            String wSsid  = mLocalSsidList[wSsidIndex].mSsid;
+            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->value;
+
+            LOG(LOG_DEBUG, "WebSite::HandleWiFiSettingsControls() Connecting to SSID: %s, password: %s", wSsid.c_str(), wPassw.c_str());
+
+            Settings.SetValue<String>(ConfigNS::mKeyWifiSSID, wSsid.c_str());
+            Settings.SetValue<String>(ConfigNS::mKeyWifiPassword, wPassw.c_str());
+
+            /* Send message to WiFi manager to connect */
+            wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
+            wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
+            wMessage.mId = MessageNS::tMessageId::CMD_WIFI_CONNECT;
+            
+            mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+        }
+
+        return;
+    }
+    else if (apControl->GetId() == mWebUIControlID.mWifiScanButton)
+    {
+        /* Scan WiFi networks button pressed */
+        if (aType == B_UP)
+        {
+            LOG(LOG_DEBUG, "WebSite::HandleWiFiSettingsControls() WiFi scan button pressed");
+            
+            ESPUI.setEnabled(mWebUIControlID.mWifiScanButton, false);
+            ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, false);
+
+            ESPUI.jsonReload();
+
+            /* Send message to WiFi manager to start scan */
+            wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
+            wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
+            wMessage.mId = MessageNS::tMessageId::CMD_WIFI_START_SCAN;
+            
+            mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+        }
+
+        return;
+    }
     else
     {
         LOG(LOG_ERROR, "WebSite::HandleControl() Unknown control ID %04X", apControl->GetId());
@@ -237,7 +355,6 @@ void WebSite::HandleControl(Control* apControl, int aType)
     }
 
     /* Create message */
-    MessageNS::Message wMessage;
     wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
     wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
 
@@ -262,14 +379,28 @@ Control::ControlId_t WebSite::AddColorControl(const char* apTitle, SettingsNS::t
     return wControlId;
 }
 
+Control::ControlId_t WebSite::AddSwitcherControl(const char* apTitle, const bool aDefaultState)
+{
+    Control::ControlId_t wControlId = ESPUI.switcher(apTitle, WebSite::ControlCallback, Control::Color::Dark, aDefaultState);
+
+    LOG(LOG_DEBUG, "WebSite::AddSwitcherControl() Control %04X, default state %s",
+        wControlId, aDefaultState ? "ON" : "OFF");
+
+    return wControlId;
+}
+
 Control::ControlId_t WebSite::AddSwitcherControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const bool aDefaultState)
 {
     bool wState = Settings.GetValue<bool>(aSettingsKey, aDefaultState);
 
-    Control::ControlId_t wControlId = ESPUI.switcher(apTitle, WebSite::ControlCallback, Control::Color::Dark, wState);
+    Control::ControlId_t wControlId = AddSwitcherControl(apTitle, wState);
 
-    LOG(LOG_DEBUG, "WebSite::AddSwitcherControl() Control %04X, param %s",
-        wControlId, wState ? "ON" : "OFF");
+    return wControlId;
+}
+
+Control::ControlId_t WebSite::AddSelectControl(const char* apTitle)
+{
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apTitle, "", Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
 
     return wControlId;
 }
@@ -277,13 +408,14 @@ Control::ControlId_t WebSite::AddSwitcherControl(const char* apTitle, SettingsNS
 Control::ControlId_t WebSite::AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount,
         SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption)
 {
-    uint8_t wSelectedOption = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultOption);
+    Control::ControlId_t wControlId = AddSelectControl(apTitle);
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apTitle, "", Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
     for (uint8_t wI = 0; wI < aItemsCount; wI++)
     {
         ESPUI.addControl(Control::Type::Option, apItems[wI], String(wI), Control::Color::None, wControlId);
     }
+
+    uint8_t wSelectedOption = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultOption);
     ESPUI.updateSelect(wControlId, String(wSelectedOption));
 
     return wControlId;
@@ -318,6 +450,25 @@ Control::ControlId_t WebSite::AddTimeControl(const char* apTitle, SettingsNS::tK
     return wControlId;
 }
 
+Control::ControlId_t WebSite::AddPasswordControl(const char* apTitle)
+{
+    Control::ControlId_t wControlId = ESPUI.text(apTitle, WebSite::ControlCallback, Control::Color::Dark, "");
+    ESPUI.setInputType(wControlId, "password");
+
+    LOG(LOG_DEBUG, "WebSite::AddPasswordControl() Control %04X", wControlId);
+
+    return wControlId;
+}
+
+Control::ControlId_t WebSite::AddButtonControl(const char* apTitle)
+{
+    Control::ControlId_t wControlId = ESPUI.button(apTitle, WebSite::ControlCallback, Control::Color::Dark, apTitle);
+
+    LOG(LOG_DEBUG, "WebSite::AddButtonControl() Control %04X", wControlId);
+
+    return wControlId;
+}
+
 void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 {
     bool wUseNightMode = Settings.GetValue<bool>(ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
@@ -341,6 +492,100 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
     ESPUI.setEnabled(mWebUIControlID.mDisplayBrightnessNightMode, wUseNightMode);
     ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
     ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
+
+    if (aForceUpdate)
+    {
+        ESPUI.jsonReload();
+    }
+}
+
+void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
+{
+    /* Snapshot to avoid race condition with WiFi event handler (different task context) */    
+    mLocalSsidList = ConfigNS::mSSSIDList;
+
+    LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() Force update %d", aForceUpdate);
+
+    /* Remove all existing options from the select control */
+    for (const auto& controlId : mWebUIControlID.mWifiSSIDList)
+    {
+        ESPUI.removeControl(controlId);
+    }
+    mWebUIControlID.mWifiSSIDList.clear();
+
+    /* Add new options based on the scanned SSIDs */
+    for (size_t wI = 0; wI < mLocalSsidList.size(); wI++)
+    {
+        Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Option, mLocalSsidList[wI].mSsid, String(wI), Control::Color::None, mWebUIControlID.mWifiSSIDs);
+        mWebUIControlID.mWifiSSIDList.push_back(wControlId);
+    }
+
+    /* Check if captive portal is enabled */
+    if (ESPUI.captivePortal)
+    {
+        /* Offline Mode */
+
+        /* Select the first available SSID in the select control or an empty string if no SSIDs are available */
+        if (!mLocalSsidList.empty())
+        {
+            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, "0");
+        }
+        else
+        {
+            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, "");
+            LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() No SSIDs available, cleared selected SSID.");
+        }
+
+        /* Clear password field */
+        ESPUI.updateText(mWebUIControlID.mWifiPassword, "");
+    }
+    else
+    {
+        /* Normal (online) Mode */
+
+        /* Select the SSID and password from settings in the select control */
+        String wSelectedSsid = Settings.GetValue<String>(ConfigNS::mKeyWifiSSID, "");
+        String wSelectedPass = Settings.GetValue<String>(ConfigNS::mKeyWifiPassword, "");
+
+        int wSelectedIndex   = -1;
+
+        /* Find the index of the selected SSID in the scanned list */
+        for (size_t wI = 0; wI < mLocalSsidList.size(); wI++)
+        {
+            if (strcmp(mLocalSsidList[wI].mSsid, wSelectedSsid.c_str()) == 0)
+            {
+                wSelectedIndex = static_cast<int>(wI);
+                break;
+            }
+        }
+
+        /* Selected SSID not found in the scanned list */
+        if (wSelectedIndex == -1)
+        {
+            ConfigNS::tSSIDEntry wNewEntry;
+            strncpy(wNewEntry.mSsid, wSelectedSsid.c_str(), sizeof(wNewEntry.mSsid) - 1);
+            wNewEntry.mSsid[sizeof(wNewEntry.mSsid) - 1] = '\0';
+            wNewEntry.mRssi      = 0;
+            wNewEntry.mEncrypted = (wSelectedPass.length() > 0);
+            mLocalSsidList.push_back(wNewEntry);
+
+            wSelectedIndex = static_cast<int>(mLocalSsidList.size() - 1);
+
+            Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Option, mLocalSsidList[wSelectedIndex].mSsid, String(wSelectedIndex), Control::Color::None, mWebUIControlID.mWifiSSIDs);
+            mWebUIControlID.mWifiSSIDList.push_back(wControlId);
+
+            /* LOG */
+            LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() Selected SSID not found, added and selected SSID: %s (Control ID: %04X)", wSelectedSsid.c_str(), wControlId);
+        }
+
+        /* Update the selected SSID in the select control */
+        ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, String(wSelectedIndex));
+        /* Set password field */
+        ESPUI.updateText(mWebUIControlID.mWifiPassword, wSelectedPass);
+    }
+
+    ESPUI.setEnabled(mWebUIControlID.mWifiScanButton, true);
+    ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, false);
 
     if (aForceUpdate)
     {
