@@ -309,7 +309,7 @@ void TimeManager::SendTime(void)
                 /* Set payload length */
                 wMessage.mPayloadLength = sizeof(wDword);
                 /* Send message */
-                mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+                SendMessage(wMessage);
             }
             else
             {
@@ -346,7 +346,7 @@ void TimeManager::HandleNTPSyncEvent(NTPEvent_t aEvent)
             wMessage.mId = MessageNS::tMessageId::MGS_EVENT_NTP_LASTSYNC_TIME;
 
             /* Send message */
-            mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+            SendMessage(wMessage);
         }
             break;
 

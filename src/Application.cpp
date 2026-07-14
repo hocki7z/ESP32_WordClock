@@ -391,4 +391,20 @@ void Task::ProcessUnknownNotification(const uint32_t aNotificationValue)
     // to be implemented by derived class
 }
 
+/**
+ * @brief Sends a message to the communication manager.
+ *
+ * @details
+ * This function sends a message to the communication manager if it is available.
+ *
+ * @param arMessage The message to send.
+ */
+void Task::SendMessage(const MessageNS::Message &arMessage)
+{
+    if (mpTaskObjects && mpTaskObjects->mpCommunicationManager)
+    {
+        mpTaskObjects->mpCommunicationManager->SendMessage(arMessage);
+    }
+}
+
 };  /* end of namespace ApplicationNS */

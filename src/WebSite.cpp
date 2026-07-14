@@ -164,11 +164,11 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
                 /* Send message to display */
                 wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
-                mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+                SendMessage(wMessage);
 
                 /* Send message to time manager */
                 wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
-                mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+                SendMessage(wMessage);
 
                 break;
             }
@@ -321,7 +321,7 @@ void WebSite::HandleControl(Control* apControl, int aType)
             wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
             wMessage.mId = MessageNS::tMessageId::CMD_WIFI_CONNECT;
             
-            mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+            SendMessage(wMessage);
         }
 
         return;
@@ -343,7 +343,7 @@ void WebSite::HandleControl(Control* apControl, int aType)
             wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
             wMessage.mId = MessageNS::tMessageId::CMD_WIFI_START_SCAN;
             
-            mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+            SendMessage(wMessage);
         }
 
         return;
@@ -361,7 +361,7 @@ void WebSite::HandleControl(Control* apControl, int aType)
     wMessage.mId = MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED;
 
     /* Send message */
-    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+    SendMessage(wMessage);
 }
 
 Control::ControlId_t WebSite::AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor)

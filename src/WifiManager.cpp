@@ -374,11 +374,11 @@ void WiFiManager::SendMessage(MessageNS::tMessageId wMessageId)
 
     /* Send message to the time manager */
     wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
-    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+    Task::SendMessage(wMessage);
 
     /* Send message to the web manager */
     wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
-    mpTaskObjects->mpCommunicationManager->SendMessage(wMessage);
+    Task::SendMessage(wMessage);
 }
 
 /**

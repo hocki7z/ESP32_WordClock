@@ -199,6 +199,8 @@ namespace ApplicationNS
         virtual void ProcessIncomingTimerMessage(const MessageNS::Message &arMessage);
         virtual void ProcessTimerEvent(const uint32_t aTimerId = 0);
         virtual void ProcessUnknownNotification(const uint32_t aNotificationValue);
+
+        void SendMessage(const MessageNS::Message &arMessage);
     };
 
 }; /* end of namespace ApplicationNS */
