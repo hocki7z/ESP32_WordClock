@@ -27,6 +27,12 @@ private:
 
     struct tWebUIControlID
     {
+        Control::ControlId_t mSettingsTab;
+
+        Control::ControlId_t mSettingsLedGroup;
+        Control::ControlId_t mSettingsTimeGroup;
+        Control::ControlId_t mSettingsWiFiGroup;
+
         Control::ControlId_t mDisplayClockMode;
         Control::ControlId_t mDisplayClockItIs;
         Control::ControlId_t mDisplayClockSingleMinutes;
@@ -55,7 +61,7 @@ private:
     };
 
     /** @brief "This" pointer for created WebSite instance */
-    static WebSite* mpWebSiteInstance;
+    static WebSite* mpWebSiteInstance   ;
 
     tWebUIControlID mWebUIControlID;
 
@@ -73,15 +79,36 @@ private:
     void HandlePercentageSliderControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleTimerControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
-    Control::ControlId_t AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor = 0x000000);
-    Control::ControlId_t AddSwitcherControl(const char* apTitle, const bool aDefaultState = false);
-    Control::ControlId_t AddSwitcherControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const bool aDefaultState = false);
-    Control::ControlId_t AddSelectControl(const char* apTitle);
-    Control::ControlId_t AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption = 0);
-    Control::ControlId_t AddPercentageSliderControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue = 50);
-    Control::ControlId_t AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime = 0);
-    Control::ControlId_t AddPasswordControl(const char* apTitle);
-    Control::ControlId_t AddButtonControl(const char* apTitle);
+    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor);
+
+    Control::ControlId_t AddSeparatorElement(Control::ControlId_t aParent);
+    Control::ControlId_t AddSpacerElement(Control::ControlId_t aParent, uint16_t aHeightPx = 14);
+
+    Control::ControlId_t AddLabelControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "",
+        const String& aValue = "");
+
+    Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "",
+        const String& aDefaultValue = "");
+
+    Control::ControlId_t AddColorControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "",
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultColor = 0x000000);
+
+    Control::ControlId_t AddTimeControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "",
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultTime = 0);
+
+    Control::ControlId_t AddPasswordControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "");
+
+    Control::ControlId_t AddSwitcherControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "",
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const bool aDefaultState = false);
+
+    Control::ControlId_t AddSelectControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "",
+        const char* const* apItems = nullptr, uint8_t aItemsCount = 0,
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultOption = 0);
+
+    Control::ControlId_t AddPercentageSliderControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "",
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultValue = 50);
+
+    Control::ControlId_t AddButtonControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle = "");
 
     void UpdateLedBrightnessControls(bool aForceUpdate = false);
 
