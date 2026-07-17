@@ -65,13 +65,13 @@ private:
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
-    void HandleControl(Control* apControl, int aType);
+    void HandleControl(BasicControl* apControl, int aType, void* apParam = nullptr);
 
-    void HandleColorControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandleSwitcherControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandleSelectControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandlePercentageSliderControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandleTimerControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandleColorControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandleSwitcherControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandleSelectControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandlePercentageSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
     Control::ControlId_t AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor = 0x000000);
     Control::ControlId_t AddSwitcherControl(const char* apTitle, const bool aDefaultState = false);
@@ -87,8 +87,7 @@ private:
 
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
-    static void ControlCallback(Control* apSender, int aType);
-
+    static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);
 };
 
 #endif /* WEBSITE_H_ */

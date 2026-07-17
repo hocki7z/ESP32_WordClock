@@ -186,7 +186,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
     }
 }
 
-void WebSite::HandleControl(Control* apControl, int aType)
+void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
 {
     MessageNS::Message wMessage;
 
@@ -255,11 +255,11 @@ void WebSite::HandleControl(Control* apControl, int aType)
         /* WiFi SSID selection changed */
         
         // Get selected SSID and password from the controls
-        uint8_t wSsidIndex = static_cast<uint8_t>(std::stoi(ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->value.c_str()));
+        uint8_t wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
 
         if (wSsidIndex < mLocalSsidList.size() && (mLocalSsidList[wSsidIndex].mEncrypted))
         {
-            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->value;
+            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
             // De-/activate button mWifiConnectButton
             ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wPassw.length() > 0));
@@ -270,7 +270,7 @@ void WebSite::HandleControl(Control* apControl, int aType)
     else if (apControl->GetId() == mWebUIControlID.mWifiPassword)
     {
         /* WiFi password changed */
-        String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->value;
+        String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
         
         // De-/activate button mWifiConnectButton
         ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wPassw.length() > 0));
@@ -280,7 +280,6 @@ void WebSite::HandleControl(Control* apControl, int aType)
     else if (apControl->GetId() == mWebUIControlID.mWifiPasswordShowHide)
     {
         /* WiFi password show/hide switcher changed */
-        //bool wShowPassword = ESPUI.getControl(mWebUIControlID.mWifiPasswordShowHide)->value == "true";
         bool wState = (aType == S_ACTIVE) ? true : false;
 
         if (wState)
@@ -307,9 +306,9 @@ void WebSite::HandleControl(Control* apControl, int aType)
             wifi_config_t wifi_config = {0};
             
             // Get selected SSID and password from the controls
-            uint8_t wSsidIndex = static_cast<uint8_t>(std::stoi(ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->value.c_str()));
+            uint8_t wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
             String wSsid  = mLocalSsidList[wSsidIndex].mSsid;
-            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->value;
+            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
             LOG(LOG_DEBUG, "WebSite::HandleWiFiSettingsControls() Connecting to SSID: %s, password: %s", wSsid.c_str(), wPassw.c_str());
 
@@ -320,7 +319,7 @@ void WebSite::HandleControl(Control* apControl, int aType)
             wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
             wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
             wMessage.mId = MessageNS::tMessageId::CMD_WIFI_CONNECT;
-            
+
             SendMessage(wMessage);
         }
 
@@ -370,7 +369,7 @@ Control::ControlId_t WebSite::AddColorControl(const char* apTitle, SettingsNS::t
     uint32_t wColorParam = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultColor);
     sprintf(wHexColor, "#%06X", (wColorParam & 0x00FFFFFF));
 
-    Control::ControlId_t wControlId = ESPUI.text(apTitle, WebSite::ControlCallback, Control::Color::Dark, wHexColor);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String(wHexColor), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
     ESPUI.setInputType(wControlId, "color");
 
     LOG(LOG_DEBUG, "WebSite::AddColorControl() Control %04X, param 0x%08X, color %s",
@@ -381,7 +380,7 @@ Control::ControlId_t WebSite::AddColorControl(const char* apTitle, SettingsNS::t
 
 Control::ControlId_t WebSite::AddSwitcherControl(const char* apTitle, const bool aDefaultState)
 {
-    Control::ControlId_t wControlId = ESPUI.switcher(apTitle, WebSite::ControlCallback, Control::Color::Dark, aDefaultState);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Switcher, apTitle, aDefaultState, Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
 
     LOG(LOG_DEBUG, "WebSite::AddSwitcherControl() Control %04X, default state %s",
         wControlId, aDefaultState ? "ON" : "OFF");
@@ -416,7 +415,7 @@ Control::ControlId_t WebSite::AddSelectControl(const char* apTitle, const char* 
     }
 
     uint8_t wSelectedOption = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultOption);
-    ESPUI.updateSelect(wControlId, String(wSelectedOption));
+    ESPUI.updateSelect(wControlId, wSelectedOption);
 
     return wControlId;
 }
@@ -425,7 +424,9 @@ Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apTitle, Se
 {
     uint8_t wValue = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultValue);
 
-    Control::ControlId_t wControlId = ESPUI.slider(apTitle, WebSite::ControlCallback, Control::Color::Dark, wValue, 0, 100);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Slider, apTitle, wValue, Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    ESPUI.addControl(Control::Type::Min, "", String(  0), Control::Color::None, wControlId);
+    ESPUI.addControl(Control::Type::Max, "", String(100), Control::Color::None, wControlId);
 
     LOG(LOG_DEBUG, "WebSite::AddPercentageSliderControl() Control %04X, value %d", wControlId, wValue);
 
@@ -442,7 +443,7 @@ Control::ControlId_t WebSite::AddTimeControl(const char* apTitle, SettingsNS::tK
     /* Convert time to string format HH:MM */
     sprintf(wTimeStr, "%02u:%02u", wDateTime.mTime.mHour, wDateTime.mTime.mMinute);
 
-    Control::ControlId_t wControlId = ESPUI.text(apTitle, WebSite::ControlCallback, Control::Color::Dark, wTimeStr);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String(wTimeStr), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
     ESPUI.setInputType(wControlId, "time");
 
     LOG(LOG_DEBUG, "WebSite::AddTimeControl() Control %04X, time %s", wControlId, String(wTimeStr).c_str());
@@ -452,7 +453,7 @@ Control::ControlId_t WebSite::AddTimeControl(const char* apTitle, SettingsNS::tK
 
 Control::ControlId_t WebSite::AddPasswordControl(const char* apTitle)
 {
-    Control::ControlId_t wControlId = ESPUI.text(apTitle, WebSite::ControlCallback, Control::Color::Dark, "");
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String("password"), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
     ESPUI.setInputType(wControlId, "password");
 
     LOG(LOG_DEBUG, "WebSite::AddPasswordControl() Control %04X", wControlId);
@@ -462,7 +463,7 @@ Control::ControlId_t WebSite::AddPasswordControl(const char* apTitle)
 
 Control::ControlId_t WebSite::AddButtonControl(const char* apTitle)
 {
-    Control::ControlId_t wControlId = ESPUI.button(apTitle, WebSite::ControlCallback, Control::Color::Dark, apTitle);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apTitle, String(apTitle), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
 
     LOG(LOG_DEBUG, "WebSite::AddButtonControl() Control %04X", wControlId);
 
@@ -528,11 +529,11 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
         /* Select the first available SSID in the select control or an empty string if no SSIDs are available */
         if (!mLocalSsidList.empty())
         {
-            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, "0");
+            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, 0);
         }
         else
         {
-            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, "");
+            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, 0);
             LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() No SSIDs available, cleared selected SSID.");
         }
 
@@ -579,7 +580,7 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
         }
 
         /* Update the selected SSID in the select control */
-        ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, String(wSelectedIndex));
+        ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, wSelectedIndex);
         /* Set password field */
         ESPUI.updateText(mWebUIControlID.mWifiPassword, wSelectedPass);
     }
@@ -593,10 +594,10 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     }
 }
 
-void WebSite::HandleColorControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
+void WebSite::HandleColorControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
 {
     /* Retreive new color value */
-    std::string wColorStr = aControl->value.c_str();
+    std::string wColorStr = aControl->getValue().c_str();
     uint32_t  wColorValue = std::stoi(wColorStr.substr(1), nullptr, 16); // skip '#'
 
     LOG(LOG_DEBUG, "WebSite::HandleColorControl() Control %04X, new color %s (0x%08X)",
@@ -605,13 +606,12 @@ void WebSite::HandleColorControl(Control* aControl, int aType, SettingsNS::tKey 
     /* Store new color value in settings */
     Settings.SetValue<uint32_t>(aSettingsKey, wColorValue);
     /* Update displayed value */
-    ESPUI.updateText(aControl->GetId(), aControl->value);
+    ESPUI.updateText(aControl->GetId(), aControl->getValue());
 }
 
-void WebSite::HandleSwitcherControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
+void WebSite::HandleSwitcherControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
 {
     /* Retreive new switcher state */
-    //bool wState = (aControl->value == "true") ? true : false;
     bool wState = (aType == S_ACTIVE) ? true : false;
 
     LOG(LOG_DEBUG, "WebSite::HandleSwitcherControl() Control %04X, new state %d",
@@ -621,22 +621,22 @@ void WebSite::HandleSwitcherControl(Control* aControl, int aType, SettingsNS::tK
     Settings.SetValue<bool>(aSettingsKey, wState);
 }
 
-void WebSite::HandleSelectControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
+void WebSite::HandleSelectControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
 {
     /* Retreive new selected option */
-    uint8_t wSelectedOption = static_cast<uint8_t>(std::stoi(aControl->value.c_str()));
+    uint8_t wSelectedOption = aControl->getValueInt();
 
-    LOG(LOG_DEBUG, "WebSite::HandleSelectControl() Control %04X, new selected option %d",
-            aControl->GetId(), wSelectedOption);
+    LOG(LOG_DEBUG, "WebSite::HandleSelectControl() control %04X, type %d, selection %d",
+            aControl->GetId(), aType, wSelectedOption);
 
     /* Store new selected option in settings */
     Settings.SetValue<uint8_t>(aSettingsKey, wSelectedOption);
 }
 
-void WebSite::HandlePercentageSliderControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
+void WebSite::HandlePercentageSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
 {
     /* Retreive new slider value */
-    uint8_t wValue = static_cast<uint8_t>(std::stoi(aControl->value.c_str()));
+    uint8_t wValue = aControl->getValueInt();
 
     LOG(LOG_DEBUG, "WebSite::HandlePercentageSliderControl() Control %04X, new value %d",
             aControl->GetId(), wValue);
@@ -645,10 +645,10 @@ void WebSite::HandlePercentageSliderControl(Control* aControl, int aType, Settin
     Settings.SetValue<uint8_t>(aSettingsKey, wValue);
 }
 
-void WebSite::HandleTimerControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey)
+void WebSite::HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
 {
     /* Retreive new time value in format HH:MM */
-    std::string wTimeStr = aControl->value.c_str();
+    std::string wTimeStr = aControl->getValue().c_str();
 
     uint8_t wHour   = static_cast<uint8_t>(std::stoi(wTimeStr.substr(0, 2)));
     uint8_t wMinute = static_cast<uint8_t>(std::stoi(wTimeStr.substr(3, 2)));
@@ -669,10 +669,10 @@ void WebSite::HandleTimerControl(Control* aControl, int aType, SettingsNS::tKey 
     Settings.SetValue<uint32_t>(aSettingsKey, wTimeDword);
 }
 
-void WebSite::ControlCallback(Control* apSender, int aType)
+void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
 {
     if (mpWebSiteInstance)
     {
-        mpWebSiteInstance->HandleControl(apSender, aType);
+        mpWebSiteInstance->HandleControl(apSender, aType, apParam);
     }
 }
