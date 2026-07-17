@@ -165,10 +165,10 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                 /* LOG */
                 LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Start async scan (non-blocking)");
                 /* Start async scan (non-blocking) */
-                WiFi.scanNetworks(true); // true = async
+//                WiFi.scanNetworks(true); // true = async
 
                 /* Set flag to indicate that WiFi scan has been run once */
-                mWifiScanRunOnce = true;
+//                mWifiScanRunOnce = true;
             }
             else
             {

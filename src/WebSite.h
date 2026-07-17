@@ -72,7 +72,8 @@ private:
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     void HandleControl(Control* apControl, int aType);
-
+//  void HandleControl(BasicControl* apControl, int aType);
+    
     void HandleColorControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleSwitcherControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleSelectControl(Control* aControl, int aType, SettingsNS::tKey aSettingsKey);
@@ -114,8 +115,8 @@ private:
 
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
-    static void ControlCallback(Control* apSender, int aType);
-
+    static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);
+//    static void ControlCallback(BasicControl* apSender, int aType);
 };
 
 #endif /* WEBSITE_H_ */
