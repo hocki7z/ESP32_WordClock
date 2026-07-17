@@ -117,8 +117,8 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password", ConfigNS::mKeyWifiPassword, false);
 
     // Add buttons for scanning WiFi networks and connecting to the selected network
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network");
-    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks");
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect");
+    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi");
 
     
     /* Update LED brightness controls */
@@ -363,20 +363,82 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
     SendMessage(wMessage);
 }
 
-Control::ControlId_t WebSite::AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor)
+Control::ControlId_t WebSite::AddTextControl(const char* apTitle, Control::ControlId_t aParent, const String& aElementStyle, const String& arValue)
 {
-    char wHexColor[10];
-    uint32_t wColorParam = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultColor);
-    sprintf(wHexColor, "#%06X", (wColorParam & 0x00FFFFFF));
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String(wHexColor), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
-    ESPUI.setInputType(wControlId, "color");
+    ESPUI.setInputType(wControlId, "text");
 
-    LOG(LOG_DEBUG, "WebSite::AddColorControl() Control %04X, param 0x%08X, color %s",
-        wControlId, wColorParam, String(wHexColor).c_str());
+    ESPUI.setElementStyle(wControlId, aElementStyle.c_str());
+
+   return wControlId;
+}
+
+Control::ControlId_t WebSite::AddTextInput(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+        SettingsNS::tKey aSettingsKey, const String& aDefaultText)
+{
+    String wValue = aDefaultText;
+
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        wValue = Settings.GetValue<String>(aSettingsKey, aDefaultText);
+    }
+
+    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, wValue);
+
+    LOG(LOG_DEBUG, "WebSite::AddTextInput() ControlId %04X, param 0x%08X, value %s", 
+        wControlId, aSettingsKey, wValue.c_str());
 
     return wControlId;
 }
+
+
+Control::ControlId_t WebSite::AddColorInput(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+        SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor)
+{
+    uint32_t wColorParam = 0;
+    char wHexColor[10] = {0};  
+
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        wColorParam = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultColor);
+        sprintf(wHexColor, "#%06X", (wColorParam & 0x00FFFFFF));
+    }
+
+    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, String(wHexColor));
+    ESPUI.setInputType(wControlId, "color");
+
+    LOG(LOG_DEBUG, "WebSite::AddColorInput() Control %04X, param 0x%08X, color %s",
+        wControlId, wColorParam, String(wHexColor).c_str());
+
+    return wControlId;
+
+}
+
+Control::ControlId_t WebSite::AddTimeInput(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+        SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime)
+{
+    char wTimeStr[6] = {0};  // Buffer for time string in format HH:MM
+
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        uint32_t wTimeInt = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultTime);
+        DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wTimeInt);
+
+        /* Convert time to string format HH:MM */
+        sprintf(wTimeStr, "%02u:%02u", wDateTime.mTime.mHour, wDateTime.mTime.mMinute);
+    }
+
+    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, String(wTimeStr));
+    ESPUI.setInputType(wControlId, "time");
+
+    LOG(LOG_DEBUG, "WebSite::AddTimeInput() Control %04X, time %s", wControlId, String(wTimeStr).c_str());
+
+    return wControlId;
+}
+
+
+
 
 Control::ControlId_t WebSite::AddSwitcherControl(const char* apTitle, const bool aDefaultState)
 {
@@ -433,24 +495,6 @@ Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apTitle, Se
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime)
-{
-    char wTimeStr[6];
-
-    uint32_t wTimeInt = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultTime);
-    DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wTimeInt);
-
-    /* Convert time to string format HH:MM */
-    sprintf(wTimeStr, "%02u:%02u", wDateTime.mTime.mHour, wDateTime.mTime.mMinute);
-
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String(wTimeStr), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
-    ESPUI.setInputType(wControlId, "time");
-
-    LOG(LOG_DEBUG, "WebSite::AddTimeControl() Control %04X, time %s", wControlId, String(wTimeStr).c_str());
-
-    return wControlId;
-}
-
 Control::ControlId_t WebSite::AddPasswordControl(const char* apTitle)
 {
     Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String("password"), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
@@ -461,9 +505,9 @@ Control::ControlId_t WebSite::AddPasswordControl(const char* apTitle)
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddButtonControl(const char* apTitle)
+Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent, const String& aElementStyle)
 {
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apTitle, String(apTitle), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apLabel, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
 
     LOG(LOG_DEBUG, "WebSite::AddButtonControl() Control %04X", wControlId);
 

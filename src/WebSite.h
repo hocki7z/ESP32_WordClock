@@ -54,6 +54,14 @@ private:
 
     };
 
+    /** @brief Type definition for control callback function pointer
+     *       @param apControl Pointer to the control that triggered the callback
+     *       @param aType Type of the event
+     *       @param apParam Additional parameter passed to the callback
+     */
+    using ControlCallback_t = void(*)(BasicControl*, int, void*);
+    
+
     /** @brief "This" pointer for created WebSite instance */
     static WebSite* mpWebSiteInstance;
 
@@ -73,15 +81,29 @@ private:
     void HandlePercentageSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
+    Control::ControlId_t AddTextControl(const char* apTitle, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+        const String& arValue = emptyString);
+
+    Control::ControlId_t AddTextInput(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const String& aDefaultText = emptyString);
+        
+    Control::ControlId_t AddColorInput(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultColor = 0x000000);
+
+
     Control::ControlId_t AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor = 0x000000);
+    Control::ControlId_t AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime = 0);
+    Control::ControlId_t AddPasswordControl(const char* apTitle);
+
     Control::ControlId_t AddSwitcherControl(const char* apTitle, const bool aDefaultState = false);
     Control::ControlId_t AddSwitcherControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const bool aDefaultState = false);
     Control::ControlId_t AddSelectControl(const char* apTitle);
     Control::ControlId_t AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption = 0);
     Control::ControlId_t AddPercentageSliderControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue = 50);
-    Control::ControlId_t AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime = 0);
-    Control::ControlId_t AddPasswordControl(const char* apTitle);
-    Control::ControlId_t AddButtonControl(const char* apTitle);
+
+
+
+    Control::ControlId_t AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "");
 
     void UpdateLedBrightnessControls(bool aForceUpdate = false);
 
