@@ -99,6 +99,8 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyWifiSSID                     = SettingsNS::tKey(mParamsConfig, mWifiManagerGroup, 0x00);
     static const SettingsNS::tKey  mKeyWifiPassword                 = SettingsNS::tKey(mParamsConfig, mWifiManagerGroup, 0x01);
 
+    static const SettingsNS::tKey  mInvalidKey                      = SettingsNS::tKey(0xFF, 0xFF, 0xFFFF);
+
     /* Default values for display settings */
     static constexpr uint8_t  mDefaultDisplayClockMode              = 1;            // Rhein-Ruhr
     static constexpr bool     mDefaultDisplayClockItIs              = true;
