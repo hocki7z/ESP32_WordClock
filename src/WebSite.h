@@ -81,6 +81,8 @@ private:
     void HandlePercentageSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
+    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor);
+    
     Control::ControlId_t AddTextControl(const char* apTitle, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
         const String& arValue = emptyString);
 

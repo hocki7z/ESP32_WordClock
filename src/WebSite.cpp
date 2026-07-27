@@ -365,6 +365,14 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
     SendMessage(wMessage);
 }
 
+Control::ControlId_t WebSite::AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor)
+{
+	Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, "", aColor, aParent);
+	ESPUI.setElementStyle(wControlId, LABLE_STYLE_GROUP);
+
+    return wControlId;
+}
+
 Control::ControlId_t WebSite::AddTextControl(const char* apTitle, Control::ControlId_t aParent, const String& aElementStyle, const String& arValue)
 {
     Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
