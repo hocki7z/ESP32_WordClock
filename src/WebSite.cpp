@@ -17,6 +17,9 @@
 #define LOG_LEVEL   (LOG_DEBUG)
 
 #define CSS_NO_STYLE                  ""
+#define CSS_STYLE_GROUP               "background-color: unset; width: 100%; text-align: center;"
+#define CSS_STYLE_LABEL               "background-color: unset; width: 65%; text-align: left;"
+#define CSS_STYLE_INPUT               "color: black; width: 95%; margin-left: 20px; text-align: left;"
 
 
 /**
@@ -52,7 +55,15 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize WEB UI but do not start it yet */
 
     /* ESPUI Log mode */
+#if LOG_LEVEL > LOG_DEBUG    
     ESPUI.setVerbosity(Verbosity::Verbose);
+#else
+    /* Turn off verbose debugging */
+    ESPUI.setVerbosity(Verbosity::Quiet);
+#endif /* LOG_LEVEL >= LOG_DEBUG */
+
+    mWebUIControlID.mMainTab     = ESPUI.addControl(Control::Type::Tab, "", "Wordclock", Control::Color::None, Control::noParent);
+    mWebUIControlID.mSettingsTab = ESPUI.addControl(Control::Type::Tab, "", "Settings",  Control::Color::None, Control::noParent);
 
     /* Section Wordcolock settings */
     ESPUI.addControl(Control::Type::Separator, "Wordclock settings", "", Control::Color::Alizarin, Control::noParent);
@@ -112,18 +123,22 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
             ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
     /* Section WiFi settings */
-    ESPUI.addControl(Control::Type::Separator, "WiFi settings", "", Control::Color::Alizarin, Control::noParent);
+    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi", mWebUIControlID.mSettingsTab);
+//    ESPUI.addControl(Control::Type::Separator, "WiFi settings", "", Control::Color::Alizarin, Control::noParent);
 
     // Add WiFi settings controls here (e.g., SSID, password, etc.)
-    mWebUIControlID.mWifiSSIDs = AddSelectControl("SSID", Control::noParent, CSS_NO_STYLE);
+    AddLabelControl("SSID", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
+    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
 
-    mWebUIControlID.mWifiPassword = AddPasswordControl("Password", Control::noParent, CSS_NO_STYLE);
-    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password",  Control::noParent, CSS_NO_STYLE,
+    AddLabelControl("Password", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
+    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
+
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password",  mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE,
         ConfigNS::mKeyWifiPassword, false);
 
     // Add buttons for scanning WiFi networks and connecting to the selected network
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect", Control::noParent, CSS_NO_STYLE);
-    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi", Control::noParent, CSS_NO_STYLE);
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
+    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
 
 
     /* Update LED brightness controls */
@@ -367,6 +382,23 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
     /* Send message */
     SendMessage(wMessage);
 }
+
+Control::ControlId_t WebSite::AddGroupHelper(const char * apLabel, Control::ControlId_t aParent)
+{
+	Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, "", Control::Color::None, aParent);
+	ESPUI.setElementStyle(wControlId, CSS_STYLE_GROUP);
+
+    return wControlId;
+}
+
+Control::ControlId_t WebSite::AddLabelControl(const String& arValue, Control::ControlId_t aParent, const String& aElementStyle)
+{
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, "", arValue, Control::Color::None, aParent);
+    ESPUI.setElementStyle(wControlId, aElementStyle.c_str());
+
+    return wControlId;
+}
+
 
 Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle, const String& arValue)
 {
