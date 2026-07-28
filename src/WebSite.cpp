@@ -16,6 +16,16 @@
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
+#define CSS_NO_STYLE                  ""
+#define CSS_STYLE_GROUP               "background-color: unset; width: 100%; text-align: center;"
+#define CSS_STYLE_LABEL               "background-color: unset; width: 95%; text-align: left;"
+#define CSS_STYLE_INPUT               "background-color: unset; width: 95%; align-self: left;"
+
+
+#define CSS_TEXT_LABEL_STYLE            //"margin-bottom: 0;font-size: 1.2em; background-color: unset; vertical-align: middle; text-align: left; width:55%"
+#define CSS_TEXT_STYLE                  "height:26px;width:180px;"
+
+
 /**
  * Initialize the private static pointer
  */
@@ -49,78 +59,96 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize WEB UI but do not start it yet */
 
     /* ESPUI Log mode */
+#if LOG_LEVEL > LOG_DEBUG    
     ESPUI.setVerbosity(Verbosity::Verbose);
+#else
+    /* Turn off verbose debugging */
+    ESPUI.setVerbosity(Verbosity::Quiet);
+#endif /* LOG_LEVEL >= LOG_DEBUG */
+
+//    mWebUIControlID.mMainTab     = ESPUI.addControl(Control::Type::Tab, "", "Wordclock", Control::Color::None, Control::noParent);
+//    mWebUIControlID.mSettingsTab = ESPUI.addControl(Control::Type::Tab, "", "Settings", Control::Color::None, Control::noParent);
+
 
     /* Section Wordcolock settings */
     ESPUI.addControl(Control::Type::Separator, "Wordclock settings", "", Control::Color::Alizarin, Control::noParent);
 
     /* Clock mode */
-    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", Control::noParent, "",
+    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mcClockModeItems, ConfigNS::mcClockModeItemsCount,
             ConfigNS::mKeyDisplayClockMode, ConfigNS::mDefaultDisplayClockMode);
 
     /* Switcher for 'IT IS' words */
-    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("Show 'IT IS'", Control::noParent, "",
+    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("Show 'IT IS'", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
 
     /* Switch for single minutes */
-    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("Show single minutes", Control::noParent, "",
+    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("Show single minutes", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
     /* Section LED settings */
     ESPUI.addControl(Control::Type::Separator, "LED colors", "", Control::Color::Alizarin, Control::noParent);
 
     /* Time color */
-    mWebUIControlID.mDisplayColorTime = AddColorControl("Time color", Control::noParent, "",
+    mWebUIControlID.mDisplayColorTime = AddColorControl("Time color", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
 
     /* Background color */
-    mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color", Control::noParent, "",
+    mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
 
     /* Day/Night settings */
     ESPUI.addControl(Control::Type::Separator, "LED brightness", "", Control::Color::Alizarin, Control::noParent);
     /* Slider for LED brightness selection */
-    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("LED brightness", Control::noParent, "",
+    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("LED brightness", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
     /* Switcher for day/night mode activation */
-    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("Use day/night mode", Control::noParent, "",
+    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("Use day/night mode", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
     /* Slider for night brightness selection */
-    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("Night mode brightness", Control::noParent, "",
+    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("Night mode brightness", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
     /* Time input for night mode start */
-    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("Night mode start time", Control::noParent, "",
+    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("Night mode start time", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
     /* Time input for night mode end */
-    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time", Control::noParent, "",
+    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
 
 
     /* Section DateTime settings */
     ESPUI.addControl(Control::Type::Separator, "DateTime settings", "", Control::Color::Alizarin, Control::noParent);
     /* NTP server selection */
-    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("NTP server", Control::noParent, "",
+    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("NTP server", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
             ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
     /* Timezone selection */
-    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("Time zone", Control::noParent, "",
+    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("Time zone", Control::noParent, CSS_NO_STYLE,
             ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
             ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
     /* Section WiFi settings */
+//    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi", mWebUIControlID.mSettingsTab);
+
     ESPUI.addControl(Control::Type::Separator, "WiFi settings", "", Control::Color::Alizarin, Control::noParent);
 
     // Add WiFi settings controls here (e.g., SSID, password, etc.)
-    mWebUIControlID.mWifiSSIDs = AddSelectControl("SSID");
+    AddLabelControl("SSID", Control::noParent, CSS_STYLE_LABEL);
+//    mWebUIControlID.mWifiSSIDs = AddSelectControl("", Control::noParent, CSS_STYLE_INPUT);
 
-    mWebUIControlID.mWifiPassword = AddPasswordControl("Password");
-    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password",  Control::noParent, "",
+        mWebUIControlID.mWifiSSIDs = AddSelectControl("SSID", Control::noParent, CSS_STYLE_INPUT);
+
+//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Password ", Control::Color::Dark, Control::noParent), CSS_NO_STYLE);
+//    mWebUIControlID.mWifiPassword = AddPasswordControl("", Control::noParent, CSS_NO_STYLE);
+
+    mWebUIControlID.mWifiPassword = AddPasswordControl("Password", Control::noParent, CSS_NO_STYLE);
+
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password",  Control::noParent, CSS_NO_STYLE,
         ConfigNS::mKeyWifiPassword, false);
 
     // Add buttons for scanning WiFi networks and connecting to the selected network
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect");
-    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi");
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect", Control::noParent, CSS_NO_STYLE);
+    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi", Control::noParent, CSS_NO_STYLE);
 
 
     /* Update LED brightness controls */
@@ -368,14 +396,23 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
 Control::ControlId_t WebSite::AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor)
 {
 	Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, "", aColor, aParent);
-	ESPUI.setElementStyle(wControlId, LABLE_STYLE_GROUP);
+	ESPUI.setElementStyle(wControlId, CSS_STYLE_GROUP);
 
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddTextControl(const char* apTitle, Control::ControlId_t aParent, const String& aElementStyle, const String& arValue)
+Control::ControlId_t WebSite::AddLabelControl(const String& arValue, Control::ControlId_t aParent, const String& aElementStyle)
 {
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, "", arValue, Control::Color::Dark, aParent);
+    ESPUI.setElementStyle(wControlId, aElementStyle.c_str());
+
+    return wControlId;
+}
+
+
+Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle, const String& arValue)
+{
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apLabel, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
 
     ESPUI.setInputType(wControlId, "text");
 
@@ -467,7 +504,7 @@ Control::ControlId_t WebSite::AddSwitcherControl(const char* apLabel, Control::C
         wState = Settings.GetValue<bool>(aSettingsKey, aDefaultState);
     }
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Switcher, apLabel, wState, Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Switcher, apLabel, wState, Control::Color::Dark, aParent, WebSite::ControlCallback);
 
     LOG(LOG_DEBUG, "WebSite::AddSwitcherControl() Control %04X, default state %s",
         wControlId, aDefaultState ? "ON" : "OFF");
@@ -481,7 +518,7 @@ Control::ControlId_t WebSite::AddSelectControl(const char* apLabel, Control::Con
 {
     uint8_t wSelectedOption = 0;
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apLabel, "", Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apLabel, "", Control::Color::Dark, aParent, WebSite::ControlCallback);
 
     if (apItems != nullptr)
     {
@@ -511,7 +548,7 @@ Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apLabel, Co
         wValue = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultValue);
     }
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Slider, apLabel, wValue, Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Slider, apLabel, wValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
     ESPUI.addControl(Control::Type::Min, "", String(  0), Control::Color::None, wControlId);
     ESPUI.addControl(Control::Type::Max, "", String(100), Control::Color::None, wControlId);
 
@@ -523,6 +560,8 @@ Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apLabel, Co
 Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent, const String& aElementStyle)
 {
     Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apLabel, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
+
+    ESPUI.setElementStyle(wControlId, aElementStyle.c_str());
 
     LOG(LOG_DEBUG, "WebSite::AddButtonControl() Control %04X", wControlId);
 

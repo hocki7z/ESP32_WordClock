@@ -27,6 +27,13 @@ private:
 
     struct tWebUIControlID
     {
+        Control::ControlId_t mMainTab;
+        Control::ControlId_t mSettingsTab;
+
+        Control::ControlId_t mSettingsLedGroup;
+        Control::ControlId_t mSettingsTimeGroup;
+        Control::ControlId_t mSettingsWiFiGroup;
+
         Control::ControlId_t mDisplayClockMode;
         Control::ControlId_t mDisplayClockItIs;
         Control::ControlId_t mDisplayClockSingleMinutes;
@@ -81,9 +88,11 @@ private:
     void HandlePercentageSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
-    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor);
+    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor = Control::Color::None);
     
-    Control::ControlId_t AddTextControl(const char* apTitle, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddLabelControl(const String& arValue = emptyString, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "");
+
+    Control::ControlId_t AddTextControl(const char* apLable, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
         const String& arValue = emptyString);
 
     Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",

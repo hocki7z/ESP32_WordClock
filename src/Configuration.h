@@ -44,7 +44,7 @@ namespace ConfigNS
 
     /* Web site task configuration */
     static constexpr tTaskPriority mWebSiteTaskPriority      = mDefaultTaskPriority;
-    static constexpr uint32_t      mWebSiteTaskStackSize     = mDefaultTaskStackSize;
+    static constexpr uint32_t      mWebSiteTaskStackSize     = mDefaultTaskStackSize + 1024;
     static constexpr const char*   mWebSiteTaskName          = "WebSiteTask";
 
 

@@ -163,17 +163,17 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
             if (!mWifiScanRunOnce)
             {   
                 /* LOG */
-                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Start async scan (non-blocking)");
+//                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Start async scan (non-blocking)");
                 /* Start async scan (non-blocking) */
-                WiFi.scanNetworks(true); // true = async
+//                WiFi.scanNetworks(true); // true = async
 
                 /* Set flag to indicate that WiFi scan has been run once */
-                mWifiScanRunOnce = true;
+//                mWifiScanRunOnce = true;
             }
             else
             {
                 /* LOG */
-                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() WiFi scan already run once, skipping");
+//                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() WiFi scan already run once, skipping");
             }
             break;
 
@@ -300,9 +300,9 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                     if (WiFi.scanComplete() != WIFI_SCAN_RUNNING)
                     {
                         /* Move to the next state */
-                        mState = STATE_IDLE;
+//                        mState = STATE_IDLE;
                         /* Notify */
-                        SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STOPPED);
+//                        SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STOPPED);
                     }
                     break;
 
