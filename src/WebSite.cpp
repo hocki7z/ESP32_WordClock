@@ -255,124 +255,100 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mMainTab     = ESPUI.addControl(Control::Type::Tab, "", "Wordclock", Control::Color::None, Control::noParent);
     mWebUIControlID.mSettingsTab = ESPUI.addControl(Control::Type::Tab, "", "Settings",  Control::Color::Wetasphalt, Control::noParent);
 
-//    mWebUIControlID.mSettingsWiFiGroup = ESPUI.addControl(Control::Type::Label, "WiFi Access Point Credentials", "", Control::Color::Wetasphalt, mWebUIControlID.mSettingsTab);
-//    ESPUI.setElementStyle(mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_GROUP);
-    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
-
-//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "SSID", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_LABEL);
-//    mWebUIControlID.mWifiSSIDs = ESPUI.addControl(Control::Type::Select, "", "SSID1", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
-//    ESPUI.setElementStyle(mWebUIControlID.mWifiSSIDs, CSS_STYLE_INPUT);
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
-    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
-
-//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Password", Control::Color::Dark, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_LABEL);
-//    mWebUIControlID.mWifiPassword = ESPUI.addControl(Control::Type::Text, "", "password", Control::Color::Wetasphalt, mWebUIControlID.mSettingsWiFiGroup);
-//    ESPUI.setElementStyle(mWebUIControlID.mWifiPassword, CSS_STYLE_INPUT);
-//    ESPUI.setInputType(mWebUIControlID.mWifiPassword, "password");
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password");
-    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
-
-
-//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, emptyString.c_str(), "Show/Hide Password", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_SWITCH_LABEL);
-//    mWebUIControlID.mWifiPasswordShowHide = ESPUI.addControl(Control::Type::Switcher, emptyString.c_str(), String(0), Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
-//    ESPUI.setElementStyle(mWebUIControlID.mWifiPasswordShowHide, CSS_STYLE_SWITCH);
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL, "Show/Hide Password");
-    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH);
-
-//    mWebUIControlID.mWifiConnectButton = ESPUI.addControl(Control::Type::Button, emptyString.c_str(), "Save & Connect", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
-//    ESPUI.setElementStyle(mWebUIControlID.mWifiConnectButton, CSS_STYLE_BUTTON);
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
-
-//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, emptyString.c_str(), emptyString, Control::Color::None, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_SEPARATOR);
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SEPARATOR, emptyString.c_str());
-
-
-//    mWebUIControlID.mWifiScanButton = ESPUI.addControl(Control::Type::Button, emptyString.c_str(), "Search for WiFi", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
-//    ESPUI.setElementStyle(mWebUIControlID.mWifiScanButton, CSS_STYLE_BUTTON);
-    mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
-
-    return;
-
-
-
-
-
-
-
-    /* Section Wordcolock settings */
-    ESPUI.addControl(Control::Type::Separator, "Wordclock settings", "", Control::Color::Alizarin, Control::noParent);
+    /** 
+     * Group Wordclock settings
+     */
+    mWebUIControlID.mSettingsWordclockGroup = AddGroupHelper("Wordclock", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
 
     /* Clock mode */
-    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_LABEL, "Clock mode");
+    mWebUIControlID.mDisplayClockMode = AddSelectControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_INPUT,
             ConfigNS::mcClockModeItems, ConfigNS::mcClockModeItemsCount,
             ConfigNS::mKeyDisplayClockMode, ConfigNS::mDefaultDisplayClockMode);
 
     /* Switcher for 'IT IS' words */
-    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("Show 'IT IS'", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH_LABEL, "Show 'IT IS'");
+    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
 
     /* Switch for single minutes */
-    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("Show single minutes", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH_LABEL, "Show single minutes");
+    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
-    /* Section LED settings */
-    ESPUI.addControl(Control::Type::Separator, "LED colors", "", Control::Color::Alizarin, Control::noParent);
+
+    /**
+     * Group LED settings 
+     */
+    mWebUIControlID.mSettingsLedGroup = AddGroupHelper("LED", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
 
     /* Time color */
-    mWebUIControlID.mDisplayColorTime = AddColorControl("Time color", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Time color");
+    mWebUIControlID.mDisplayColorTime = AddColorControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
 
     /* Background color */
-    mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Background color");
+    mWebUIControlID.mDisplayColorBackground = AddColorControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
 
-    /* Day/Night settings */
-    ESPUI.addControl(Control::Type::Separator, "LED brightness", "", Control::Color::Alizarin, Control::noParent);
     /* Slider for LED brightness selection */
-    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("LED brightness", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "LED brightness");
+    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
     /* Switcher for day/night mode activation */
-    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("Use day/night mode", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
+    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
     /* Slider for night brightness selection */
-    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("Night mode brightness", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode brightness");
+    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
     /* Time input for night mode start */
-    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("Night mode start time", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode start time");
+    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
     /* Time input for night mode end */
-    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode end time");
+    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
 
 
-    /* Section DateTime settings */
-    ESPUI.addControl(Control::Type::Separator, "DateTime settings", "", Control::Color::Alizarin, Control::noParent);
+    /**
+     * Group Time settings 
+     */
+    mWebUIControlID.mSettingsTimeGroup = AddGroupHelper("Time settings", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
+
     /* NTP server selection */
-    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("NTP server", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "NTP server");
+    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
             ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
             ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
     /* Timezone selection */
-    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("Time zone", Control::noParent, CSS_STYLE_NONE,
+    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "Time zone");
+    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
             ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
             ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
-    /* Section WiFi settings */
-    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi", mWebUIControlID.mSettingsTab);
-//    ESPUI.addControl(Control::Type::Separator, "WiFi settings", "", Control::Color::Alizarin, Control::noParent);
 
-    // Add WiFi settings controls here (e.g., SSID, password, etc.)
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE, "SSID");
-    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
+    /**
+     * Group WiFi settings 
+     */
+    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
 
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE, "Password");
-    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
+    /* WiFi settings controls here (e.g., SSID, password, etc.) */
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
+    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
 
-    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password",  mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE,
-        ConfigNS::mKeyWifiPassword, false);
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password");
+    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
 
-    // Add buttons for scanning WiFi networks and connecting to the selected network
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
-    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL, "Show/Hide Password");
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH);
+
+    /* Add buttons for scanning WiFi networks and connecting to the selected network */
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
+    mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
 
 
     /* Update LED brightness controls */
@@ -798,8 +774,6 @@ Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String
 
 void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 {
-    return; 
-
     bool wUseNightMode = Settings.GetValue<bool>(ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
 
     LOG(LOG_DEBUG, "WebSite::UpdateLedBrightnessControls() Use night mode %d, force update %d", wUseNightMode, aForceUpdate);
@@ -830,8 +804,6 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
 {
-    return; 
-    
     /* Snapshot to avoid race condition with WiFi event handler (different task context) */    
     mLocalSsidList = ConfigNS::mSSSIDList;
 
@@ -1003,6 +975,6 @@ void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
 {
     if (mpWebSiteInstance)
     {
-//        mpWebSiteInstance->HandleControl(apSender, aType, apParam);
+        mpWebSiteInstance->HandleControl(apSender, aType, apParam);
     }
 }

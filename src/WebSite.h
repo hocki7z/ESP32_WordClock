@@ -30,6 +30,7 @@ private:
         Control::ControlId_t mMainTab;
         Control::ControlId_t mSettingsTab;
 
+        Control::ControlId_t mSettingsWordclockGroup;
         Control::ControlId_t mSettingsLedGroup;
         Control::ControlId_t mSettingsTimeGroup;
         Control::ControlId_t mSettingsWiFiGroup;
