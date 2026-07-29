@@ -88,35 +88,36 @@ private:
     void HandlePercentageSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
     void HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
-    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent);
+    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None);
     
-    Control::ControlId_t AddLabelControl(const String& arValue = emptyString, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "");
-
-    Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddLabelControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         const String& arValue = emptyString);
 
-    Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
+        const String& arValue = emptyString);
+
+    Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const String& aDefaultText = emptyString);
 
-    Control::ControlId_t AddColorControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddColorControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultColor = 0x000000);
 
-    Control::ControlId_t AddTimeControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddTimeControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultTime = 0);
 
-    Control::ControlId_t AddPasswordControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "");
+    Control::ControlId_t AddPasswordControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "");
 
-    Control::ControlId_t AddSwitcherControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddSwitcherControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const bool aDefaultState = false);
 
-    Control::ControlId_t AddSelectControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddSelectControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         const char* const* apItems = nullptr, uint8_t aItemsCount = 0,
         SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultOption = 0);
 
-    Control::ControlId_t AddPercentageSliderControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "",
+    Control::ControlId_t AddPercentageSliderControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultValue = 50);
 
-    Control::ControlId_t AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent = Control::noParent, const String& aElementStyle = "");
+    Control::ControlId_t AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "");
 
     void UpdateLedBrightnessControls(bool aForceUpdate = false);
 

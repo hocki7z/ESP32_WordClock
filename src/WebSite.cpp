@@ -16,10 +16,58 @@
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
-#define CSS_NO_STYLE                  ""
-#define CSS_STYLE_GROUP               "background-color: unset; width: 100%; text-align: center;"
-#define CSS_STYLE_LABEL               "background-color: unset; width: 65%; text-align: left;"
-#define CSS_STYLE_INPUT               "color: black; width: 95%; margin-left: 20px; text-align: left;"
+/* CSS Styles for Example https://github.com/ChrSchu90/PlatformIo.TCapChamp */
+#define STYLE_HIDDEN                    "background-color: unset; width: 0px; height: 0px; display: none;"
+#define STYLE_NUM_TEMP_ADJUST_NORMAL    "width: 16%; color: black; background: rgba(255,255,255,0.8);"
+#define STYLE_NUM_POWER_ADJUST_NORMAL   "width: 16%; color: black; background: rgba(255,255,255,0.8);"
+#define STYLE_NUM_POWER_ADJUST_ERROR    "width: 16%; color: black; background: rgba(231,76,60,0.8);"
+#define STYLE_NUM_POWER_ADJUST_DISABLED "width: 16%; color: black; background: rgba(153,153,153,0.8);"
+#define STYLE_LBL_ADJUST                "background-color: unset; width: 84%; text-align-last: left;"
+#define STYLE_LBL_INOUT                 "width: 16%;"
+#define STYLE_LBL_API                   "width: 29%;"
+#define STYLE_SWITCH_INOUT              "margin-bottom: 10px; width: 12.5%; vertical-align: middle; "
+#define STYLE_NUM_INOUT_MANUAL_INPUT    "width: 16%; color: black; background: rgba(255,255,255,0.8);"
+#define STYLE_LBL_API_VALUE_OUTPUT      "background-color: unset; text-align: left; width: 70.5%;"
+#define STYLE_LBL_INOUT_VALUE_OUTPUT    "background-color: unset; text-align: left; width: 83.5%;"
+#define STYLE_LBL_INOUT_MANUAL_ENABLE   "background-color: unset; text-align: left; width: 70%; vertical-align: bottom; margin-bottom: 5px"
+
+
+/* CSS Styles for Example https://github.com/BlockThor/ESPUI-web-interace-for-WS2812FX-with-AccessPoint */
+#define CSS_SHOWBUTTON_STYLE            "font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
+#define CSS_SHOWBUTTON_DW_STYLE         String(CSS_SHOWBUTTON_STYLE) + "color:#999;background-color: #222;"
+#define CSS_SHOWBUTTON_UP_STYLE         String(CSS_SHOWBUTTON_STYLE) + "color:#222;background-color: #bbb;"
+#define CSS_TEXT_STYLE                  "height:26px;width:180px;"
+#define CSS_TEXT_LABEL_STYLE            "margin-bottom: 0;font-size: 1.2em; background-color: unset; vertical-align: middle; text-align: left; width:55%"
+#define CSS_SELECT_STYLE                "width:60px;"
+#define CSS_SELECT_LABEL_STYLE          "font-size: 1.2em; background-color: unset; vertical-align: bottom; text-align: left; width:80%;margin-bottom: 3;"
+#define CSS_NUMBER_STYLE                "width:60px;"
+#define CSS_NUMBER_LABEL_STYLE          "font-size: 1.2em; background-color: unset; vertical-align: middle; text-align: left; width:80%"
+#define CSS_STATUS_STYLE                "font-size: 1.6em;font-weight:400;font-variant-caps: small-caps; background-color: unset; color: #eee; "
+#define CSS_STATUS_PANEL_STYLE          "margin-left: auto; margin-right: auto;float: none;"
+#define CSS_ALARM_PANEL_STYLE            "color:red;"
+#define CSS_COLOR_STYLE                 "min-height:40px;"
+#define CSS_CONTROL_LABEL_STYLE         "align-items: center; font-size: 1.2em; background-color: unset; vertical-align: middle; text-align: left; width:80%"
+#define CSS_CONTROL_SWITCH_STYLE        "align-items: center; text-align: right;"
+#define CSS_SLIDER_LABEL_STYLE          "font-size:1.2rem;font-weight:400;width:18%; background-color: unset;"
+#define CSS_SAVEBUTTON_STYLE            "margin:0 2rem 1rem;width:200px;outline:0; border:0; border-radius:4px; border-bottom:4px solid #2b6cb0;background-color:#4299e1; color:white;"
+#define CSS_SAVEBUTTON_DOWN_STYLE       "border-bottom:4px solid #E91E63; background-color:#3F51b5;"
+#define CSS_NO_BG_STYLE                 "background-color: unset;"
+#define CSS_VERYSPEC_STYLE              "background: linear-gradient(170deg, rgba(22,22,222,1) 0%, rgba(22,22,222,1) 33%, white 50%, rgba(176,176,0,1) 66%, rgba(176,176,0,1) 100%); border-bottom: #000;"
+
+
+
+#define CSS_STYLE_NONE                  ""
+#define CSS_STYLE_GROUP                 "background-color: unset; width: 100%; text-align: center;"
+#define CSS_STYLE_SEPARATOR             "background-color: unset; width: 100%;" // min-height:2px
+#define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left;"
+#define CSS_STYLE_INPUT                 "color: black; width: 100%; height:26px"
+#define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" //width: 12%; vertical-align: middle;"
+#define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: 78%; text-align: left;"
+#define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
+
+
+
+
 
 
 /**
@@ -55,70 +103,256 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize WEB UI but do not start it yet */
 
     /* ESPUI Log mode */
-#if LOG_LEVEL > LOG_DEBUG    
+#if LOG_LEVEL == LOG_DEBUG    
     ESPUI.setVerbosity(Verbosity::Verbose);
 #else
     /* Turn off verbose debugging */
     ESPUI.setVerbosity(Verbosity::Quiet);
 #endif /* LOG_LEVEL >= LOG_DEBUG */
 
+	/* Make sliders continually report their position as they are being dragged. */
+	ESPUI.sliderContinuous = true;
+
+
+	auto maintab = ESPUI.addControl(Control::Type::Tab, "", "Example Basic controls", Control::Color::None, Control::noParent);
+
+	ESPUI.addControl(Control::Type::Separator, "General controls", "", Control::Color::None, maintab);
+	ESPUI.addControl(Control::Type::Button, "Button", "Button 1", Control::Color::Alizarin, maintab, nullptr);
+
+	auto mainLabel = ESPUI.addControl(Control::Type::Label, "Label", "Label text", Control::Color::Emerald, maintab, nullptr);
+	auto mainSwitcher = ESPUI.addControl(Control::Type::Switcher, "Switcher", "", Control::Color::Sunflower, maintab, nullptr);
+
+	//Sliders default to being 0 to 100, but if you want different limits you can add a Min and Max control
+	auto mainSlider = ESPUI.addControl(Control::Type::Slider, "Slider", "200", Control::Color::Turquoise, maintab, nullptr);
+	ESPUI.addControl(Control::Type::Min, "", "10", Control::Color::None, mainSlider);
+	ESPUI.addControl(Control::Type::Max, "", "400", Control::Color::None, mainSlider);
+
+	//Number inputs also accept Min and Max components, but you should still validate the values.
+	auto mainNumber = ESPUI.addControl(Control::Type::Number, "Number Input", "50", Control::Color::Emerald, maintab, nullptr);
+	ESPUI.addControl(Control::Type::Min, "",   "0", Control::Color::None, mainNumber);
+	ESPUI.addControl(Control::Type::Max, "", "100", Control::Color::None, mainNumber);
+
+
+
+    /***************************************************************************************************************************/
+    //
+    // Example from:
+    //      https://github.com/ChrSchu90/PlatformIo.TCapChamp
+    //
+    /***************************************************************************************************************************/
+    {
+        auto _tab = ESPUI.addControl(Control::Type::Tab, emptyString.c_str(), "Example TCapChamp", Control::Color::None, Control::noParent);
+
+        auto lblWifiSettings = ESPUI.addControl(Control::Type::Label, "WiFi Configuration", emptyString, Control::Color::None, _tab);
+        ESPUI.setElementStyle(lblWifiSettings, STYLE_HIDDEN);
+
+        auto _Ssid  = ESPUI.addControl(Control::Type::Select, emptyString.c_str(), "SSID1", Control::Color::None, lblWifiSettings);
+        ESPUI.setEnabled(_Ssid, false);
+        auto _Passw = ESPUI.addControl(Control::Type::Text,   emptyString.c_str(), "password", Control::Color::None, lblWifiSettings);
+        ESPUI.setInputType(_Passw, "password");
+
+        auto _ShowHidePassw = ESPUI.addControl(Control::Type::Switcher, emptyString.c_str(), String(0), Control::Color::None, lblWifiSettings);
+        ESPUI.setElementStyle(_ShowHidePassw, STYLE_SWITCH_INOUT);
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, emptyString.c_str(), "Show/Hide Password", Control::Color::None, lblWifiSettings), STYLE_LBL_INOUT_MANUAL_ENABLE);
+
+        auto _btnSave = ESPUI.addControl(Control::Type::Button, emptyString.c_str(), "Save & Connect", Control::Color::None, lblWifiSettings);
+        auto _btnScan = ESPUI.addControl(Control::Type::Button, emptyString.c_str(), "Search for WiFi", Control::Color::None, lblWifiSettings);
+
+        // Device info group
+        auto device = String("Model:\t ") + String(ESP.getChipModel()) + "\n" +
+                    "Flash:\t " + String(ESP.getFlashChipSize()) + "\n" +
+                    "Freq:\t " + String(ESP.getCpuFreqMHz()) + " MHz\n" +
+                    "Cores:\t " + String(ESP.getChipCores()) + "\n" +
+                    "Revision: " + String(ESP.getChipRevision());
+        auto lblDevice = ESPUI.addControl(Control::Type::Label, "Device", device, Control::Color::None, _tab);
+        ESPUI.setElementStyle(lblDevice, "background-color: unset; text-align-last: left;");
+
+        // Performance group
+        auto _lblPerformance = ESPUI.addControl(Control::Type::Label, "Performance", emptyString, Control::Color::None, _tab);
+        ESPUI.setElementStyle(_lblPerformance, "background-color: unset; text-align-last: left;");
+
+        auto currentMillis  = esp_timer_get_time() / 1000;
+        auto seconds        = currentMillis / 1000;
+        auto minutes        = seconds / 60;
+        auto hours          = minutes / 60;
+        auto days           = hours / 24;
+        currentMillis       %= 1000;
+        seconds             %= 60;
+        minutes             %= 60;
+        hours               %= 24;
+        float freeHeap      = ESP.getFreeHeap();
+        uint32_t heapSize   = ESP.getHeapSize();
+        float usedHeap      = heapSize - freeHeap;
+        float maxUsedHeap   = ESP.getMaxAllocHeap();
+        float freeSketch    = ESP.getFreeSketchSpace();
+        uint32_t sketchSize = freeSketch + ESP.getSketchSize();
+
+        auto performance = String("Uptime:\t\t\t\t") + String(days) + "d " + String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s\n" +
+                    "Heap Usage:\t\t\t"     + String(usedHeap, 0) + "/" + String(heapSize) + " (" + String(usedHeap / heapSize * 100.0f, 2) + " %)\n" +
+                    "Heap Allocated Max:\t" + String(maxUsedHeap, 0) + " (" + String(maxUsedHeap / heapSize * 100.0f, 2) + " %)\n" +
+                    "Sketch Used:\t\t\t"    + String(sketchSize - freeSketch, 0) + "/" + String(sketchSize) + " (" + String(freeSketch / sketchSize * 100.0f, 2) + " %)\n" +
+                    "Temperature:\t\t\t"    + String(temperatureRead(), 1) + " °C";
+        ESPUI.updateLabel(_lblPerformance, performance);
+
+        // Temperature Adjustment group
+        auto tmpAdjGrp = ESPUI.addControl(Control::Type::Label, "Temperature Adjustment", emptyString, Control::Color::None, _tab);
+        ESPUI.setElementStyle(tmpAdjGrp, STYLE_HIDDEN);
+        for (size_t i = 0; i < 10; i++)
+        {
+            auto numAdjTemp = ESPUI.addControl(Control::Type::Number, emptyString.c_str(), String(i, 1), Control::Color::None, tmpAdjGrp);
+            ESPUI.setElementStyle(numAdjTemp, STYLE_NUM_TEMP_ADJUST_NORMAL);
+            ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, emptyString.c_str(), "°C offset at " + String(25) + " °C", Control::Color::None, tmpAdjGrp), STYLE_LBL_ADJUST);
+        }
+
+
+
+    }
+
+
+
+    /***************************************************************************************************************************/
+    //
+    // Example from:
+    //      https://github.com/BlockThor/ESPUI-web-interace-for-WS2812FX-with-AccessPoint    
+    //
+    /***************************************************************************************************************************/
+    {
+        uint16_t tabSettings = ESPUI.addControl(Control::Type::Tab, "", "Example WS2812FX", Control::Color::None, Control::noParent);
+        ESPUI.setElementStyle(tabSettings, "color: red;");
+        ESPUI.setPanelStyle(tabSettings, "color: blue;");
+
+        auto wifiap_web = ESPUI.addControl(Control::Type::Label, "WiFi Access Point Credentials", "", Control::Color::Wetasphalt, tabSettings);
+        ESPUI.setElementStyle(wifiap_web, "background-color: unset;");
+
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "SSID ", Control::Color::Dark, wifiap_web), CSS_TEXT_LABEL_STYLE);
+        auto wifiap_ssid_text = ESPUI.addControl(Control::Type::Text, "", "SSID1", Control::Color::Wetasphalt, wifiap_web);
+        ESPUI.setElementStyle(wifiap_ssid_text, CSS_TEXT_STYLE);
+        ESPUI.addControl(Control::Type::Max, "", "20", Control::Color::None, wifiap_ssid_text);
+
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Password AP", Control::Color::Wetasphalt, wifiap_web), CSS_TEXT_LABEL_STYLE);
+        auto wifiap_pass_text = ESPUI.addControl(Control::Type::Text, "", "password", Control::Color::Wetasphalt, wifiap_web);
+        ESPUI.setElementStyle(wifiap_pass_text, CSS_TEXT_STYLE);
+        ESPUI.addControl(Control::Type::Max, "", "20", Control::Color::None, wifiap_pass_text);
+
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Button, "", "Save & Apply", Control::Color::Dark, wifiap_web), CSS_SAVEBUTTON_STYLE);
+
+        // Speed slider
+        auto speedSlider = ESPUI.addControl(Control::Type::Slider, "Speed", String(50), Control::Color::Wetasphalt, tabSettings);
+        ESPUI.addControl(Control::Type::Min, "", "0", Control::Color::None, speedSlider);
+        ESPUI.addControl(Control::Type::Max, "", "100", Control::Color::None, speedSlider);
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Faster", Control::Color::None, speedSlider), CSS_SLIDER_LABEL_STYLE);
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Fast", Control::Color::None, speedSlider), CSS_SLIDER_LABEL_STYLE);
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Norm", Control::Color::None, speedSlider), CSS_SLIDER_LABEL_STYLE);
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Slow", Control::Color::None, speedSlider), CSS_SLIDER_LABEL_STYLE);
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Slower", Control::Color::None, speedSlider), CSS_SLIDER_LABEL_STYLE);
+        ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", " ", Control::Color::None, speedSlider), "font-size:1.2rem;font-weight:400;width:18%; background-color: unset;width:8%;"); //String(CSS_SLIDER_LABEL_STYLE) + "width:8%;");
+    }
+
+
+
+
+
     mWebUIControlID.mMainTab     = ESPUI.addControl(Control::Type::Tab, "", "Wordclock", Control::Color::None, Control::noParent);
-    mWebUIControlID.mSettingsTab = ESPUI.addControl(Control::Type::Tab, "", "Settings",  Control::Color::None, Control::noParent);
+    mWebUIControlID.mSettingsTab = ESPUI.addControl(Control::Type::Tab, "", "Settings",  Control::Color::Wetasphalt, Control::noParent);
+
+//    mWebUIControlID.mSettingsWiFiGroup = ESPUI.addControl(Control::Type::Label, "WiFi Access Point Credentials", "", Control::Color::Wetasphalt, mWebUIControlID.mSettingsTab);
+//    ESPUI.setElementStyle(mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_GROUP);
+    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
+
+//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "SSID", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_LABEL);
+//    mWebUIControlID.mWifiSSIDs = ESPUI.addControl(Control::Type::Select, "", "SSID1", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
+//    ESPUI.setElementStyle(mWebUIControlID.mWifiSSIDs, CSS_STYLE_INPUT);
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
+    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
+
+//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, "", "Password", Control::Color::Dark, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_LABEL);
+//    mWebUIControlID.mWifiPassword = ESPUI.addControl(Control::Type::Text, "", "password", Control::Color::Wetasphalt, mWebUIControlID.mSettingsWiFiGroup);
+//    ESPUI.setElementStyle(mWebUIControlID.mWifiPassword, CSS_STYLE_INPUT);
+//    ESPUI.setInputType(mWebUIControlID.mWifiPassword, "password");
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password");
+    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
+
+
+//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, emptyString.c_str(), "Show/Hide Password", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_SWITCH_LABEL);
+//    mWebUIControlID.mWifiPasswordShowHide = ESPUI.addControl(Control::Type::Switcher, emptyString.c_str(), String(0), Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
+//    ESPUI.setElementStyle(mWebUIControlID.mWifiPasswordShowHide, CSS_STYLE_SWITCH);
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL, "Show/Hide Password");
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH);
+
+//    mWebUIControlID.mWifiConnectButton = ESPUI.addControl(Control::Type::Button, emptyString.c_str(), "Save & Connect", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
+//    ESPUI.setElementStyle(mWebUIControlID.mWifiConnectButton, CSS_STYLE_BUTTON);
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
+
+//    ESPUI.setElementStyle(ESPUI.addControl(Control::Type::Label, emptyString.c_str(), emptyString, Control::Color::None, mWebUIControlID.mSettingsWiFiGroup), CSS_STYLE_SEPARATOR);
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SEPARATOR, emptyString.c_str());
+
+
+//    mWebUIControlID.mWifiScanButton = ESPUI.addControl(Control::Type::Button, emptyString.c_str(), "Search for WiFi", Control::Color::None, mWebUIControlID.mSettingsWiFiGroup);
+//    ESPUI.setElementStyle(mWebUIControlID.mWifiScanButton, CSS_STYLE_BUTTON);
+    mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
+
+    return;
+
+
+
+
+
+
 
     /* Section Wordcolock settings */
     ESPUI.addControl(Control::Type::Separator, "Wordclock settings", "", Control::Color::Alizarin, Control::noParent);
 
     /* Clock mode */
-    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mcClockModeItems, ConfigNS::mcClockModeItemsCount,
             ConfigNS::mKeyDisplayClockMode, ConfigNS::mDefaultDisplayClockMode);
 
     /* Switcher for 'IT IS' words */
-    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("Show 'IT IS'", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("Show 'IT IS'", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
 
     /* Switch for single minutes */
-    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("Show single minutes", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("Show single minutes", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
     /* Section LED settings */
     ESPUI.addControl(Control::Type::Separator, "LED colors", "", Control::Color::Alizarin, Control::noParent);
 
     /* Time color */
-    mWebUIControlID.mDisplayColorTime = AddColorControl("Time color", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayColorTime = AddColorControl("Time color", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
 
     /* Background color */
-    mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
 
     /* Day/Night settings */
     ESPUI.addControl(Control::Type::Separator, "LED brightness", "", Control::Color::Alizarin, Control::noParent);
     /* Slider for LED brightness selection */
-    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("LED brightness", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("LED brightness", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
     /* Switcher for day/night mode activation */
-    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("Use day/night mode", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("Use day/night mode", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
     /* Slider for night brightness selection */
-    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("Night mode brightness", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("Night mode brightness", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
     /* Time input for night mode start */
-    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("Night mode start time", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("Night mode start time", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
     /* Time input for night mode end */
-    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
 
 
     /* Section DateTime settings */
     ESPUI.addControl(Control::Type::Separator, "DateTime settings", "", Control::Color::Alizarin, Control::noParent);
     /* NTP server selection */
-    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("NTP server", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("NTP server", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
             ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
     /* Timezone selection */
-    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("Time zone", Control::noParent, CSS_NO_STYLE,
+    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("Time zone", Control::noParent, CSS_STYLE_NONE,
             ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
             ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
@@ -127,18 +361,18 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 //    ESPUI.addControl(Control::Type::Separator, "WiFi settings", "", Control::Color::Alizarin, Control::noParent);
 
     // Add WiFi settings controls here (e.g., SSID, password, etc.)
-    AddLabelControl("SSID", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
-    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE, "SSID");
+    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
 
-    AddLabelControl("Password", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
-    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE, "Password");
+    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
 
-    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password",  mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE,
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password",  mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE,
         ConfigNS::mKeyWifiPassword, false);
 
     // Add buttons for scanning WiFi networks and connecting to the selected network
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
-    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_NO_STYLE);
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
+    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_NONE);
 
 
     /* Update LED brightness controls */
@@ -383,35 +617,35 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
     SendMessage(wMessage);
 }
 
-Control::ControlId_t WebSite::AddGroupHelper(const char * apLabel, Control::ControlId_t aParent)
+Control::ControlId_t WebSite::AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor)
 {
-	Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, "", Control::Color::None, aParent);
+	Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, "", aColor, aParent);
 	ESPUI.setElementStyle(wControlId, CSS_STYLE_GROUP);
 
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddLabelControl(const String& arValue, Control::ControlId_t aParent, const String& aElementStyle)
+Control::ControlId_t WebSite::AddLabelControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle, const String& arValue)
 {
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, "", arValue, Control::Color::None, aParent);
-    ESPUI.setElementStyle(wControlId, aElementStyle.c_str());
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, arValue, Control::Color::None, aParent);
+    ESPUI.setElementStyle(wControlId, aElementStyle);
 
     return wControlId;
 }
 
 
-Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle, const String& arValue)
+Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle, const String& arValue)
 {
     Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apLabel, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
 
     ESPUI.setInputType(wControlId, "text");
 
-    ESPUI.setElementStyle(wControlId, aElementStyle.c_str());
+    ESPUI.setElementStyle(wControlId, aElementStyle);
 
    return wControlId;
 }
 
-Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
         SettingsNS::tKey aSettingsKey, const String& aDefaultText)
 {
     String wValue = aDefaultText;
@@ -430,7 +664,7 @@ Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::Contr
 }
 
 
-Control::ControlId_t WebSite::AddColorControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+Control::ControlId_t WebSite::AddColorControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
         SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor)
 {
     uint32_t wColorParam = 0;
@@ -452,7 +686,7 @@ Control::ControlId_t WebSite::AddColorControl(const char* apLabel, Control::Cont
 
 }
 
-Control::ControlId_t WebSite::AddTimeControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+Control::ControlId_t WebSite::AddTimeControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
         SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime)
 {
     char wTimeStr[6] = {0};  // Buffer for time string in format HH:MM
@@ -474,7 +708,7 @@ Control::ControlId_t WebSite::AddTimeControl(const char* apLabel, Control::Contr
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddPasswordControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle)
+Control::ControlId_t WebSite::AddPasswordControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle)
 {
     Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, "");
     ESPUI.setInputType(wControlId, "password");
@@ -484,7 +718,7 @@ Control::ControlId_t WebSite::AddPasswordControl(const char* apLabel, Control::C
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddSwitcherControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+Control::ControlId_t WebSite::AddSwitcherControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
         SettingsNS::tKey aSettingsKey, const bool aDefaultState)
 {
     bool wState = aDefaultState;
@@ -496,19 +730,23 @@ Control::ControlId_t WebSite::AddSwitcherControl(const char* apLabel, Control::C
 
     Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Switcher, apLabel, wState, Control::Color::Dark, aParent, WebSite::ControlCallback);
 
+    ESPUI.setElementStyle(wControlId, aElementStyle);
+
     LOG(LOG_DEBUG, "WebSite::AddSwitcherControl() Control %04X, default state %s",
         wControlId, aDefaultState ? "ON" : "OFF");
 
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddSelectControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+Control::ControlId_t WebSite::AddSelectControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
         const char* const* apItems, uint8_t aItemsCount,
         SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption)
 {
     uint8_t wSelectedOption = 0;
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apLabel, "", Control::Color::Dark, aParent, WebSite::ControlCallback);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apLabel, "", Control::Color::None, aParent, WebSite::ControlCallback);
+
+    ESPUI.setElementStyle(wControlId, aElementStyle);
 
     if (apItems != nullptr)
     {
@@ -528,7 +766,7 @@ Control::ControlId_t WebSite::AddSelectControl(const char* apLabel, Control::Con
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apLabel, Control::ControlId_t aParent, const String& aElementStyle,
+Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
         SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue)
 {
     uint8_t wValue = aDefaultValue;
@@ -547,11 +785,11 @@ Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apLabel, Co
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent, const String& aElementStyle)
+Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent, const char* aElementStyle)
 {
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apLabel, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apLabel, arValue, Control::Color::None, aParent, WebSite::ControlCallback);
 
-    ESPUI.setElementStyle(wControlId, aElementStyle.c_str());
+    ESPUI.setElementStyle(wControlId, aElementStyle);
 
     LOG(LOG_DEBUG, "WebSite::AddButtonControl() Control %04X", wControlId);
 
@@ -560,6 +798,8 @@ Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String
 
 void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 {
+    return; 
+
     bool wUseNightMode = Settings.GetValue<bool>(ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
 
     LOG(LOG_DEBUG, "WebSite::UpdateLedBrightnessControls() Use night mode %d, force update %d", wUseNightMode, aForceUpdate);
@@ -590,6 +830,8 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
 {
+    return; 
+    
     /* Snapshot to avoid race condition with WiFi event handler (different task context) */    
     mLocalSsidList = ConfigNS::mSSSIDList;
 
@@ -761,6 +1003,6 @@ void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
 {
     if (mpWebSiteInstance)
     {
-        mpWebSiteInstance->HandleControl(apSender, aType, apParam);
+//        mpWebSiteInstance->HandleControl(apSender, aType, apParam);
     }
 }
