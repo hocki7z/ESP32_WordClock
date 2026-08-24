@@ -113,7 +113,6 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 	/* Make sliders continually report their position as they are being dragged. */
 	ESPUI.sliderContinuous = true;
 
-
 	auto maintab = ESPUI.addControl(Control::Type::Tab, "", "Example Basic controls", Control::Color::None, Control::noParent);
 
 	ESPUI.addControl(Control::Type::Separator, "General controls", "", Control::Color::None, maintab);
@@ -255,6 +254,55 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mMainTab     = ESPUI.addControl(Control::Type::Tab, "", "Wordclock", Control::Color::None, Control::noParent);
     mWebUIControlID.mSettingsTab = ESPUI.addControl(Control::Type::Tab, "", "Settings",  Control::Color::Wetasphalt, Control::noParent);
 
+
+//    auto detailsControl = ESPUI.addControl(Control::Type::Label, "", 
+//        "<details><summary>Advanced Settings</summary>"
+//        "<p>Content goes here</p>"
+//        "</details>",
+//        Control::Color::None, mWebUIControlID.mMainTab);
+//    ESPUI.setElementStyle(detailsControl, "background-color: unset; width: 100%;");
+
+    auto groupControl = AddGroupHelper("Group1", mWebUIControlID.mMainTab, Control::Color::Wetasphalt);
+
+    for (uint8_t wI = 0; wI < 2; wI++)
+    {
+        AddLabelControl("", groupControl, CSS_STYLE_LABEL, "Group element " + String(wI + 1));
+    }
+
+    auto detailsControl = ESPUI.addControl(Control::Type::Details, "Details", "", Control::Color::Wetasphalt, mWebUIControlID.mMainTab);
+    ESPUI.setElementStyle(detailsControl, CSS_STYLE_GROUP);  //  "background-color: unset; width: 100%; text-align: center;"
+
+    for (uint8_t wI = 0; wI < 3; wI++)
+    {
+        AddLabelControl("", detailsControl, CSS_STYLE_LABEL, "Details element " + String(wI + 1));
+    }
+
+    auto detailsControl2 = ESPUI.addControl(Control::Type::Details, "Details 2", "", Control::Color::None, mWebUIControlID.mMainTab);
+    ESPUI.setElementStyle(detailsControl2, CSS_STYLE_GROUP);
+
+    for (uint8_t wI = 0; wI < 4; wI++)
+    {
+        AddLabelControl("", detailsControl2, CSS_STYLE_LABEL, "Details element " + String(wI + 1));
+    }
+
+    // Diagnostic information - reset counters
+    auto diagStr = String("Reset counters") + "\n" +
+            "PowerOn:\t "   + String(Settings.GetCounter(ConfigNS::mKeyCounterResetPowerOn))   + "\n" +
+            "Software:\t "  + String(Settings.GetCounter(ConfigNS::mKeyCounterResetSoftware))  + "\n" +
+            "Watchdog:\t "  + String(Settings.GetCounter(ConfigNS::mKeyCounterResetWatchdog))  + "\n" +
+            "Panic:\t "     + String(Settings.GetCounter(ConfigNS::mKeyCounterResetPanic))     + "\n" +
+            "BrownOut:\t "  + String(Settings.GetCounter(ConfigNS::mKeyCounterResetBrownout));
+    auto diagLabel = ESPUI.addControl(Control::Type::Label, "Reset counters", diagStr, Control::Color::None, detailsControl2);
+    ESPUI.setElementStyle(diagLabel, "background-color: unset; text-align-last: left;");
+
+
+    auto groupControl2 = AddGroupHelper("Group2", mWebUIControlID.mMainTab, Control::Color::Wetasphalt);
+
+    for (uint8_t wI = 0; wI < 5; wI++)
+    {
+        AddLabelControl("", groupControl2, CSS_STYLE_LABEL, "Group element " + String(wI + 1));
+    }
+
     /** 
      * Group Wordclock settings
      */
@@ -296,6 +344,9 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "LED brightness");
     mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
+
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SEPARATOR, "");
+
     /* Switcher for day/night mode activation */
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
     mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH,

@@ -6,7 +6,7 @@
  */
 
 /* Start Wifi connection with defined SSID and password */
-//#define USE_CREDENTIALS
+#define USE_CREDENTIALS
 
 #ifdef USE_CREDENTIALS
 /**
@@ -163,12 +163,12 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
             if (!mWifiScanRunOnce)
             {   
                 /* LOG */
-                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Start async scan (non-blocking)");
+//                LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Start async scan (non-blocking)");
                 /* Start async scan (non-blocking) */
-                WiFi.scanNetworks(true); // true = async
+//                WiFi.scanNetworks(true); // true = async
 
                 /* Set flag to indicate that WiFi scan has been run once */
-                mWifiScanRunOnce = true;
+//                mWifiScanRunOnce = true;
             }
             else
             {
