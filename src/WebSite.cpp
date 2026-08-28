@@ -19,6 +19,12 @@
 /* CSS styles for the web UI controls */
 #define CSS_STYLE_NONE                  ""
 #define CSS_STYLE_GROUP                 "background-color: unset; width: 100%; text-align: center;"
+#define CSS_STYLE_SEPARATOR             "background-color: unset; width: 100%;" // min-height:2px
+#define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left;"
+#define CSS_STYLE_INPUT                 "color: black; width: 100%; height:26px"
+#define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" //width: 12%; vertical-align: middle;"
+#define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: 78%; text-align: left;"
+#define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
 
 
 /**
@@ -54,78 +60,115 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize WEB UI but do not start it yet */
 
     /* ESPUI Log mode */
+#if LOG_LEVEL == LOG_VERBOSE
     ESPUI.setVerbosity(Verbosity::Verbose);
+#else
+    /* Turn off verbose debugging */
+    ESPUI.setVerbosity(Verbosity::Quiet);
+#endif /* LOG_LEVEL == LOG_VERBOSE */
 
-    /* Section Wordcolock settings */
-    ESPUI.addControl(Control::Type::Separator, "Wordclock settings", "", Control::Color::Alizarin, Control::noParent);
+	/* Make sliders continually report their position as they are being dragged. */
+	ESPUI.sliderContinuous = true;
+
+    /** 
+     * Group Wordclock settings
+     */
+    mWebUIControlID.mSettingsWordclockGroup = AddGroupHelper("Wordclock", Control::noParent, Control::Color::Wetasphalt);
 
     /* Clock mode */
-    mWebUIControlID.mDisplayClockMode = AddSelectControl("Clock mode", ConfigNS::mcClockModeItems, ConfigNS::mcClockModeItemsCount,
+    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_LABEL, "Clock mode");
+    mWebUIControlID.mDisplayClockMode = AddSelectControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_INPUT,
+            ConfigNS::mcClockModeItems, ConfigNS::mcClockModeItemsCount,
             ConfigNS::mKeyDisplayClockMode, ConfigNS::mDefaultDisplayClockMode);
 
     /* Switcher for 'IT IS' words */
-    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("Show 'IT IS'",
+    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH_LABEL, "Show 'IT IS'");
+    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
 
     /* Switch for single minutes */
-    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("Show single minutes",
+    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH_LABEL, "Show single minutes");
+    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
-    /* Section LED settings */
-    ESPUI.addControl(Control::Type::Separator, "LED colors", "", Control::Color::Alizarin, Control::noParent);
+
+    /**
+     * Group LED settings 
+     */
+    mWebUIControlID.mSettingsLedGroup = AddGroupHelper("LED", Control::noParent, Control::Color::Wetasphalt);
 
     /* Time color */
-    mWebUIControlID.mDisplayColorTime = AddColorControl("Time color",
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Time color");
+    mWebUIControlID.mDisplayColorTime = AddColorControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
 
     /* Background color */
-    mWebUIControlID.mDisplayColorBackground = AddColorControl("Background color",
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Background color");
+    mWebUIControlID.mDisplayColorBackground = AddColorControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
 
-    /* Day/Night settings */
-    ESPUI.addControl(Control::Type::Separator, "LED brightness", "", Control::Color::Alizarin, Control::noParent);
     /* Slider for LED brightness selection */
-    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("LED brightness",
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "LED brightness");
+    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
+
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SEPARATOR, "");
+
     /* Switcher for day/night mode activation */
-    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("Use day/night mode",
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
+    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
     /* Slider for night brightness selection */
-    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("Night mode brightness",
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode brightness");
+    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
     /* Time input for night mode start */
-    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("Night mode start time",
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode start time");
+    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
     /* Time input for night mode end */
-    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("Night mode end time",
+    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode end time");
+    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
             ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
 
 
-    /* Section DateTime settings */
-    ESPUI.addControl(Control::Type::Separator, "DateTime settings", "", Control::Color::Alizarin, Control::noParent);
+    /**
+     * Group Time settings 
+     */
+    mWebUIControlID.mSettingsTimeGroup = AddGroupHelper("Time settings", Control::noParent, Control::Color::Wetasphalt);
+
     /* NTP server selection */
-    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("NTP server",
+    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "NTP server");
+    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
             ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
             ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
     /* Timezone selection */
-    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("Time zone",
+    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "Time zone");
+    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
             ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
             ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
-    /* Section WiFi settings */
-    ESPUI.addControl(Control::Type::Separator, "WiFi settings", "", Control::Color::Alizarin, Control::noParent);
 
-    // Add WiFi settings controls here (e.g., SSID, password, etc.)
-    mWebUIControlID.mWifiSSIDs = AddSelectControl("SSID");
+    /**
+     * Group WiFi settings 
+     */
+    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", Control::noParent, Control::Color::Wetasphalt);
 
-    mWebUIControlID.mWifiPassword = AddPasswordControl("Password");
-    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("Show/Hide Password", ConfigNS::mKeyWifiPassword, false);
+    /* WiFi settings controls here (e.g., SSID, password, etc.) */
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
+    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
 
-    // Add buttons for scanning WiFi networks and connecting to the selected network
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("Connect to selected network");
-    mWebUIControlID.mWifiScanButton = AddButtonControl("Scan WiFi networks");
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password");
+    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT);
 
-    
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL, "Show/Hide Password");
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH);
+
+    /* Add buttons for scanning WiFi networks and connecting to the selected network */
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
+    mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON);
+
+
     /* Update LED brightness controls */
     UpdateLedBrightnessControls();
 }

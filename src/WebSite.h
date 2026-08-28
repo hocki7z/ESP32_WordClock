@@ -27,6 +27,11 @@ private:
 
     struct tWebUIControlID
     {
+        Control::ControlId_t mSettingsWordclockGroup;
+        Control::ControlId_t mSettingsLedGroup;
+        Control::ControlId_t mSettingsTimeGroup;
+        Control::ControlId_t mSettingsWiFiGroup;
+
         Control::ControlId_t mDisplayClockMode;
         Control::ControlId_t mDisplayClockItIs;
         Control::ControlId_t mDisplayClockSingleMinutes;
