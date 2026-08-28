@@ -16,6 +16,11 @@
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
+/* CSS styles for the web UI controls */
+#define CSS_STYLE_NONE                  ""
+#define CSS_STYLE_GROUP                 "background-color: unset; width: 100%; text-align: center;"
+
+
 /**
  * Initialize the private static pointer
  */
@@ -363,68 +368,258 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
     SendMessage(wMessage);
 }
 
-Control::ControlId_t WebSite::AddColorControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor)
+/**
+ * @brief Helper function to add a group control to the web UI
+ * @param apLabel The label for the group control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aColor The color of the group control (default: None)
+ * 
+ * @return The control ID of the newly added group control
+ */
+Control::ControlId_t WebSite::AddGroupHelper(const char * apLabel, Control::ControlId_t aParent, Control::Color aColor)
 {
-    char wHexColor[10];
-    uint32_t wColorParam = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultColor);
-    sprintf(wHexColor, "#%06X", (wColorParam & 0x00FFFFFF));
+	Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, "", aColor, aParent);
+	ESPUI.setElementStyle(wControlId, CSS_STYLE_GROUP);
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String(wHexColor), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    return wControlId;
+}
+
+/**
+ * @brief Helper function to add a label control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param arValue The initial value of the label (default: empty string)
+ * 
+ * @return The control ID of the newly added label control
+ */
+Control::ControlId_t WebSite::AddLabelControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle, const String& arValue)
+{
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Label, apLabel, arValue, Control::Color::None, aParent);
+    ESPUI.setElementStyle(wControlId, aElementStyle);
+
+    return wControlId;
+}
+
+/**
+ * @brief Helper function to add a text control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param arValue The initial value of the text control (default: empty string)
+ * 
+ * @return The control ID of the newly added text control
+ */
+Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle, const String& arValue)
+{
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apLabel, arValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
+
+    ESPUI.setInputType(wControlId, "text");
+
+    ESPUI.setElementStyle(wControlId, aElementStyle);
+
+   return wControlId;
+}
+
+/**
+ * @brief Helper function to add a text control to the web UI with a settings key
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param aSettingsKey The settings key to bind the control to (default: invalid key)
+ * @param aDefaultText The default text value (default: empty string)
+ * 
+ * @return The control ID of the newly added text control
+ */
+Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
+        SettingsNS::tKey aSettingsKey, const String& aDefaultText)
+{
+    String wValue = aDefaultText;
+
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        wValue = Settings.GetValue<String>(aSettingsKey, aDefaultText);
+    }
+
+    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, wValue);
+
+    LOG(LOG_DEBUG, "WebSite::AddTextInput() ControlId %04X, param 0x%08X, value %s",
+        wControlId, aSettingsKey, wValue.c_str());
+
+    return wControlId;
+}
+
+/**
+ * @brief Helper function to add a color control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param aSettingsKey The settings key to bind the control to (default: invalid key)
+ * @param aDefaultColor The default color value (default: 0x000000)
+ * 
+ * @return The control ID of the newly added color control
+ */
+Control::ControlId_t WebSite::AddColorControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
+        SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor)
+{
+    uint32_t wColorParam = 0;
+    char wHexColor[10] = {0};
+
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        wColorParam = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultColor);
+        sprintf(wHexColor, "#%06X", (wColorParam & 0x00FFFFFF));
+    }
+
+    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, String(wHexColor));
     ESPUI.setInputType(wControlId, "color");
 
-    LOG(LOG_DEBUG, "WebSite::AddColorControl() Control %04X, param 0x%08X, color %s",
+    LOG(LOG_DEBUG, "WebSite::AddColorInput() Control %04X, param 0x%08X, color %s",
         wControlId, wColorParam, String(wHexColor).c_str());
 
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddSwitcherControl(const char* apTitle, const bool aDefaultState)
+/**
+ * @brief Helper function to add a time control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param aSettingsKey The settings key to bind the control to (default: invalid key)
+ * @param aDefaultTime The default time value (default: 0)
+ * 
+ * @return The control ID of the newly added time control
+ */
+Control::ControlId_t WebSite::AddTimeControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
+        SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime)
 {
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Switcher, apTitle, aDefaultState, Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    char wTimeStr[6] = {0};  // Buffer for time string in format HH:MM
+
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        uint32_t wTimeInt = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultTime);
+        DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wTimeInt);
+
+        /* Convert time to string format HH:MM */
+        sprintf(wTimeStr, "%02u:%02u", wDateTime.mTime.mHour, wDateTime.mTime.mMinute);
+    }
+
+    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, String(wTimeStr));
+    ESPUI.setInputType(wControlId, "time");
+
+    LOG(LOG_DEBUG, "WebSite::AddTimeInput() Control %04X, time %s", wControlId, String(wTimeStr).c_str());
+
+    return wControlId;
+}
+
+/**
+ * @brief Helper function to add a password control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * 
+ * @return The control ID of the newly added password control
+ */
+Control::ControlId_t WebSite::AddPasswordControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle)
+{
+    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, "");
+    ESPUI.setInputType(wControlId, "password");
+
+    LOG(LOG_DEBUG, "WebSite::AddPasswordControl() Control %04X", wControlId);
+
+    return wControlId;
+}
+
+/**
+ * @brief Helper function to add a switcher control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param aSettingsKey The settings key to bind the control to (default: invalid key)
+ * @param aDefaultState The default state of the switcher (default: false)
+ * 
+ * @return The control ID of the newly added switcher control
+ */
+Control::ControlId_t WebSite::AddSwitcherControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
+        SettingsNS::tKey aSettingsKey, const bool aDefaultState)
+{
+    bool wState = aDefaultState;
+
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        wState = Settings.GetValue<bool>(aSettingsKey, aDefaultState);
+    }
+
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Switcher, apLabel, wState, Control::Color::Dark, aParent, WebSite::ControlCallback);
+
+    ESPUI.setElementStyle(wControlId, aElementStyle);
 
     LOG(LOG_DEBUG, "WebSite::AddSwitcherControl() Control %04X, default state %s",
         wControlId, aDefaultState ? "ON" : "OFF");
 
     return wControlId;
 }
-
-Control::ControlId_t WebSite::AddSwitcherControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const bool aDefaultState)
-{
-    bool wState = Settings.GetValue<bool>(aSettingsKey, aDefaultState);
-
-    Control::ControlId_t wControlId = AddSwitcherControl(apTitle, wState);
-
-    return wControlId;
-}
-
-Control::ControlId_t WebSite::AddSelectControl(const char* apTitle)
-{
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apTitle, "", Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
-
-    return wControlId;
-}
-
-Control::ControlId_t WebSite::AddSelectControl(const char* apTitle, const char* const* apItems, uint8_t aItemsCount,
+/**
+ * @brief Helper function to add a select control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param apItems The array of items for the select control
+ * @param aItemsCount The number of items in the array
+ * @param aSettingsKey The settings key to bind the control to (default: invalid key)
+ * @param aDefaultOption The default selected option (default: 0)
+ * 
+ * @return The control ID of the newly added select control
+ */
+Control::ControlId_t WebSite::AddSelectControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
+        const char* const* apItems, uint8_t aItemsCount,
         SettingsNS::tKey aSettingsKey, const uint8_t aDefaultOption)
 {
-    Control::ControlId_t wControlId = AddSelectControl(apTitle);
+    uint8_t wSelectedOption = 0;
 
-    for (uint8_t wI = 0; wI < aItemsCount; wI++)
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Select, apLabel, "", Control::Color::None, aParent, WebSite::ControlCallback);
+
+    ESPUI.setElementStyle(wControlId, aElementStyle);
+
+    if (apItems != nullptr)
     {
-        ESPUI.addControl(Control::Type::Option, apItems[wI], String(wI), Control::Color::None, wControlId);
+        for (uint8_t wI = 0; wI < aItemsCount; wI++)
+        {
+            ESPUI.addControl(Control::Type::Option, apItems[wI], String(wI), Control::Color::None, wControlId);
+        }
     }
 
-    uint8_t wSelectedOption = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultOption);
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        wSelectedOption = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultOption);
+    }
+
     ESPUI.updateSelect(wControlId, wSelectedOption);
 
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue)
+/**
+ * @brief Helper function to add a percentage slider control to the web UI
+ * @param apLabel The label for the control
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * @param aSettingsKey The settings key to bind the control to (default: invalid key)
+ * @param aDefaultValue The default value of the slider (default: 50)
+ * 
+ * @return The control ID of the newly added percentage slider control
+ */
+Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
+        SettingsNS::tKey aSettingsKey, const uint8_t aDefaultValue)
 {
-    uint8_t wValue = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultValue);
+    uint8_t wValue = aDefaultValue;
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Slider, apTitle, wValue, Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    if (aSettingsKey != ConfigNS::mInvalidKey)
+    {
+        wValue = Settings.GetValue<uint8_t>(aSettingsKey, aDefaultValue);
+    }
+
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Slider, apLabel, wValue, Control::Color::Dark, aParent, WebSite::ControlCallback);
     ESPUI.addControl(Control::Type::Min, "", String(  0), Control::Color::None, wControlId);
     ESPUI.addControl(Control::Type::Max, "", String(100), Control::Color::None, wControlId);
 
@@ -433,37 +628,20 @@ Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apTitle, Se
     return wControlId;
 }
 
-Control::ControlId_t WebSite::AddTimeControl(const char* apTitle, SettingsNS::tKey aSettingsKey, const uint32_t aDefaultTime)
+/**
+ * @brief Helper function to add a button control to the web UI
+ * @param apLabel The label for the control
+ * @param arValue The value of the button
+ * @param aParent The parent control ID (default: no parent)
+ * @param aElementStyle The CSS style for the element (default: "")
+ * 
+ * @return The control ID of the newly added button control
+ */
+Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent, const char* aElementStyle)
 {
-    char wTimeStr[6];
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apLabel, arValue, Control::Color::None, aParent, WebSite::ControlCallback);
 
-    uint32_t wTimeInt = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultTime);
-    DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wTimeInt);
-
-    /* Convert time to string format HH:MM */
-    sprintf(wTimeStr, "%02u:%02u", wDateTime.mTime.mHour, wDateTime.mTime.mMinute);
-
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String(wTimeStr), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
-    ESPUI.setInputType(wControlId, "time");
-
-    LOG(LOG_DEBUG, "WebSite::AddTimeControl() Control %04X, time %s", wControlId, String(wTimeStr).c_str());
-
-    return wControlId;
-}
-
-Control::ControlId_t WebSite::AddPasswordControl(const char* apTitle)
-{
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apTitle, String("password"), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
-    ESPUI.setInputType(wControlId, "password");
-
-    LOG(LOG_DEBUG, "WebSite::AddPasswordControl() Control %04X", wControlId);
-
-    return wControlId;
-}
-
-Control::ControlId_t WebSite::AddButtonControl(const char* apTitle)
-{
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Button, apTitle, String(apTitle), Control::Color::Dark, Control::noParent, WebSite::ControlCallback);
+    ESPUI.setElementStyle(wControlId, aElementStyle);
 
     LOG(LOG_DEBUG, "WebSite::AddButtonControl() Control %04X", wControlId);
 
