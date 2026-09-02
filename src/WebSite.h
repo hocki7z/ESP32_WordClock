@@ -25,6 +25,34 @@ public:
 
 private:
 
+    /** @brief Tag identifying which Handle*Control() function should process a control's change, carried via ESPUI's void* callback param */
+    enum class ControlHandler : uint8_t
+    {
+        None = 0,
+
+        /* Handles for parameters */
+        Text,
+        Color,
+        Timer,
+        Switcher,
+        Select,
+        Slider,
+
+        /* Special handlers for WiFi settings */
+        WifiSsidSelect,
+        WifiPassword,
+        WifiPasswordShowHide,
+        WifiConnectButton,
+        WifiScanButton,
+    };
+
+    /** @brief Data handed to ESPUI as the control's void* callback param, recovered in HandleControl() */
+    struct ControlParam
+    {
+        ControlHandler   mHandler;
+        SettingsNS::tKey mSettingsKey;
+    };
+
     struct tWebUIControlID
     {
         Control::ControlId_t mSettingsWordclockGroup;
@@ -72,42 +100,45 @@ private:
 
     void HandleControl(BasicControl* apControl, int aType, void* apParam = nullptr);
 
-    void HandleColorControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandleSwitcherControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandleSelectControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandlePercentageSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    void HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    bool HandleTextControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    bool HandleColorControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    bool HandleSwitcherControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    bool HandleSelectControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    bool HandleSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    bool HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
 
     Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None);
-    
+
     Control::ControlId_t AddLabelControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         const String& arValue = emptyString);
 
     Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
-        const String& arValue = emptyString);
+        const String& arValue = emptyString, SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, ControlHandler aHandler = ControlHandler::None);
 
     Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
-        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const String& aDefaultText = emptyString);
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const String& aDefaultText = emptyString, ControlHandler aHandler = ControlHandler::Text);
 
     Control::ControlId_t AddColorControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
-        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultColor = 0x000000);
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultColor = 0x000000, ControlHandler aHandler = ControlHandler::Color);
 
     Control::ControlId_t AddTimeControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
-        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultTime = 0);
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint32_t aDefaultTime = 0, ControlHandler aHandler = ControlHandler::Timer);
 
-    Control::ControlId_t AddPasswordControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "");
+    Control::ControlId_t AddPasswordControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, ControlHandler aHandler = ControlHandler::Text);
 
     Control::ControlId_t AddSwitcherControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
-        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const bool aDefaultState = false);
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const bool aDefaultState = false, ControlHandler aHandler = ControlHandler::Switcher);
 
     Control::ControlId_t AddSelectControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         const char* const* apItems = nullptr, uint8_t aItemsCount = 0,
-        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultOption = 0);
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultOption = 0, ControlHandler aHandler = ControlHandler::Select);
 
     Control::ControlId_t AddPercentageSliderControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
-        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultValue = 50);
+        SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, const uint8_t aDefaultValue = 50, ControlHandler aHandler = ControlHandler::Slider);
 
-    Control::ControlId_t AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "");
+    Control::ControlId_t AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
+        ControlHandler aHandler = ControlHandler::None);
 
     void UpdateLedBrightnessControls(bool aForceUpdate = false);
 
