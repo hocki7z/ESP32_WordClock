@@ -16,7 +16,7 @@
 
 
 /* Log level for this module */
-#define LOG_LEVEL   (LOG_VERBOSE)
+#define LOG_LEVEL   (LOG_DEBUG)
 
 
 /* Delay in msec between display updates */

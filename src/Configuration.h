@@ -29,7 +29,7 @@ namespace ConfigNS
 
     /* Display task configuration */
     static constexpr tTaskPriority mDisplayTaskPriority      = mDefaultTaskPriority;
-    static constexpr uint32_t      mDisplayTaskStackSize     = mDefaultTaskStackSize;
+    static constexpr uint32_t      mDisplayTaskStackSize     = mDefaultTaskStackSize + 1024;    // Add extra stack for display operations
     static constexpr const char*   mDisplayTaskName          = "DisplayTask";
 
     /* Time manager task configuration */

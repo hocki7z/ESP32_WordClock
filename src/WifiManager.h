@@ -63,6 +63,9 @@ private:
     /** @brief Start time of connection attempt */
     uint32_t mConnectionStart = 0;
 
+    /** @brief Number of connection attempts */
+    uint8_t mConnectionAttempts = 0;
+
     /** @brief Flag to indicate if WiFi scan has been run once */
     bool mWifiScanRunOnce = false;
 
