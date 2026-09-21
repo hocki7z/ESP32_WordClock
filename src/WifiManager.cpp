@@ -40,9 +40,8 @@
 /* Log level for this module */
 #define LOG_LEVEL   (LOG_DEBUG)
 
-/* Periodical task timer ID */
-static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
-
+/* Scan WiFi network after connect */
+//#define SCAN_WIFI_NETWORK_AFTER_CONNECT
 
 /**
  * @brief Constructor
@@ -73,6 +72,9 @@ void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
+
+    /* Initialize global SSIDs list */
+    ConfigNS::mSSSIDList.clear();
 
     /* Create periodical timer */
     mTimerObjects.mTaskHandle = this->getTaskHandle();
@@ -139,8 +141,18 @@ void WiFiManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
         case MessageNS::tMessageId::CMD_WIFI_START_SCAN:
         {
-            /* Start async scan (non-blocking) */
-            WiFi.scanNetworks(true); // true = async
+            /* Check if scan is already running */
+            if (WiFi.scanComplete() == WIFI_SCAN_RUNNING)
+            {
+                LOG(LOG_DEBUG, "WiFiManager::ProcessIncomingMessage() CMD_WIFI_START_SCAN: WiFi scan already running, skipping");
+            }
+            else
+            {
+                LOG(LOG_DEBUG, "WiFiManager::ProcessIncomingMessage() CMD_WIFI_START_SCAN: Start async scan");
+
+                /* Start async scan (non-blocking) */
+                WiFi.scanNetworks(true); // true = async
+            }
         }
             break;
 
@@ -158,10 +170,11 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
     /* Process some events without changing current state */
     switch (aEvent)
     {
+#if defined(SCAN_WIFI_NETWORK_AFTER_CONNECT)
         case ARDUINO_EVENT_WIFI_STA_CONNECTED:
         case ARDUINO_EVENT_WIFI_AP_START:
             if (!mWifiScanRunOnce)
-            {   
+            {
                 /* LOG */
                 LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() Start async scan (non-blocking)");
                 /* Start async scan (non-blocking) */
@@ -176,13 +189,14 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                 LOG(LOG_DEBUG, "WiFiManager::HandleWifiEvent() WiFi scan already run once, skipping");
             }
             break;
+#endif /* SCAN_WIFI_NETWORK_AFTER_CONNECT */
 
         case ARDUINO_EVENT_WIFI_SCAN_DONE:
             /* Handle scan finished */
             HandleWiFiScanFinished();
             break;
 
-        default:  
+        default:
             // do nothing here
             break;
     }
@@ -192,17 +206,30 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
     {
         case STATE_IDLE:
             /* Try connect to wifi router or start access point */
-            if (ConnectWifi() == false)
+            if (ConnectWifi())
             {
-                ConnectAP();
-            }
+                /* Set connection start time */
+                mConnectionStart = millis();
+                /* Reset connection attempts */
+                mConnectionAttempts = 0;
 
-            /* Move to next state */
-            mState = STATE_CONNECTING;
+                /* Move to next state */
+                mState = STATE_STA_CONNECTING;
+            }
+            else
+            {
+                /* LOG */
+                LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect to wifi router, starting access point");
+
+                /* Start access point */
+                ConnectAP();
+
+                /* Move to next state */
+                mState = STATE_AP_STARTING;
+            }
             break;
 
-        case STATE_CONNECTING:
-        case STATE_RECONNECTING:
+        case STATE_STA_CONNECTING:
             switch (aEvent)
             {
                 case ARDUINO_EVENT_WIFI_STA_CONNECTED:
@@ -210,26 +237,11 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                     LOG(LOG_DEBUG, "WiFiManager::ProcessState() Connected to wifi router after %d millis", (millis() - mConnectionStart));
                     /* Move to the next state*/
                     mState  = STATE_STA_CONNECTED;
+
                     /* Notify */
                     SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_STA_CONNECTED);
                     break;
 
-                case ARDUINO_EVENT_WIFI_AP_START:
-                    /* LOG */
-                    LOG(LOG_DEBUG, "WiFiManager::ProcessState() Access point started");
-
-                    /* Start DNS server for captive portal */
-                    if (mDnsServer.start(ConfigNS::mDnsPort, "*", WiFi.softAPIP()) == false)
-                    {
-                        LOG(LOG_ERROR, "WebSite::ProcessState() Start DNS server for captive portal failed");
-                    }
-
-                    /* Move to the next state*/
-                    mState  = STATE_AP_STARTED;
-                    /* Notify */
-                    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED);
-                    break;
-                
                 default:
                     /* Check for connection timeout */
                     if (((millis() - mConnectionStart) >= mConnectionTimeout) &&
@@ -238,18 +250,57 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                         /* LOG */
                         LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d millis", mConnectionTimeout);
 
-                        /* Update connection start time */
-                        mConnectionStart = millis();
+                        /* Increment connection attempts */
+                        mConnectionAttempts++;
 
-                        /* Reconnect to wifi router */
-                        WiFi.reconnect();
+                        if (mConnectionAttempts >= mMaxConnectionAttempts)
+                        {
+                            /* LOG */
+                            LOG(LOG_ERROR, "WiFiManager::ProcessState() Failed to connect after %d attempts, starting access point", mConnectionAttempts);
 
-                        /* Move or stay in reconnecting state */
-                        mState  = STATE_RECONNECTING;
+                            /* Start access point */
+                            ConnectAP();
 
-                        /* Notify */
-                        SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_STA_DISCONNECTED);
+                            /* Move to next state */
+                            mState = STATE_AP_STARTING;
+                        }
+                        else
+                        {
+                            /* LOG */
+                            LOG(LOG_DEBUG, "WiFiManager::ProcessState() Reconnect attempt %d", mConnectionAttempts);
+
+                            /* Update connection start time */
+                            mConnectionStart = millis();
+
+                            /* Reconnect to wifi router */
+                            WiFi.reconnect();
+                        }
                     }
+                    break;
+            };
+            break;
+
+        case STATE_AP_STARTING:
+            switch (aEvent)
+            {
+                case ARDUINO_EVENT_WIFI_AP_START:
+                    /* LOG */
+                    LOG(LOG_DEBUG, "WiFiManager::ProcessState() Access point started");
+
+                    /* Start DNS server for captive portal */
+                    if (mDnsServer.start(ConfigNS::mDnsPort, "*", WiFi.softAPIP()) == false)
+                    {
+                        LOG(LOG_ERROR, "WiFiManager::ProcessState() Start DNS server for captive portal failed");
+                    }
+
+                    /* Move to the next state */
+                    mState  = STATE_AP_STARTED;
+                    /* Notify */
+                    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED);
+                    break;
+
+                default:
+                    // do nothing
                     break;
             };
             break;
@@ -278,8 +329,11 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                     /* LOG */
                     LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event disconnected from wifi router");
 
+                    /* Reset connection attempts */
+                    mConnectionAttempts = 0;
                     /* Move to the next state */
-                    mState  = STATE_RECONNECTING;
+                    mState  = STATE_STA_CONNECTING;
+
                     /* Notify */
                     SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_STA_DISCONNECTED);
                     break;
@@ -319,18 +373,56 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 
 void WiFiManager::HandleWiFiScanFinished(void)
 {
+    /* Clear the previous SSID list */
+    ConfigNS::mSSSIDList.clear();
+
+    /* In WiFi STA mode, add first the currently connected network */
+    if (WiFi.getMode() == WIFI_STA)
+    {
+//        if (WiFi.status() == WL_CONNECTED)
+        {
+            ConfigNS::tSSIDEntry wCurNetwork;
+
+            strncpy(wCurNetwork.mSsid, WiFi.SSID().c_str(), sizeof(wCurNetwork.mSsid) - 1);
+            wCurNetwork.mSsid[sizeof(wCurNetwork.mSsid) - 1] = '\0';
+            wCurNetwork.mRssi = WiFi.RSSI();
+
+            /* Check the encryption type of the currently connected network using the BSSID */
+            uint8_t* wCurrBssid = nullptr; //WiFi.BSSID();
+            if (wCurrBssid != nullptr)
+            {
+                for (int wI = 0; wI < WiFi.scanComplete(); wI++)
+                {
+                    if (memcmp(wCurrBssid, WiFi.BSSID(wI), 6) == 0)
+                    {
+                        wCurNetwork.mEncrypted = WiFi.encryptionType(wI) != WIFI_AUTH_OPEN;
+                        break;
+                    }
+                }
+            }
+
+            wifi_ap_record_t wApInfo;
+            if (esp_wifi_sta_get_ap_info(&wApInfo) == ESP_OK)
+            {
+                wCurNetwork.mEncrypted = (wApInfo.authmode != WIFI_AUTH_OPEN);
+            }
+
+            ConfigNS::mSSSIDList.push_back(wCurNetwork);
+        }
+    }
+
     /* Save scan results */
     for (int wI = 0; wI < WiFi.scanComplete(); wI++)
     {
         ConfigNS::tSSIDEntry wEntry;
 
-        // Put SSID, RSSI and encryption type
+        /* Put SSID, RSSI and encryption type */
         strncpy(wEntry.mSsid, WiFi.SSID(wI).c_str(), sizeof(wEntry.mSsid) - 1);
         wEntry.mSsid[sizeof(wEntry.mSsid) - 1] = '\0';
         wEntry.mRssi = WiFi.RSSI(wI);
         wEntry.mEncrypted = WiFi.encryptionType(wI) != WIFI_AUTH_OPEN;
 
-        // Search for duplicates in the list
+        /* Search for duplicates in the list */
         bool wDuplicateFound = false;
         for (const auto& existingEntry : ConfigNS::mSSSIDList)
         {
@@ -343,7 +435,7 @@ void WiFiManager::HandleWiFiScanFinished(void)
 
         if (!wDuplicateFound)
         {
-            // Add entry to the list
+            /* Add entry to the list */
             ConfigNS::mSSSIDList.push_back(wEntry);
         }
     }
@@ -410,10 +502,10 @@ bool WiFiManager::IsInternetAvailable(void)
 
 /**
  * @brief Connect to a WiFi network using stored credentials or SDK configuration
- * 
+ *
  * @details This function attempts to connect to a WiFi network using either stored credentials (if USE_CREDENTIALS is defined)
  *          or the SDK configuration. It handles the necessary WiFi mode settings and connection initiation.
- * 
+ *
  * @return true if the connection attempt was initiated successfully, false otherwise
  */
 bool WiFiManager::ConnectWifi(void)
@@ -442,17 +534,26 @@ bool WiFiManager::ConnectWifi(void)
     /* Wait a moment */
     delay(100);
 
-    /* Set connection start time */
-    mConnectionStart = millis();
-
 #ifdef USE_CREDENTIALS
-    /* LOG */
-    LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Start WiFi Station mode, credentials SSID: %s", CRED_WIFI_SSID);
-    /* Start Wifi connection */
-    WiFi.begin(CRED_WIFI_SSID, CRED_WIFI_PASS);
+    /* Check if credentials SSID and password are defined in credentials.h */
+    if (strlen(CRED_WIFI_SSID) > 0)
+    {
+        /* Check if SSID in settings is empty, if yes, save credentials from credentials.h to settings */
+        String wSsid  = Settings.GetValue<String>(ConfigNS::mKeyWifiSSID, "");
+        if (wSsid.length() == 0)
+        {
+            LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Using credentials from credentials.h");
 
-    wRetValue = true;
-#else
+            /* Save credentials to settings */
+            Settings.SetValue<String>(ConfigNS::mKeyWifiSSID,     CRED_WIFI_SSID);
+            Settings.SetValue<String>(ConfigNS::mKeyWifiPassword, CRED_WIFI_PASS);
+        }
+    }
+    else
+    {
+        LOG(LOG_ERROR, "WiFiManager::ConnectWifi() CRED_WIFI_SSID is empty, please define it in credentials.h");
+    }
+#endif /* ifdef USE_CREDENTIALS */
 
     /* Get SSID and password from settings */
     String wSsid  = Settings.GetValue<String>(ConfigNS::mKeyWifiSSID, "");
@@ -463,16 +564,23 @@ bool WiFiManager::ConnectWifi(void)
     {
         /* LOG */
         LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Start WiFi Station mode, SSID: %s", wSsid.c_str());
+
+        ConfigNS::mSSSIDList.clear();
+
+        /* Add entry to the list */
+        ConfigNS::tSSIDEntry wSsidEntry = {};
+        strncpy(wSsidEntry.mSsid, wSsid.c_str(), sizeof(wSsidEntry.mSsid) - 1);
+        ConfigNS::mSSSIDList.push_back(wSsidEntry);
+
         /* Start Wifi connection */
         WiFi.begin(wSsid.c_str(), wPassw.c_str());
-        
+
         wRetValue = true;
     }
     else
     {
         LOG(LOG_ERROR, "WiFiManager::ConnectWifi() Failed to get WiFi SSID from settings");
     }
-#endif /* ifdef USE_CREDENTIALS */
 
     return wRetValue;
 }
@@ -498,8 +606,8 @@ void WiFiManager::ConnectAP(void)
     /* Start WiFi AP connection */
     if (WiFi.softAP(ConfigNS::mWiFiApSSID, ConfigNS::mWiFiApPASS) == true)
     {
-        LOG(LOG_VERBOSE, "WifiMangerClass::ConnectAP() Access Point %s [%s] started",
-                ConfigNS::mWiFiApSSID, WiFi.softAPIP().toString().c_str());
+//        LOG(LOG_VERBOSE, "WifiMangerClass::ConnectAP() Access Point %s [%s] started",
+//                ConfigNS::mWiFiApSSID, WiFi.softAPIP().toString().c_str());
     }
     else
     {
@@ -520,7 +628,7 @@ void WiFiManager::HandleWifiEvent(WiFiEvent_t aEvent)
 //TODO there are to much disconnection events if not possible connect to STA with saved SSID isn't exist. FIX IT
         case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         case ARDUINO_EVENT_WIFI_AP_START:
-        case ARDUINO_EVENT_WIFI_AP_STOP:
+//        case ARDUINO_EVENT_WIFI_AP_STOP:
         case ARDUINO_EVENT_WIFI_SCAN_DONE:
             /* Notify WifiManager task */
             wNotifyTask = true;

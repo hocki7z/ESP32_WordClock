@@ -40,10 +40,10 @@ private:
     typedef enum tState
     {
         STATE_IDLE,
-        STATE_CONNECTING,
-        STATE_RECONNECTING,
+        STATE_STA_CONNECTING,
         STATE_STA_CONNECTED,
 //        STATE_STA_DISCONNECTED,
+        STATE_AP_STARTING,
         STATE_AP_STARTED,
 //        STATE_AP_STOPPED,
 //        STATE_OFF,
@@ -58,8 +58,18 @@ private:
     /** @brief Current WiFi manager status */
     tState mState  = STATE_IDLE;
 
+    /* Periodical task timer ID */
+    static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
+
     /** @brief Timeout used for WiFi STA connection */
     static constexpr uint32_t mConnectionTimeout = 30000U;  // 30 seconds
+
+    /* Number of maximum connection attempts */
+    static constexpr uint8_t mMaxConnectionAttempts = 3;
+
+    /** @brief Number of connection attempts */
+    uint8_t mConnectionAttempts = 0;
+
     /** @brief Start time of connection attempt */
     uint32_t mConnectionStart = 0;
 
