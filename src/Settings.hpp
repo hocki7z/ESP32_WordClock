@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <MutexCPP.h>
 
 #include "Logger.h"
 
@@ -163,6 +164,9 @@ namespace SettingsNS
         static constexpr const char* mcPrefsCounterNamespace = "counters";
 
         Preferences mPrefs;
+
+        /** @brief Recursive mutex protecting mPrefs from concurrent access across tasks */
+        FreeRTOScpp::RecursiveMutex mMutex;
 
         /**
          * @brief Converts a tKey to its string representation.
