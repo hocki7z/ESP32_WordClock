@@ -23,7 +23,7 @@ namespace ConfigNS
      */
 
     /** @brief Default task stack size of tasks */
-    static constexpr uint32_t    mDefaultTaskStackSize       = 2 * 1024;
+    static constexpr uint32_t    mDefaultTaskStackSize       = 4 * 1024;            // 4 KB for each task
     /** @brief Default priority of tasks */
     static constexpr tTaskPriority mDefaultTaskPriority      = FreeRTOScpp::TaskPrio_Low;
 
@@ -39,7 +39,7 @@ namespace ConfigNS
 
     /* WiFi manager task configuration */
     static constexpr tTaskPriority mWifiManagerTaskPriority  = mDefaultTaskPriority;
-    static constexpr uint32_t      mWifiManagerTaskStackSize = mDefaultTaskStackSize + 1024;  // Add extra stack for WiFi operations
+    static constexpr uint32_t      mWifiManagerTaskStackSize = mDefaultTaskStackSize;
     static constexpr const char*   mWifiManagerTaskName      = "WifiManagerTask";
 
     /* Web site task configuration */
