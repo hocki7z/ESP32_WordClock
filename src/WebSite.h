@@ -44,6 +44,7 @@ private:
         WifiPasswordShowHide,
         WifiConnectButton,
         WifiScanButton,
+        WifiForgetButton,
     };
 
     /** @brief Data handed to ESPUI as the control's void* callback param, recovered in HandleControl() */
@@ -84,14 +85,17 @@ private:
 
         Control::ControlId_t mWifiScanButton;
         Control::ControlId_t mWifiConnectButton;
+        Control::ControlId_t mWifiForgetButton;
 
     };
 
     /** @brief "This" pointer for created WebSite instance */
     static WebSite* mpWebSiteInstance;
 
+    /** @brief Web UI control IDs */
     tWebUIControlID mWebUIControlID;
 
+    /** @brief List of available WiFi SSID entries */
     std::vector<ConfigNS::tSSIDEntry> mLocalSsidList;
 
 

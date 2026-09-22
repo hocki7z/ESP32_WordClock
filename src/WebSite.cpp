@@ -171,6 +171,10 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Add buttons for scanning WiFi networks and connecting to the selected network */
     mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiConnectButton);
+
+    mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+        ControlHandler::WifiForgetButton);
+
     mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiScanButton);
 
@@ -300,26 +304,53 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
 
         case ControlHandler::WifiSsidSelect:
         {
+            bool wIsSsidValid     = false;
+            bool wIsPasswordValid = false;
+
             /* WiFi SSID selection changed */
             uint8_t wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
 
-            if (wSsidIndex < mLocalSsidList.size() && (mLocalSsidList[wSsidIndex].mEncrypted))
-            {
-                String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
+            /* Get current WiFi password */
+            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
-                // De-/activate button mWifiConnectButton
-                ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wPassw.length() > 0));
+            if (ESPUI.captivePortal)
+            {
+                wIsSsidValid = mLocalSsidList[wSsidIndex].IsValid();
             }
+            else
+            {
+                wIsSsidValid = ((wSsidIndex > 0) && mLocalSsidList[wSsidIndex].IsValid());
+            }
+
+            wIsPasswordValid = ((wPassw.length() > 0) && mLocalSsidList[wSsidIndex].mEncrypted);
+
+            ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wIsSsidValid && wIsPasswordValid));
         }
             break;
 
         case ControlHandler::WifiPassword:
         {
+            bool wIsSsidValid     = false;
+            bool wIsPasswordValid = false;
+
+            /* Get current WiFi SSID selection */
+            uint8_t wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
+
             /* WiFi password changed */
             String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
-            /* De-/activate button mWifiConnectButton */
-            ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wPassw.length() > 0));
+            if (ESPUI.captivePortal)
+            {
+                wIsSsidValid = mLocalSsidList[wSsidIndex].IsValid();
+            }
+            else
+            {
+                wIsSsidValid = ((wSsidIndex > 0) && mLocalSsidList[wSsidIndex].IsValid());
+            }
+
+            wIsPasswordValid = ((wPassw.length() > 0) && mLocalSsidList[wSsidIndex].mEncrypted);
+
+            ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wIsSsidValid && wIsPasswordValid));
         }
             break;
 
@@ -347,6 +378,7 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
 
                 LOG(LOG_DEBUG, "WebSite::HandleControl() Connecting to SSID: %s, password: %s", wSsid.c_str(), wPassw.c_str());
 
+                /* Store SSID and password in settings */
                 Settings.SetValue<String>(ConfigNS::mKeyWifiSSID, wSsid.c_str());
                 Settings.SetValue<String>(ConfigNS::mKeyWifiPassword, wPassw.c_str());
 
@@ -367,7 +399,7 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
             {
                 LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi scan button pressed");
 
-                ESPUI.setEnabled(mWebUIControlID.mWifiScanButton, false);
+                ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,    false);
                 ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, false);
 
                 ESPUI.jsonReload();
@@ -376,6 +408,27 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
                 wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
                 wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
                 wMessage.mId = MessageNS::tMessageId::CMD_WIFI_START_SCAN;
+
+                wSendMessage = true;
+            }
+        }
+            break;
+
+        case ControlHandler::WifiForgetButton:
+        {
+            /* Forget WiFi network button pressed */
+            if (aType == B_UP)
+            {
+                LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi forget button pressed");
+
+                /* Remove SSID and password from settings */
+                Settings.RemoveKey(ConfigNS::mKeyWifiSSID);
+                Settings.RemoveKey(ConfigNS::mKeyWifiPassword);
+
+                /* Message to WiFi manager with connect command */
+                wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
+                wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
+                wMessage.mId = MessageNS::tMessageId::CMD_WIFI_CONNECT;
 
                 wSendMessage = true;
             }
@@ -910,10 +963,13 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
 {
+    ConfigNS::tSSIDEntry wCurrentSsid;
+
+    /* LOG */
+    LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() Force update %d", aForceUpdate);
+
     /* Snapshot to avoid race condition with WiFi event handler (different task context) */
     mLocalSsidList = ConfigNS::mSSSIDList;
-
-    LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() Force update %d", aForceUpdate);
 
     /* Remove all existing options from the select control */
     for (const auto& controlId : mWebUIControlID.mWifiSSIDList)
@@ -932,71 +988,34 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     /* Check if captive portal is enabled */
     if (ESPUI.captivePortal)
     {
-        /* Offline Mode */
-
-        /* Select the first available SSID in the select control or an empty string if no SSIDs are available */
-        if (!mLocalSsidList.empty())
-        {
-            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, 0);
-        }
-        else
-        {
-            ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, 0);
-            LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() No SSIDs available, cleared selected SSID.");
-        }
-
-        /* Clear password field */
-        ESPUI.updateText(mWebUIControlID.mWifiPassword, "");
+        /* WiFi access point (offline) */
+        wCurrentSsid.Clear();
     }
     else
     {
-        /* Normal (online) Mode */
+        /* Connected to WiFi router */
 
-        /* Select the SSID and password from settings in the select control */
-        String wSelectedSsid = Settings.GetValue<String>(ConfigNS::mKeyWifiSSID, "");
-        String wSelectedPass = Settings.GetValue<String>(ConfigNS::mKeyWifiPassword, "");
-
-        /* Initialize selected index with -1 (not found) */
-        int wSelectedIndex   = -1;
-
-        /* Find the index of the selected SSID in the scanned list */
-        for (size_t wI = 0; wI < mLocalSsidList.size(); wI++)
+        if (mLocalSsidList.size() > 0)
         {
-            if (strcmp(mLocalSsidList[wI].mSsid, wSelectedSsid.c_str()) == 0)
-            {
-                wSelectedIndex = static_cast<int>(wI);
-                break;
-            }
+            /* The first available SSID is currently connected network */
+            wCurrentSsid.Set(mLocalSsidList[0].mSsid, mLocalSsidList[0].mPassword,
+                mLocalSsidList[0].mEncrypted, mLocalSsidList[0].mRssi);
         }
-
-        /* Selected SSID not found in the scanned list */
-        if (wSelectedIndex == -1)
+        else
         {
-            ConfigNS::tSSIDEntry wNewEntry;
-            strncpy(wNewEntry.mSsid, wSelectedSsid.c_str(), sizeof(wNewEntry.mSsid) - 1);
-            wNewEntry.mSsid[sizeof(wNewEntry.mSsid) - 1] = '\0';
-            wNewEntry.mRssi      = 0;
-            wNewEntry.mEncrypted = (wSelectedPass.length() > 0);
-            mLocalSsidList.push_back(wNewEntry);
+            /* No SSIDs available, clear selected SSID */
+            wCurrentSsid.Clear();
 
-            wSelectedIndex = static_cast<int>(mLocalSsidList.size() - 1);
-
-            Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Option, mLocalSsidList[wSelectedIndex].mSsid, String(wSelectedIndex), Control::Color::None, mWebUIControlID.mWifiSSIDs);
-            mWebUIControlID.mWifiSSIDList.push_back(wControlId);
-
-            /* LOG */
-            LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() Selected SSID not found, added and selected SSID: %s (Control ID: %04X)",
-                    wSelectedSsid.c_str(), wControlId);
+            LOG(LOG_ERROR, "WebSite::UpdateWiFiSettingsControls() Currently used SSID not available, clear selected SSID");
         }
-
-        /* Update the selected SSID in the select control */
-        ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, wSelectedIndex);
-        /* Set password field */
-        ESPUI.updateText(mWebUIControlID.mWifiPassword, wSelectedPass);
     }
 
-    ESPUI.setEnabled(mWebUIControlID.mWifiScanButton, true);
+    ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, 0);
+    ESPUI.updateText(mWebUIControlID.mWifiPassword, wCurrentSsid.mPassword);
+
     ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, false);
+    ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,    true);
+    ESPUI.setEnabled(mWebUIControlID.mWifiForgetButton,  (!ESPUI.captivePortal));   // Only enable forget button if connected to WiFi router
 
     if (aForceUpdate)
     {

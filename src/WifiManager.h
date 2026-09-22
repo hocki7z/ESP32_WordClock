@@ -86,7 +86,7 @@ private:
 
     void ProcessState(const WiFiEvent_t aEvent = ARDUINO_EVENT_MAX);
 
-    void HandleWiFiScanFinished(void);
+    void UpdateSSIDList(bool aCheckScanResults);
 
     void SendMessage(MessageNS::tMessageId wMessageId);
 

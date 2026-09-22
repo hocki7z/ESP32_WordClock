@@ -193,7 +193,7 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 
         case ARDUINO_EVENT_WIFI_SCAN_DONE:
             /* Handle scan finished */
-            HandleWiFiScanFinished();
+            UpdateSSIDList(true);
             break;
 
         default:
@@ -235,6 +235,9 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                 case ARDUINO_EVENT_WIFI_STA_CONNECTED:
                     /* LOG */
                     LOG(LOG_DEBUG, "WiFiManager::ProcessState() Connected to wifi router after %d millis", (millis() - mConnectionStart));
+
+                    UpdateSSIDList(false);
+
                     /* Move to the next state*/
                     mState  = STATE_STA_CONNECTED;
 
@@ -371,7 +374,7 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
     }
 }
 
-void WiFiManager::HandleWiFiScanFinished(void)
+void WiFiManager::UpdateSSIDList(bool aCheckScanResults)
 {
     /* Clear the previous SSID list */
     ConfigNS::mSSSIDList.clear();
@@ -379,76 +382,70 @@ void WiFiManager::HandleWiFiScanFinished(void)
     /* In WiFi STA mode, add first the currently connected network */
     if (WiFi.getMode() == WIFI_STA)
     {
-//        if (WiFi.status() == WL_CONNECTED)
+        bool mEncrypted = false;
+
+        /* Check if the current network is encrypted */
+        wifi_ap_record_t wApInfo;
+        if (esp_wifi_sta_get_ap_info(&wApInfo) == ESP_OK)
         {
-            ConfigNS::tSSIDEntry wCurNetwork;
+            mEncrypted = (wApInfo.authmode != WIFI_AUTH_OPEN);
+        }
 
-            strncpy(wCurNetwork.mSsid, WiFi.SSID().c_str(), sizeof(wCurNetwork.mSsid) - 1);
-            wCurNetwork.mSsid[sizeof(wCurNetwork.mSsid) - 1] = '\0';
-            wCurNetwork.mRssi = WiFi.RSSI();
+        /* Add the currently connected network to the list */
+        ConfigNS::tSSIDEntry wCurNetwork;
+        wCurNetwork.Set(WiFi.SSID().c_str(), WiFi.psk().c_str(), WiFi.RSSI());
 
-            /* Check the encryption type of the currently connected network using the BSSID */
-            uint8_t* wCurrBssid = nullptr; //WiFi.BSSID();
-            if (wCurrBssid != nullptr)
+        ConfigNS::mSSSIDList.push_back(wCurNetwork);
+    }
+
+    /* Check scan results */
+    if (aCheckScanResults)
+    {
+        if (WiFi.scanComplete() == WIFI_SCAN_RUNNING)
+        {
+            LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() WiFi scan is still running, skipping update");
+        }
+        else
+        {
+            for (int wI = 0; wI < WiFi.scanComplete(); wI++)
             {
-                for (int wI = 0; wI < WiFi.scanComplete(); wI++)
+                ConfigNS::tSSIDEntry wEntry;
+                /* Put SSID, RSSI and encryption type */
+                wEntry.Set(WiFi.SSID(wI).c_str(), nullptr, WiFi.encryptionType(wI) != WIFI_AUTH_OPEN, WiFi.RSSI());
+
+                /* Search for duplicates in the list */
+                bool wDuplicateFound = false;
+                for (const auto& wExistingEntry : ConfigNS::mSSSIDList)
                 {
-                    if (memcmp(wCurrBssid, WiFi.BSSID(wI), 6) == 0)
+                    if (wEntry == wExistingEntry)
                     {
-                        wCurNetwork.mEncrypted = WiFi.encryptionType(wI) != WIFI_AUTH_OPEN;
+                        wDuplicateFound = true;
                         break;
                     }
                 }
+
+                /* Add entry to the list if not a duplicate */
+                if (!wDuplicateFound)
+                {
+                    ConfigNS::mSSSIDList.push_back(wEntry);
+                }
+                else
+                {
+                    LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() Skipping duplicate SSID entry: %s", wEntry.mSsid);
+                }
             }
-
-            wifi_ap_record_t wApInfo;
-            if (esp_wifi_sta_get_ap_info(&wApInfo) == ESP_OK)
-            {
-                wCurNetwork.mEncrypted = (wApInfo.authmode != WIFI_AUTH_OPEN);
-            }
-
-            ConfigNS::mSSSIDList.push_back(wCurNetwork);
-        }
-    }
-
-    /* Save scan results */
-    for (int wI = 0; wI < WiFi.scanComplete(); wI++)
-    {
-        ConfigNS::tSSIDEntry wEntry;
-
-        /* Put SSID, RSSI and encryption type */
-        strncpy(wEntry.mSsid, WiFi.SSID(wI).c_str(), sizeof(wEntry.mSsid) - 1);
-        wEntry.mSsid[sizeof(wEntry.mSsid) - 1] = '\0';
-        wEntry.mRssi = WiFi.RSSI(wI);
-        wEntry.mEncrypted = WiFi.encryptionType(wI) != WIFI_AUTH_OPEN;
-
-        /* Search for duplicates in the list */
-        bool wDuplicateFound = false;
-        for (const auto& existingEntry : ConfigNS::mSSSIDList)
-        {
-            if (strcmp(existingEntry.mSsid, wEntry.mSsid) == 0)
-            {
-                wDuplicateFound = true;
-                break;
-            }
-        }
-
-        if (!wDuplicateFound)
-        {
-            /* Add entry to the list */
-            ConfigNS::mSSSIDList.push_back(wEntry);
         }
     }
 
     /* LOG */
-    LOG(LOG_DEBUG, "WiFiManager::HandleWiFiScanFinished() WiFi scan done, found %d networks", ConfigNS::mSSSIDList.size());
+    LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() Found %d networks", ConfigNS::mSSSIDList.size());
 
 #if (LOG_LEVEL == LOG_VERBOSE)  // don't compile this code each time
     /* Log all found network */
     for (const auto& entry : ConfigNS::mSSSIDList)
     {
-        LOG(LOG_VERBOSE, "WiFiManager::HandleWiFiScanFinished()     %s, RSSI: %d dBm, Encryption: %s",
-                entry.mSsid, entry.mRssi, entry.mEncrypted ? "Encrypted" : "Open");
+        LOG(LOG_VERBOSE, "WiFiManager::UpdateSSIDList()     %s, RSSI: %d dBm, Encryption: %d",
+                entry.mSsid, entry.mRssi, entry.mEncrypted);
     }
 #endif /* (LOG_LEVEL == LOG_VERBOSE) */
 

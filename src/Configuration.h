@@ -204,8 +204,69 @@ namespace ConfigNS
     struct tSSIDEntry
     {
         char     mSsid[33];        // Max SSID length is 32 + null terminator
+        char     mPassword[65];    // Max WPA2 password length is 64 + null terminator
         int32_t  mRssi;
         bool     mEncrypted;
+
+        /** @brief Compare two SSID entries for equality */
+        bool operator==(const tSSIDEntry& other) const
+        {
+            return (strcmp(mSsid, other.mSsid) == 0);
+
+            //return (strcmp(mSsid, other.mSsid) == 0) &&
+            //       (strcmp(mPassword, other.mPassword) == 0) &&
+            //       (mRssi == other.mRssi) &&
+            //       (mEncrypted == other.mEncrypted);
+        }
+
+        /** @brief Check if the SSID entry is valid */
+        bool IsValid(void) const
+        {
+            return (strlen(mSsid) != 0);
+        }
+
+        /** @brief Clear the SSID entry */
+        void Clear(void)
+        {
+            memset(mSsid, 0, sizeof(mSsid));
+            memset(mPassword, 0, sizeof(mPassword));
+            mRssi = 0;
+            mEncrypted = false;
+        }
+
+        /** @brief Set the SSID entry */
+        void Set(const char* apSsid, const char* apPassword, bool aEncrypted = false, int32_t aRssi = 0)
+        {
+            /* Check for null pointers and set default values if necessary */
+            if (apSsid)
+            {
+                strncpy(mSsid, apSsid, sizeof(mSsid) - 1);
+                mSsid[sizeof(mSsid) - 1] = '\0';
+            }
+            else
+            {
+                memset(mSsid, 0, sizeof(mSsid));
+            }
+
+            if (apPassword)
+            {
+                strncpy(mPassword, apPassword, sizeof(mPassword) - 1);
+                mPassword[sizeof(mPassword) - 1] = '\0';
+            }
+            else
+            {
+                memset(mPassword, 0, sizeof(mPassword));
+            }
+
+            mEncrypted = aEncrypted;
+            mRssi      = aRssi;
+        }
+
+        /** @brief Set the SSID entry from another entry */
+        void Set(const tSSIDEntry& aOther)
+        {
+            Set(aOther.mSsid, aOther.mPassword, aOther.mEncrypted, aOther.mRssi);
+        }
     };
 
     /** @brief List of WiFi scan results */
