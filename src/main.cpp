@@ -129,7 +129,7 @@ void setup()
 
 void loop()
 {
-    /* Call the multi reset detector loop method every so often, 
+    /* Call the multi reset detector loop method every so often,
        so that it can recognise when the timeout expires. */
     if ((mpMultiResetDetector != nullptr) &&
         (mpMultiResetDetector->waitingForMRD()))

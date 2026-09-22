@@ -57,15 +57,12 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
 
-    /* Initialize WEB UI but do not start it yet */
+    /*
+     * Initialize WEB UI but do not start it yet
+     */
 
-    /* ESPUI Log mode */
-#if LOG_LEVEL == LOG_VERBOSE
-    ESPUI.setVerbosity(Verbosity::Verbose);
-#else
-    /* Turn off verbose debugging */
-    ESPUI.setVerbosity(Verbosity::Quiet);
-#endif /* LOG_LEVEL == LOG_VERBOSE */
+    /* ESPUI log mode - turn on/off verbose debugging */
+    ESPUI.setVerbosity((LOG_LEVEL == LOG_VERBOSE) ? Verbosity::Verbose : Verbosity::Quiet);
 
 	/* Make sliders continually report their position as they are being dragged. */
 	ESPUI.sliderContinuous = true;
