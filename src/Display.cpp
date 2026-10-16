@@ -104,7 +104,7 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             break;
 
         case MessageNS::tMessageId::CMD_DISPLAY_FRAME_REQUEST:
-            NotifyWebPreview();
+//            NotifyWebPreview();
             break;
 
         default:

@@ -24,7 +24,7 @@
 #define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left; padding: 0;"
 #define CSS_STYLE_INPUT                 "color: black; width: calc(100% - 8px); height: 26px; margin-left: 8px; box-sizing: border-box;"
 #define CSS_STYLE_SLIDER                "margin-left: 8px; width: calc(100% - 53px); box-sizing: border-box;"
-#define CSS_STYLE_PREVIEW               "background: transparent; padding: 0; width: 100%; text-align: center;"
+#define CSS_STYLE_PREVIEW               "background-color: #000000; padding: 0; width: 100%; text-align: center;"
 #define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
 #define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
@@ -37,57 +37,52 @@ static String BuildDisplayPreviewSvg(const uint8_t* apBitmap)
         ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime) & 0x00FFFFFF;
 
     String wSvg;
-    /* One SVG text node per row plus lit-letter overlays keeps the markup compact. */
-    wSvg.reserve(4096);
-    wSvg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160' "
-           "width='160' height='160' style='display:block;width:min(100%,320px);height:auto;margin:8px auto'>";
+    wSvg.reserve(12*1024);
 
-    char wElement[192];
-    snprintf(wElement, sizeof(wElement), "<rect width='160' height='160' fill='#%06lX'/>",
-            static_cast<unsigned long>(wBackgroundColor));
-    wSvg += wElement;
-    wSvg += "<g font-family='monospace' font-size='8' dominant-baseline='central' text-anchor='middle'>";
+    wSvg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160' "
+            "width='160' height='160' style='display:block;width:100%;height:auto;margin:0px auto'>";
+
+    char wElement[255];
+
+//    snprintf(wElement, sizeof(wElement), "<style type='text/css'><![CDATA[ "
+//            "text { font-size:8px;font-weight:600;font-family:monospace;fill:#606060;fill-opacity:1;stroke:none }"
+//            "]]></style>");
+//    wSvg += wElement;
+
+    wSvg += "<style type='text/css'> "
+        "text {font-size:7px;font-weight:600;font-family:monospace;fill:#606060;fill-opacity:1;stroke:none} "
+        ".none {fill:#000000; stroke-width:0.25; stroke:#404040;} "
+        ".active {fill:#ffffff;} "
+        ".notactive {fill:#ff6060;} "
+        "</style>";
+
+
+//    snprintf(wElement, sizeof(wElement), "<rect width='160' height='160' fill='#000000'/>");
+//    wSvg += wElement;
+
+    wSvg += "<rect width='160' height='160' fill='#000000'/>";
+
 
     for (uint8_t wRow = 0; wRow < MATRIX_HEIGHT; ++wRow)
     {
-        char wLetters[MATRIX_WIDTH + 1];
-        for (uint8_t wColumn = 0; wColumn < MATRIX_WIDTH; ++wColumn)
+        for (uint8_t wCol = 0; wCol < MATRIX_WIDTH; ++wCol)
         {
-            wLetters[wColumn] = mDisplayLayout[wRow][wColumn * 3 + 2];
-        }
-        wLetters[MATRIX_WIDTH] = '\0';
-
-        snprintf(wElement, sizeof(wElement),
-            "<text x='80' y='%u' textLength='150' lengthAdjust='spacing' fill='#606060'>%s</text>",
-                static_cast<unsigned>(wRow * 10 + 5), wLetters);
-        wSvg += wElement;
-
-        if (apBitmap == nullptr)
-        {
-            continue;
-        }
-
-        for (uint8_t wColumn = 0; wColumn < MATRIX_WIDTH; ++wColumn)
-        {
-            /* Convert the logical grid column to its physical zigzag LED index. */
-            const uint8_t wPhysicalColumn = ((wRow % 2) == 0) ? (MATRIX_WIDTH - 1 - wColumn) : wColumn;
-            const uint16_t wLedIndex = static_cast<uint16_t>(wRow) * MATRIX_WIDTH + wPhysicalColumn;
-            const bool wIsLit = (apBitmap[wLedIndex / 8] & static_cast<uint8_t>(1U << (wLedIndex % 8))) != 0;
-            if (!wIsLit)
-            {
-                continue;
-            }
+            const char wLetter = mDisplayLayout[wRow][wCol * 3 + 2];
 
             snprintf(wElement, sizeof(wElement),
-                    "<text x='%u' y='%u' fill='#%06lX'>%c</text>",
-                    static_cast<unsigned>(wColumn * 10 + 5),
-                    static_cast<unsigned>(wRow * 10 + 5),
-                    static_cast<unsigned long>(wTimeColor), wLetters[wColumn]);
+                    "<text class='none' x='%u' y='%u'>%c</text>",
+                    static_cast<unsigned>(wCol * 10 + 7),
+                    static_cast<unsigned>(wRow * 10 + 7),
+                    wLetter);
+
             wSvg += wElement;
         }
     }
 
-    wSvg += "</g></svg>";
+    wSvg += "</svg>";
+
+    LOG(LOG_DEBUG, "WebSite::BuildDisplayPreviewSvg() SVG length: %u", wSvg.length());
+
     return wSvg;
 }
 
@@ -204,11 +199,7 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     /* Live preview of the word-clock LED matrix */
    mWebUIControlID.mDisplayPreview =
-        //AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_PREVIEW, BuildDisplayPreviewSvg(nullptr));
-        ESPUI.addControl(Control::Type::Label, "Custom Icon",
-            //"<img src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgMmwtNT41IDkgNS41IDUgNS41LTUtNS41LTl6Ii8+PC9zdmc+' width='30'/>",
-            BuildDisplayPreviewSvg(nullptr),
-            Control::Color::None, mWebUIControlID.mSettingsLedGroup);
+        AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_PREVIEW, BuildDisplayPreviewSvg(nullptr));
 
     /* Time color */
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Time color");
