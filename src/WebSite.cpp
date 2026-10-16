@@ -20,10 +20,11 @@
 #define CSS_STYLE_NONE                  ""
 #define CSS_STYLE_GROUP                 "background-color: unset; width: 100%; text-align: center;"
 #define CSS_STYLE_SEPARATOR             "background-color: unset; width: 100%;" // min-height:2px
-#define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left;"
-#define CSS_STYLE_INPUT                 "color: black; width: 100%; height:26px"
-#define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" //width: 12%; vertical-align: middle;"
-#define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: 78%; text-align: left;"
+#define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left; padding: 0;"
+#define CSS_STYLE_INPUT                 "color: black; width: calc(100% - 8px); height: 26px; margin-left: 8px; box-sizing: border-box;"
+#define CSS_STYLE_SLIDER                "margin-left: 8px; width: calc(100% - 53px); box-sizing: border-box;"
+#define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
+#define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
 
 
@@ -106,7 +107,7 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     /* Slider for LED brightness selection */
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "LED brightness");
-    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
+    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SLIDER,
             ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
 
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SEPARATOR, "");
@@ -118,7 +119,7 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
             ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
     /* Slider for night brightness selection */
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode brightness");
-    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
+    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SLIDER,
             ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
     /* Time input for night mode start */
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode start time");
@@ -896,6 +897,8 @@ Control::ControlId_t WebSite::AddPercentageSliderControl(const char* apLabel, Co
 
     Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Slider, apLabel, wValue, Control::Color::Dark, aParent,
             WebSite::ControlCallback, new ControlParam{aHandler, aSettingsKey});
+
+    ESPUI.setElementStyle(wControlId, aElementStyle);
 
     ESPUI.addControl(Control::Type::Min, "", String(  0), Control::Color::None, wControlId);
     ESPUI.addControl(Control::Type::Max, "", String(100), Control::Color::None, wControlId);
