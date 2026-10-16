@@ -90,7 +90,7 @@ namespace MessageNS
     };
 
     /**@brief Length of internal message payload */
-    constexpr uint8_t mMessagePayloadLen = 32;
+    constexpr uint8_t mMessagePayloadLen = 4;
     /** @brief Definition of internal message */
     using Message = MessageNS::tMessage<mMessagePayloadLen>;
 

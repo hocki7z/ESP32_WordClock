@@ -198,7 +198,7 @@ void Display::UpdateDisplay(void)
     FastLED.show();
 
     /* Publish a compact snapshot for the web UI */
-    NotifyWebPreview();
+//    NotifyWebPreview();
 }
 
 void Display::NotifyWebPreview(void)
