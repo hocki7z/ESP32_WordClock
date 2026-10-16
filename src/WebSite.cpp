@@ -8,6 +8,7 @@
 
 #include "Logger.h"
 #include "DateTime.h"
+#include "Display.h"
 #include "Settings.hpp"
 
 #include "WebSite.h"
@@ -23,9 +24,53 @@
 #define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left; padding: 0;"
 #define CSS_STYLE_INPUT                 "color: black; width: calc(100% - 8px); height: 26px; margin-left: 8px; box-sizing: border-box;"
 #define CSS_STYLE_SLIDER                "margin-left: 8px; width: calc(100% - 53px); box-sizing: border-box;"
+#define CSS_STYLE_PREVIEW               "background: transparent; padding: 0; width: 100%; text-align: center;"
 #define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
 #define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
+
+static String BuildDisplayPreviewSvg(const uint8_t* apBitmap)
+{
+    const uint32_t wBackgroundColor = Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd) & 0x00FFFFFF;
+    const uint32_t wTimeColor = Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime) & 0x00FFFFFF;
+
+    String wSvg;
+    wSvg.reserve(4000);
+    wSvg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160' "
+            "width='160' height='160' style='display:block;width:min(100%,320px);height:auto;margin:8px auto'>";
+
+    char wElement[112];
+    snprintf(wElement, sizeof(wElement), "<rect width='160' height='160' fill='#%06lX'/>",
+        static_cast<unsigned long>(wBackgroundColor));
+    wSvg += wElement;
+
+    for (uint8_t wRow = 0; wRow < 16; ++wRow)
+    {
+        for (uint8_t wColumn = 0; wColumn < 16; ++wColumn)
+        {
+            /* Map the physical zigzag bitmap back to left-to-right logical rows. */
+            const uint8_t wPhysicalColumn = ((wRow % 2) == 0) ? (15 - wColumn) : wColumn;
+            const uint16_t wLedIndex = static_cast<uint16_t>(wRow) * 16 + wPhysicalColumn;
+            const bool wIsLit = (apBitmap != nullptr) &&
+                    ((apBitmap[wLedIndex / 8] & static_cast<uint8_t>(1U << (wLedIndex % 8))) != 0);
+
+            const char wLetter = mDisplayLayout[wRow][wColumn * 3 + 2];
+            const uint32_t wLetterColor = wIsLit ? wTimeColor : 0x606060;
+
+            snprintf(wElement, sizeof(wElement),
+                    "<text x='%u' y='%u' text-anchor='middle' dominant-baseline='central' "
+                    "font-family='monospace' font-size='8' font-weight='600' fill='#%06lX'>%c</text>",
+                    static_cast<unsigned>(wColumn * 10 + 5), static_cast<unsigned>(wRow * 10 + 5),
+                    static_cast<unsigned long>(wLetterColor), wLetter);
+            wSvg += wElement;
+        }
+    }
+
+    wSvg += "</svg>";
+    return wSvg;
+}
 
 
 /**
@@ -94,6 +139,10 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
      * Group LED settings
      */
     mWebUIControlID.mSettingsLedGroup = AddGroupHelper("LED", Control::noParent, Control::Color::Wetasphalt);
+
+    /* Live preview of the word-clock LED matrix */
+   mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_PREVIEW,
+            BuildDisplayPreviewSvg(nullptr));
 
     /* Time color */
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Time color");
@@ -198,6 +247,15 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
             /* Start WEB UI */
             ESPUI.begin("Wordclock");
+
+            /* Request a fresh matrix snapshot now that the UI is available. */
+            {
+                MessageNS::Message wRequest{};
+                wRequest.mSource = MessageNS::tAddress::WEB_MANAGER;
+                wRequest.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+                wRequest.mId = MessageNS::tMessageId::CMD_DISPLAY_FRAME_REQUEST;
+                SendMessage(wRequest);
+            }
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
@@ -212,6 +270,15 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
             /* Start WEB UI */
             ESPUI.begin("Wordclock");
+
+            /* Request a fresh matrix snapshot now that the UI is available. */
+            {
+                MessageNS::Message wRequest{};
+                wRequest.mSource = MessageNS::tAddress::WEB_MANAGER;
+                wRequest.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+                wRequest.mId = MessageNS::tMessageId::CMD_DISPLAY_FRAME_REQUEST;
+                SendMessage(wRequest);
+            }
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
@@ -241,6 +308,10 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
             /* WiFi scan finished, update WiFi settings */
             UpdateWiFiSettingsControls();
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY:
+            UpdateDisplayPreview(arMessage);
             break;
 
         default:
@@ -959,6 +1030,18 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
     {
         ESPUI.jsonReload();
     }
+}
+
+void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)
+{
+    if (arMessage.mPayloadLength != 32)
+    {
+        LOG(LOG_ERROR, "WebSite::UpdateDisplayPreview() Invalid frame payload length %u",
+                arMessage.mPayloadLength);
+        return;
+    }
+
+    ESPUI.updateLabel(mWebUIControlID.mDisplayPreview, BuildDisplayPreviewSvg(arMessage.mPayload));
 }
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)

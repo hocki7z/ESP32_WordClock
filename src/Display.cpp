@@ -103,6 +103,10 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         }
             break;
 
+        case MessageNS::tMessageId::CMD_DISPLAY_FRAME_REQUEST:
+            NotifyWebPreview();
+            break;
+
         default:
             // do nothing
             break;
@@ -192,6 +196,28 @@ void Display::UpdateDisplay(void)
 
     /* Show new data on the LED matrix */
     FastLED.show();
+
+    /* Publish a compact snapshot for the web UI */
+    NotifyWebPreview();
+}
+
+void Display::NotifyWebPreview(void)
+{
+    MessageNS::Message wMessage{};
+    wMessage.mSource = MessageNS::tAddress::DISPLAY_MANAGER;
+    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+    wMessage.mId = MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY;
+    wMessage.mPayloadLength = 32;
+
+    for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
+    {
+        if (mLedMask.IsBitSet(wLed))
+        {
+            wMessage.mPayload[wLed / 8] |= static_cast<uint8_t>(1U << (wLed % 8));
+        }
+    }
+
+    SendMessage(wMessage);
 }
 
 void Display::SetLedColor(const uint16_t aLedIndex, const CRGB aColor)

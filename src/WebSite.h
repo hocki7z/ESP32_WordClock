@@ -66,6 +66,7 @@ private:
         Control::ControlId_t mDisplayClockSingleMinutes;
         Control::ControlId_t mDisplayColorTime;
         Control::ControlId_t mDisplayColorBackground;
+        Control::ControlId_t mDisplayPreview;
 
         Control::ControlId_t mDisplayLedBrightness;
 
@@ -145,6 +146,7 @@ private:
         ControlHandler aHandler = ControlHandler::None);
 
     void UpdateLedBrightnessControls(bool aForceUpdate = false);
+    void UpdateDisplayPreview(const MessageNS::Message& arMessage);
 
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
