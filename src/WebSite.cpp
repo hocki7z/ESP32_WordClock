@@ -7,6 +7,7 @@
 #include <ESPUI.h>
 
 #include "Logger.h"
+#include "Configuration.h"
 #include "DateTime.h"
 #include "Display.h"
 #include "Settings.hpp"
@@ -29,7 +30,7 @@
 #define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
 
-static String BuildDisplayPreviewSvg(const uint8_t* apBitmap)
+static String BuildDisplayPreviewSvg(const BitMatrix* apBitMatrix)
 {
     const uint32_t wBackgroundColor = Settings.GetValue<uint32_t>(
         ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd) & 0x00FFFFFF;
@@ -37,7 +38,7 @@ static String BuildDisplayPreviewSvg(const uint8_t* apBitmap)
         ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime) & 0x00FFFFFF;
 
     String wSvg;
-    wSvg.reserve(12*1024);
+    wSvg.reserve(16*1024);
 
     wSvg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160' "
             "width='160' height='160' style='display:block;width:100%;height:auto;margin:0px auto'>";
@@ -62,18 +63,42 @@ static String BuildDisplayPreviewSvg(const uint8_t* apBitmap)
 
     wSvg += "<rect width='160' height='160' fill='#000000'/>";
 
-
-    for (uint8_t wRow = 0; wRow < MATRIX_HEIGHT; ++wRow)
+    for (uint16_t wRow = 0; wRow < MATRIX_HEIGHT; wRow++)
     {
-        for (uint8_t wCol = 0; wCol < MATRIX_WIDTH; ++wCol)
+        for (uint16_t wCol = 0; wCol < MATRIX_WIDTH; wCol++)
         {
             const char wLetter = mDisplayLayout[wRow][wCol * 3 + 2];
 
-            snprintf(wElement, sizeof(wElement),
-                    "<text class='none' x='%u' y='%u'>%c</text>",
-                    static_cast<unsigned>(wCol * 10 + 7),
-                    static_cast<unsigned>(wRow * 10 + 7),
-                    wLetter);
+            if (apBitMatrix != nullptr)
+            {
+                const bool wIsLit = apBitMatrix->IsBitSet(wRow, wCol);
+
+                if (wIsLit)
+                {
+                    LOG(LOG_DEBUG, "WebSite::BuildDisplayPreviewSvg() Row %u Col %u Letter '%c' is lit",
+                        wRow, wCol, wLetter);
+                }
+                else
+                {
+                    //LOG(LOG_DEBUG, "WebSite::BuildDisplayPreviewSvg() Row %u Col %u Letter '%c' is NOT lit",
+                    //    wRow, wCol, wLetter);
+                }
+
+                snprintf(wElement, sizeof(wElement),
+                        "<text class='%s' x='%u' y='%u'>%c</text>",
+                        wIsLit ? "active" : "none",
+                        static_cast<unsigned>(wCol * 10 + 7),
+                        static_cast<unsigned>(wRow * 10 + 7),
+                        wLetter);
+            }
+            else
+            {
+                snprintf(wElement, sizeof(wElement),
+                        "<text class='none' x='%u' y='%u'>%c</text>",
+                        static_cast<unsigned>(wCol * 10 + 7),
+                        static_cast<unsigned>(wRow * 10 + 7),
+                        wLetter);
+            }
 
             wSvg += wElement;
         }
@@ -1091,14 +1116,8 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 
 void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)
 {
-    if (arMessage.mPayloadLength != 32)
-    {
-        LOG(LOG_ERROR, "WebSite::UpdateDisplayPreview() Invalid frame payload length %u",
-                arMessage.mPayloadLength);
-        return;
-    }
-
-    ESPUI.updateLabel(mWebUIControlID.mDisplayPreview, BuildDisplayPreviewSvg(arMessage.mPayload));
+    ESPUI.updateLabel(mWebUIControlID.mDisplayPreview,
+        BuildDisplayPreviewSvg(static_cast<const BitMatrix*>(&ConfigNS::mDisplayPreviewMask)));
 }
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)

@@ -10,4 +10,6 @@ namespace ConfigNS
 {
     /** @brief List of WiFi scan results - single shared instance */
     std::vector<tSSIDEntry> mSSSIDList;
+
+    BitMatrix mDisplayPreviewMask(MATRIX_WIDTH, MATRIX_HEIGHT);
 }

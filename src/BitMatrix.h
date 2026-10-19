@@ -66,7 +66,7 @@ public:
     }
 
     /** @brief Checks if the bit at the specified index is set (1) */
-    bool IsBitSet(const uint32_t aIndex)
+    bool IsBitSet(const uint32_t aIndex) const
     {
         uint32_t wByteOffset;
         uint32_t wBitIndex;
@@ -84,7 +84,7 @@ public:
     }
 
     /** @brief Check if a bit is set in the matrix at specified row and column */
-    bool IsBitSet(const uint16_t aRow, const uint16_t aCol)
+    bool IsBitSet(const uint16_t aRow, const uint16_t aCol) const
     {
         bool wBitIsSet = false;
 
@@ -249,7 +249,8 @@ public:
 
     void Copy(const BitMatrix& aOther)
     {
-        if ((mWidth  == aOther.mWidth) &&
+        if ((this != &aOther) &&
+            (mWidth  == aOther.mWidth) &&
             (mHeight == aOther.mHeight))
         {
             /* Copy array using memcpy function */

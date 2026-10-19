@@ -11,6 +11,9 @@
 #include "Application.h"
 #include "Settings.hpp"
 
+#include "BitMatrix.h"
+#include "DisplayLayout.h"
+
 
 /* Imports all symbols from the ApplicationNS namespace */
 using namespace ApplicationNS;
@@ -23,7 +26,7 @@ namespace ConfigNS
      */
 
     /** @brief Default task stack size of tasks */
-    static constexpr uint32_t    mDefaultTaskStackSize       = 4 * 1024;            // 4 KB for each task
+    static constexpr uint32_t      mDefaultTaskStackSize     = 4 * 1024;            // 4 KB for each task
     /** @brief Default priority of tasks */
     static constexpr tTaskPriority mDefaultTaskPriority      = FreeRTOScpp::TaskPrio_Low;
 
@@ -272,5 +275,7 @@ namespace ConfigNS
     /** @brief List of WiFi scan results */
     extern std::vector<tSSIDEntry> mSSSIDList;
 
+
+    extern BitMatrix mDisplayPreviewMask;
 
 }   /* end of namespace ConfigNS */

@@ -16,7 +16,7 @@
 
 
 /* Log level for this module */
-#define LOG_LEVEL   (LOG_DEBUG)
+#define LOG_LEVEL   (LOG_VERBOSE)
 
 
 /* Delay in msec between display updates */
@@ -198,7 +198,7 @@ void Display::UpdateDisplay(void)
     FastLED.show();
 
     /* Publish a compact snapshot for the web UI */
-//    NotifyWebPreview();
+    NotifyWebPreview();
 }
 
 void Display::NotifyWebPreview(void)
@@ -207,15 +207,6 @@ void Display::NotifyWebPreview(void)
     wMessage.mSource = MessageNS::tAddress::DISPLAY_MANAGER;
     wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
     wMessage.mId = MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY;
-    wMessage.mPayloadLength = 32;
-
-    for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
-    {
-        if (mLedMask.IsBitSet(wLed))
-        {
-            wMessage.mPayload[wLed / 8] |= static_cast<uint8_t>(1U << (wLed % 8));
-        }
-    }
 
     SendMessage(wMessage);
 }
@@ -382,6 +373,9 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
         LOG(LOG_VERBOSE, "    %s", wLogRow.c_str());
     }
 #endif /* (LOG_LEVEL == LOG_VERBOSE) */
+
+    ConfigNS::mDisplayPreviewMask.ClearAll();
+    ConfigNS::mDisplayPreviewMask.Copy(mLedMask);
 
     /* Match the logical LED mask to the physical layout (zigzag order) */
     for (uint8_t wRow = 0; wRow < mLedMask.GetHeight(); wRow++)
