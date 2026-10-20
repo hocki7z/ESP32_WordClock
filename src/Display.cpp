@@ -21,6 +21,8 @@
 
 /* Delay in msec between display updates */
 static constexpr uint32_t mcUpdateDelay = 10;
+static constexpr uint8_t  mcTransitionSteps = 20;
+static constexpr uint32_t mcTransitionFrameDelay = 15;
 
 /* Intro color */
 static constexpr CRGB mIntroColor = CRGB::Orange;
@@ -132,11 +134,17 @@ void Display::UpdateDisplay(void)
 {
     uint32_t wDwordValue = 0;
 
+    /* Keep the currently shown frame as the transition starting point. */
+    memcpy(mTransitionFrom, mLeds, sizeof(mLeds));
+
     /* LOG */
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
     DisplayTimeScene();
+
+    /* Preserve the rendered scene while mLeds is used for animation frames. */
+    memcpy(mTransitionTo, mLeds, sizeof(mLeds));
 
     /* Retrieve LED brightness */
     uint8_t wBrightness = Settings.GetValue<uint8_t>(
@@ -183,8 +191,27 @@ void Display::UpdateDisplay(void)
     /* Set LED brightness */
     FastLED.setBrightness(wAlphaScale);
 
-    /* Show new data on the LED matrix */
-    FastLED.show();
+    /* Crossfade each LED from the current frame to the new scene. */
+    for (uint8_t wStep = 0; wStep < mcTransitionSteps; ++wStep)
+    {
+        const uint8_t wBlendAmount = static_cast<uint8_t>(
+            (static_cast<uint16_t>(wStep) * 255U) / (mcTransitionSteps - 1U));
+
+        for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
+        {
+            mLeds[wLed] = blend(mTransitionFrom[wLed], mTransitionTo[wLed], wBlendAmount);
+        }
+
+        FastLED.show();
+
+        if (wStep + 1U < mcTransitionSteps)
+        {
+            delay(mcTransitionFrameDelay);
+        }
+    }
+
+    /* Ensure the final frame exactly matches the target scene. */
+    memcpy(mLeds, mTransitionTo, sizeof(mLeds));
 
     /* Publish a compact snapshot for the web UI */
     NotifyWebPreview();

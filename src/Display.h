@@ -43,6 +43,8 @@ public:
 private:
     /* Leds */
     CRGB mLeds[LED_NUMBER];
+    CRGB mTransitionFrom[LED_NUMBER];
+    CRGB mTransitionTo[LED_NUMBER];
 
     /* Display scene */
     DisplayScene mDisplayScene;
