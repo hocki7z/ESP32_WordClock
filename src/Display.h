@@ -58,6 +58,7 @@ private:
     {
         Idle,
         FadeOut,
+        BackgroundPause,
         FadeIn
     };
     TransitionPhase mTransitionPhase = TransitionPhase::Idle;

@@ -23,6 +23,7 @@
 static constexpr uint32_t mcUpdateDelay = 10;
 static constexpr uint8_t  mcTransitionSteps = 20;
 static constexpr uint32_t mcTransitionFrameDelay = 25; // About 950 ms total: 2 phases x 19 intervals x 25 ms
+static constexpr uint8_t  mcTransitionPauseSteps = 6;   // About 150 ms pause at background between fade phases
 static constexpr uint32_t mcTransitionTimerId = 0xD15A;
 
 /* Intro color */
@@ -237,6 +238,16 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
         return;
     }
 
+    if (mTransitionPhase == TransitionPhase::BackgroundPause)
+    {
+        if (++mTransitionStep >= mcTransitionPauseSteps)
+        {
+            mTransitionStep = 0;
+            mTransitionPhase = TransitionPhase::FadeIn;
+        }
+        return;
+    }
+
     const uint8_t wBlendAmount = static_cast<uint8_t>(
         (static_cast<uint16_t>(mTransitionStep) * 255U) / (mcTransitionSteps - 1U));
 
@@ -263,7 +274,7 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
 
         if (mTransitionPhase == TransitionPhase::FadeOut)
         {
-            mTransitionPhase = TransitionPhase::FadeIn;
+            mTransitionPhase = TransitionPhase::BackgroundPause;
         }
         else
         {
