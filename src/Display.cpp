@@ -22,7 +22,7 @@
 /* Delay in msec between display updates */
 static constexpr uint32_t mcUpdateDelay = 10;
 static constexpr uint8_t  mcTransitionSteps = 20;
-static constexpr uint32_t mcTransitionFrameDelay = 15;
+static constexpr uint32_t mcTransitionFrameDelay = 25; // About 950 ms total: 2 phases x 19 intervals x 25 ms
 static constexpr uint32_t mcTransitionTimerId = 0xD15A;
 
 /* Intro color */
