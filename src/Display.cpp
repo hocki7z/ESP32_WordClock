@@ -191,7 +191,9 @@ void Display::UpdateDisplay(void)
     /* Set LED brightness */
     FastLED.setBrightness(wAlphaScale);
 
-    /* Crossfade each LED from the current frame to the new scene. */
+    const CRGB wBackgroundColor(mDisplayScene.mBackground & COLOR_RGB_MASK);
+
+    /* Fade the current time display out to the configured background. */
     for (uint8_t wStep = 0; wStep < mcTransitionSteps; ++wStep)
     {
         const uint8_t wBlendAmount = static_cast<uint8_t>(
@@ -199,7 +201,26 @@ void Display::UpdateDisplay(void)
 
         for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
         {
-            mLeds[wLed] = blend(mTransitionFrom[wLed], mTransitionTo[wLed], wBlendAmount);
+            mLeds[wLed] = blend(mTransitionFrom[wLed], wBackgroundColor, wBlendAmount);
+        }
+
+        FastLED.show();
+
+        if (wStep + 1U < mcTransitionSteps)
+        {
+            delay(mcTransitionFrameDelay);
+        }
+    }
+
+    /* Fade the new time display in from the background. */
+    for (uint8_t wStep = 0; wStep < mcTransitionSteps; ++wStep)
+    {
+        const uint8_t wBlendAmount = static_cast<uint8_t>(
+            (static_cast<uint16_t>(wStep) * 255U) / (mcTransitionSteps - 1U));
+
+        for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
+        {
+            mLeds[wLed] = blend(wBackgroundColor, mTransitionTo[wLed], wBlendAmount);
         }
 
         FastLED.show();
