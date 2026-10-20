@@ -65,6 +65,7 @@ private:
 
     void PaintWord(const tWord aWord, const CRGB aColor);
     void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
+    void NotifyWebPreview(void);
 };
 
 #endif /* DISPLAY_H_ */

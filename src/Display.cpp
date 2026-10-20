@@ -105,6 +105,10 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         }
             break;
 
+        case MessageNS::tMessageId::CMD_DISPLAY_FRAME_REQUEST:
+//            NotifyWebPreview();
+            break;
+
         default:
             // do nothing
             break;
@@ -132,7 +136,6 @@ void Display::UpdateDisplay(void)
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
-    
     DisplayTimeScene();
 
     /* Retrieve LED brightness */
@@ -182,6 +185,9 @@ void Display::UpdateDisplay(void)
 
     /* Show new data on the LED matrix */
     FastLED.show();
+
+    /* Publish a compact snapshot for the web UI */
+    NotifyWebPreview();
 }
 
 /**
@@ -325,6 +331,8 @@ void Display::DisplayTimeScene(void)
     }
 #endif /* (LOG_LEVEL == LOG_VERBOSE) */
 
+    ConfigNS::StoreDisplayScenePreview(mDisplayScene);
+
     auto wDisplayWordGroup = [this, &wBitMatrix](const WordGroup& arGroup)
     {
         if (arGroup.IsEnabled())
@@ -358,6 +366,16 @@ void Display::DisplayTimeScene(void)
     wDisplayWordGroup(mDisplayScene.mItIs);
     wDisplayWordGroup(mDisplayScene.mTime);
     wDisplayWordGroup(mDisplayScene.mExtraMinutes);
+}
+
+void Display::NotifyWebPreview(void)
+{
+    MessageNS::Message wMessage{};
+    wMessage.mSource = MessageNS::tAddress::DISPLAY_MANAGER;
+    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+    wMessage.mId = MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY;
+
+    SendMessage(wMessage);
 }
 
 void Display::SetLedColor(const uint16_t aLedIndex, const CRGB aColor)

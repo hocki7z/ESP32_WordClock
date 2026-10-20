@@ -42,6 +42,7 @@ namespace MessageNS
         /** Commands     */
         CMD_WIFI_CONNECT,                   // No payload
         CMD_WIFI_START_SCAN,                // No payload
+        CMD_DISPLAY_FRAME_REQUEST,          // No payload
 
         /** Events       */
         MSG_EVENT_SW_TIMER_TIMEOUT,         // Payload: 4 byte  - Timer ID
@@ -59,6 +60,7 @@ namespace MessageNS
         MSG_EVENT_WIFI_AP_STOPPED,          // No payload
         MSG_EVENT_WIFI_INTERNET_AVAILABLE,  // No payload
         MSG_EVENT_WIFI_SCAN_DONE,           // No payload
+        MSG_EVENT_DISPLAY_FRAME_READY,      // No payload
 
         /** Status       */
 
@@ -82,9 +84,9 @@ namespace MessageNS
         tMessageId mId;
 
         /** @brief Length of the payload */
-        uint8_t  mPayloadLength;
+        uint8_t  mPayloadLength = 0;
         /** @brief Payload of the message */
-        uint8_t  mPayload[PayloadLen];
+        uint8_t  mPayload[PayloadLen]{};
     };
 
     /**@brief Length of internal message payload */

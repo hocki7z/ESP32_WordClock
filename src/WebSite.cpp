@@ -7,7 +7,10 @@
 #include <ESPUI.h>
 
 #include "Logger.h"
+#include "Configuration.h"
 #include "DateTime.h"
+#include "BitMatrix.h"
+#include "DisplayLayout.h"
 #include "Settings.hpp"
 
 #include "WebSite.h"
@@ -23,9 +26,106 @@
 #define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left; padding: 0;"
 #define CSS_STYLE_INPUT                 "color: black; width: calc(100% - 8px); height: 26px; margin-left: 8px; box-sizing: border-box;"
 #define CSS_STYLE_SLIDER                "margin-left: 8px; width: calc(100% - 53px); box-sizing: border-box;"
+#define CSS_STYLE_PREVIEW               "background-color: #000000; padding: 0; width: 100%; text-align: center;"
 #define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
 #define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
+
+static String BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene)
+{
+    bool   wIsLit[MATRIX_HEIGHT][MATRIX_WIDTH] = {};
+    tColor wCellColors[MATRIX_HEIGHT][MATRIX_WIDTH] = {};
+
+    tColor wBackgroundColor = static_cast<tColor>(Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd) & COLOR_RGB_MASK);
+
+    if (apDisplayScene != nullptr)
+    {
+        wBackgroundColor = apDisplayScene->mBackground & COLOR_RGB_MASK;
+
+        auto wAddGroup = [&wIsLit, &wCellColors](const WordGroup& arGroup)
+        {
+            if (arGroup.IsEnabled())
+            {
+                for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
+                {
+                    const tWord wWord = arGroup.mWords[wI];
+
+                    if ((wWord > WORD_END_OF_WORDS) &&
+                        (wWord < WORD_MAX_NUMBER))
+                    {
+                        const tWordData& wData = mcWordDataArray[wWord];
+                        if ((wData.mRow < MATRIX_HEIGHT) &&
+                            (wData.mColumn < MATRIX_WIDTH))
+                        {
+                            const uint16_t wEndColumn = min(
+                                static_cast<uint16_t>(wData.mColumn + wData.mLength),
+                                static_cast<uint16_t>(MATRIX_WIDTH));
+                            const tColor wColor = arGroup.mColor & COLOR_RGB_MASK;
+
+                            for (uint16_t wCol = wData.mColumn; wCol < wEndColumn; ++wCol)
+                            {
+                                wIsLit[wData.mRow][wCol] = true;
+                                wCellColors[wData.mRow][wCol] = wColor;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        wAddGroup(apDisplayScene->mItIs);
+        wAddGroup(apDisplayScene->mTime);
+        wAddGroup(apDisplayScene->mExtraMinutes);
+    }
+
+    String wSvg;
+    wSvg.reserve(16 * 1024);
+
+    wSvg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160' "
+           "width='160' height='160' style='display:block;width:100%;height:auto;margin:0 auto'>";
+
+    wSvg += "<style>text{font-size:7px;font-weight:600;font-family:monospace}"
+            ".none{fill:#606060}</style>";
+
+    char wElement[128];
+    snprintf(wElement, sizeof(wElement), "<rect width='160' height='160' fill='#%06lX'/>",
+             static_cast<unsigned long>(wBackgroundColor));
+    wSvg += wElement;
+
+    for (uint16_t wRow = 0; wRow < MATRIX_HEIGHT; ++wRow)
+    {
+        for (uint16_t wCol = 0; wCol < MATRIX_WIDTH; ++wCol)
+        {
+            const char wLetter = mDisplayLayout[wRow][wCol * 3 + 2];
+
+            if (wIsLit[wRow][wCol])
+            {
+                snprintf(wElement, sizeof(wElement),
+                         "<text x='%u' y='%u' fill='#%06lX'>%c</text>",
+                         static_cast<unsigned>(wCol * 10 + 7),
+                         static_cast<unsigned>(wRow * 10 + 7),
+                         static_cast<unsigned long>(wCellColors[wRow][wCol]),
+                         wLetter);
+            }
+            else
+            {
+                snprintf(wElement, sizeof(wElement),
+                         "<text x='%u' y='%u' class='none'>%c</text>",
+                         static_cast<unsigned>(wCol * 10 + 7),
+                         static_cast<unsigned>(wRow * 10 + 7),
+                         wLetter);
+            }
+
+            wSvg += wElement;
+        }
+    }
+
+    wSvg += "</svg>";
+
+    return wSvg;
+}
+
 
 
 /**
@@ -94,6 +194,10 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
      * Group LED settings
      */
     mWebUIControlID.mSettingsLedGroup = AddGroupHelper("LED", Control::noParent, Control::Color::Wetasphalt);
+
+    /* Live preview of the word-clock LED matrix */
+   mWebUIControlID.mDisplayPreview =
+        AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_PREVIEW, BuildDisplayPreviewSvg(nullptr));
 
     /* Time color */
     AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Time color");
@@ -198,6 +302,15 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
             /* Start WEB UI */
             ESPUI.begin("Wordclock");
+
+            /* Request a fresh matrix snapshot now that the UI is available. */
+            {
+                MessageNS::Message wRequest{};
+                wRequest.mSource = MessageNS::tAddress::WEB_MANAGER;
+                wRequest.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+                wRequest.mId = MessageNS::tMessageId::CMD_DISPLAY_FRAME_REQUEST;
+//                SendMessage(wRequest);
+            }
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
@@ -212,6 +325,15 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
             /* Start WEB UI */
             ESPUI.begin("Wordclock");
+
+            /* Request a fresh matrix snapshot now that the UI is available. */
+            {
+                MessageNS::Message wRequest{};
+                wRequest.mSource = MessageNS::tAddress::WEB_MANAGER;
+                wRequest.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+                wRequest.mId = MessageNS::tMessageId::CMD_DISPLAY_FRAME_REQUEST;
+//                SendMessage(wRequest);
+            }
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
@@ -241,6 +363,10 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
             /* WiFi scan finished, update WiFi settings */
             UpdateWiFiSettingsControls();
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY:
+            UpdateDisplayPreview(arMessage);
             break;
 
         default:
@@ -959,6 +1085,15 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
     {
         ESPUI.jsonReload();
     }
+}
+
+void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)
+{
+    DisplayScene wSceneSnapshot;
+    ConfigNS::CopyDisplayScenePreview(wSceneSnapshot);
+
+    ESPUI.updateLabel(mWebUIControlID.mDisplayPreview,
+        BuildDisplayPreviewSvg(&wSceneSnapshot));
 }
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
