@@ -14,6 +14,90 @@
 #include "DateTime.h"
 #include "BitMatrix.h"
 
+/** @brief Type representing a word index */
+using tWord = uint8_t;
+
+/** @brief 32-bit RGB color value in 0x00RRGGBB format */
+using tColor = uint32_t;
+
+/** @brief Mask selecting the 24 RGB color bits in 0x00RRGGBB format. */
+#define COLOR_RGB_MASK              0x00FFFFFFu
+
+// Conversion between FastLED CRGB and tColor:
+//     CRGB → tColor (0x00RRGGBB)
+//              tColor wColor = static_cast<tColor>(wRgbColor.as_uint32_t() & COLOR_RGB_MASK);
+//     tColor → CRGB
+//              CRGB wRgbColor(wColor & COLOR_RGB_MASK);
+
+/** @brief Maximum number of words per group */
+#define MAX_WORDS_PER_GROUP         5       // Main time needs at most 3 minute words + 2 hour words
+
+/** @brief Group of words with associated color and state */
+struct WordGroup
+{
+    tColor   mColor = 0;
+    tWord    mWords[MAX_WORDS_PER_GROUP];
+    uint8_t  mWordsCount = 0;
+    bool     mEnabled = false;
+
+    void SetEnabled(bool aEnabled)
+    {
+        mEnabled = aEnabled;
+    }
+
+    bool IsEnabled(void) const
+    {
+        return mEnabled;
+    }
+
+    void Clear(void)
+    {
+        mColor = 0;
+        mWordsCount = 0;
+        mEnabled = false;
+    }
+
+    void CopyFrom(const WordGroup& arOther)
+    {
+        /* Check for self-assignment */
+        if (this != &arOther)
+        {
+            mColor      = arOther.mColor;
+            mWordsCount = arOther.mWordsCount;
+            mEnabled    = arOther.mEnabled;
+
+            memcpy(mWords, arOther.mWords, mWordsCount * sizeof(tWord));
+        }
+    }
+};
+
+struct DisplayScene
+{
+    tColor    mBackground = 0;
+
+    WordGroup mItIs;
+    WordGroup mTime;
+    WordGroup mExtraMinutes;
+
+    void Clear(void)
+    {
+        mBackground  = 0;
+
+        mItIs.SetEnabled(false);
+
+        mTime.Clear();
+        mExtraMinutes.Clear();
+    }
+
+    void CopyFrom(const DisplayScene& arOther)
+    {
+        mBackground = arOther.mBackground;
+
+        mItIs.CopyFrom(arOther.mItIs);
+        mTime.CopyFrom(arOther.mTime);
+        mExtraMinutes.CopyFrom(arOther.mExtraMinutes);
+    }
+};
 
 /***************************************************************************************************
   LED matrix configuration
@@ -72,29 +156,29 @@ static const char* mDisplayLayout[MATRIX_HEIGHT]=
 };
 
 /* List of all words */
-typedef enum tWord : uint8_t
+typedef enum Word : tWord
 {
     /* End of words marker */
     WORD_END_OF_WORDS = 0,
 
     /* WordClock: minutes words */
-    WORD_CLOCK_MIN_5,   // Fünf
-    WORD_CLOCK_MIN_10,  // Zehn
-    WORD_CLOCK_MIN_20,  // Zwanzig
-    WORD_CLOCK_MIN_30,  // Halb
+    WORD_CLOCK_MIN_5,       // Fünf
+    WORD_CLOCK_MIN_10,      // Zehn
+    WORD_CLOCK_MIN_20,      // Zwanzig
+    WORD_CLOCK_MIN_30,      // Halb
     /* WordClock: hours words */
-    WORD_CLOCK_HOUR_1,  // Eins
-    WORD_CLOCK_HOUR_2,  // Zwei
-    WORD_CLOCK_HOUR_3,  // Drei
-    WORD_CLOCK_HOUR_4,  // Vier
-    WORD_CLOCK_HOUR_5,  // Fünf
-    WORD_CLOCK_HOUR_6,  // Sechs
-    WORD_CLOCK_HOUR_7,  // Sieben
-    WORD_CLOCK_HOUR_8,  // Acht
-    WORD_CLOCK_HOUR_9,  // Neun
-    WORD_CLOCK_HOUR_10, // Zehn
-    WORD_CLOCK_HOUR_11, // Elf
-    WORD_CLOCK_HOUR_12, // Zwölf
+    WORD_CLOCK_HOUR_1,      // Eins
+    WORD_CLOCK_HOUR_2,      // Zwei
+    WORD_CLOCK_HOUR_3,      // Drei
+    WORD_CLOCK_HOUR_4,      // Vier
+    WORD_CLOCK_HOUR_5,      // Fünf
+    WORD_CLOCK_HOUR_6,      // Sechs
+    WORD_CLOCK_HOUR_7,      // Sieben
+    WORD_CLOCK_HOUR_8,      // Acht
+    WORD_CLOCK_HOUR_9,      // Neun
+    WORD_CLOCK_HOUR_10,     // Zehn
+    WORD_CLOCK_HOUR_11,     // Elf
+    WORD_CLOCK_HOUR_12,     // Zwölf
     /* WordClock: special words */
     WORD_ES,
     WORD_IST,
@@ -135,7 +219,7 @@ typedef enum tWord : uint8_t
     WORD_TERMIN,
     //
     WORD_MAX_NUMBER
-} tWord;
+} Word;
 
 /* Hour display modes */
 typedef enum tHourMode

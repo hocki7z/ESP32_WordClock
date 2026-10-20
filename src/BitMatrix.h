@@ -247,6 +247,19 @@ public:
         }
     }
 
+    /** @brief Set the matrix to zigzag order */
+    void SetZigzagOrder(bool aFlipEvenRows = true)
+    {
+        for (uint16_t wRow = 0; wRow < mHeight; wRow++)
+        {
+            /* Flip even rows when requested; otherwise flip odd rows */
+            if ((wRow % 2) == (aFlipEvenRows ? 0 : 1))
+            {
+                FlipRow(wRow);
+            }
+        }
+    }
+
     void Copy(const BitMatrix& aOther)
     {
         if ((this != &aOther) &&
