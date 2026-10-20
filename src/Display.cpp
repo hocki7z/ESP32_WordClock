@@ -24,9 +24,8 @@ static constexpr uint32_t mcUpdateDelay = 10;
 static constexpr uint8_t  mcTransitionSteps = 20;
 static constexpr uint32_t mcTransitionFrameDelay = 25; // About 950 ms total: 2 phases x 19 intervals x 25 ms
 static constexpr uint8_t  mcTransitionPauseSteps = 6;   // About 150 ms pause at background between fade phases
-static constexpr uint8_t  mcRainFadeSteps = 4;          // Per-LED fade length after the green cascade flash
+static constexpr uint8_t  mcRainFadeSteps = 4;          // Per-LED fade length after the time-color cascade flash
 static constexpr uint32_t mcTransitionTimerId = 0xD15A;
-static constexpr CRGB mcRainColor(0, 255, 48);
 
 /* Intro color */
 static constexpr CRGB mIntroColor = CRGB::Orange;
@@ -271,6 +270,9 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
             const uint8_t wLatestStartStep = mcTransitionSteps - mcRainFadeSteps - 2U;
             const uint8_t wStartStep = static_cast<uint8_t>(
                 (wWavePosition * wLatestStartStep) / wWaveMaximum);
+            const CRGB wFlashColor = (mTransitionTo[wLed] != mTransitionBackground)
+                ? mTransitionTo[wLed]
+                : mTransitionFrom[wLed];
 
             if (mTransitionStep < wStartStep)
             {
@@ -281,7 +283,7 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
                 const uint8_t wFadeStep = mTransitionStep - wStartStep;
                 if (wFadeStep == 0)
                 {
-                    mLeds[wLed] = mcRainColor;
+                    mLeds[wLed] = wFlashColor;
                 }
                 else if (wFadeStep >= mcRainFadeSteps)
                 {
@@ -291,7 +293,7 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
                 {
                     const uint8_t wFadeAmount = static_cast<uint8_t>(
                         (static_cast<uint16_t>(wFadeStep) * 255U) / mcRainFadeSteps);
-                    mLeds[wLed] = blend(mcRainColor, mTransitionBackground, wFadeAmount);
+                    mLeds[wLed] = blend(wFlashColor, mTransitionBackground, wFadeAmount);
                 }
             }
         }
