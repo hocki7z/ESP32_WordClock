@@ -232,14 +232,7 @@ void Display::PaintWord(const tWord aWord, const CRGB aColor)
     }
 
     /* Match the logical LED mask to the physical layout (zigzag order) */
-    for (uint8_t wRow = 0; wRow < mLedMask.GetHeight(); wRow++)
-    {
-        if ((wRow % 2) == 0)
-        {
-            /* It is even row -> flip it */
-            mLedMask.FlipRow(wRow);
-        }
-    }
+    mLedMask.SetZigzagOrder(true);
 
     /* Now paint all LEDs marked in the mask */
     SetLedColor(mLedMask, aColor);
@@ -358,14 +351,7 @@ void Display::PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB a
 #endif /* (LOG_LEVEL == LOG_VERBOSE) */
 
     /* Match the logical LED mask to the physical layout (zigzag order) */
-    for (uint8_t wRow = 0; wRow < mLedMask.GetHeight(); wRow++)
-    {
-        if ((wRow % 2) == 0)
-        {
-            /* It is even row -> flip it */
-            mLedMask.FlipRow(wRow);
-        }
-    }
+    mLedMask.SetZigzagOrder(true);
 
     /* Now paint all LEDs marked in the mask */
     SetLedColor(mLedMask, aColor);
