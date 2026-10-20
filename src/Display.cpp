@@ -265,18 +265,18 @@ void Display::DisplayTimeScene(void)
         mDisplayScene.mItIs.mWordsCount = 2;
 
         /* Add minute words to displayed time */
-        memccpy(&mDisplayScene.mTime.mWords[0], wMinuteDisplay.wMinuteWords,
-            MAX_MINUTE_WORDS, sizeof(wMinuteDisplay.wMinuteWords));
+        memcpy(&mDisplayScene.mTime.mWords[0], wMinuteDisplay.wMinuteWords,
+            sizeof(wMinuteDisplay.wMinuteWords));
 
         /* Add hour words to displayed time */
-        memccpy(&mDisplayScene.mTime.mWords[MAX_MINUTE_WORDS], mcWordHoursTable[wMinuteDisplay.mHourMode][wHour],
-            MAX_HOUR_WORDS, sizeof(mcWordHoursTable[wMinuteDisplay.mHourMode][wHour]));
+        memcpy(&mDisplayScene.mTime.mWords[MAX_MINUTE_WORDS], mcWordHoursTable[wMinuteDisplay.mHourMode][wHour],
+            sizeof(mcWordHoursTable[wMinuteDisplay.mHourMode][wHour]));
 
         mDisplayScene.mTime.mWordsCount = MAX_MINUTE_WORDS + MAX_HOUR_WORDS;
 
         /* Add extra minute words */
-        memccpy(&mDisplayScene.mExtraMinutes.mWords[0], mcWordExtraMinutesTable[wMinuteExtra],
-            MAX_EXTRA_MINUTE_WORDS, sizeof(mcWordExtraMinutesTable[wMinuteExtra]));
+        memcpy(&mDisplayScene.mExtraMinutes.mWords[0], mcWordExtraMinutesTable[wMinuteExtra],
+            sizeof(mcWordExtraMinutesTable[wMinuteExtra]));
 
         mDisplayScene.mExtraMinutes.mWordsCount = MAX_EXTRA_MINUTE_WORDS;
     }
