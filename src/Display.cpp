@@ -23,6 +23,7 @@
 static constexpr uint32_t mcUpdateDelay = 10;
 static constexpr uint8_t  mcTransitionSteps = 20;
 static constexpr uint32_t mcTransitionFrameDelay = 15;
+static constexpr uint32_t mcTransitionTimerId = 0xD15A;
 
 /* Intro color */
 static constexpr CRGB mIntroColor = CRGB::Orange;
@@ -42,13 +43,25 @@ Display::Display(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 Display::~Display()
 {
-    // do nothing
+    if (mpTransitionTimer != nullptr)
+    {
+        mpTransitionTimer->stop();
+        delete mpTransitionTimer;
+        mpTransitionTimer = nullptr;
+    }
 }
 
 void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
+
+    /* Create the periodic timer used to render transition frames asynchronously. */
+    mTransitionTimerObjects.mTaskHandle = getTaskHandle();
+    mTransitionTimerObjects.mpTaskMessagesQueue = mpTaskObjects->mpMessageQueue;
+    mpTransitionTimer = new ApplicationNS::TaskTimer(
+        mcTransitionTimerId, mcTransitionFrameDelay, true);
+    mpTransitionTimer->Init(&mTransitionTimerObjects);
 
     /* Initialize FastLED */
     // Initialize LEDs
@@ -193,49 +206,79 @@ void Display::UpdateDisplay(void)
 
     const CRGB wBackgroundColor(mDisplayScene.mBackground & COLOR_RGB_MASK);
 
-    /* Fade the current time display out to the configured background. */
-    for (uint8_t wStep = 0; wStep < mcTransitionSteps; ++wStep)
+    /* Restart from the frame currently shown; replace any older target scene. */
+    if (mpTransitionTimer != nullptr)
     {
-        const uint8_t wBlendAmount = static_cast<uint8_t>(
-            (static_cast<uint16_t>(wStep) * 255U) / (mcTransitionSteps - 1U));
+        mpTransitionTimer->stop();
+    }
 
+    mTransitionBackground = wBackgroundColor;
+    mTransitionStep = 0;
+    mTransitionPhase = TransitionPhase::FadeOut;
+
+    if (mpTransitionTimer != nullptr)
+    {
+        mpTransitionTimer->start();
+    }
+    else
+    {
+        /* Fallback if the timer could not be initialized. */
+        memcpy(mLeds, mTransitionTo, sizeof(mLeds));
+        FastLED.show();
+        NotifyWebPreview();
+    }
+}
+
+void Display::ProcessTimerEvent(const uint32_t aTimerId)
+{
+    if ((aTimerId != mcTransitionTimerId) ||
+        (mTransitionPhase == TransitionPhase::Idle))
+    {
+        return;
+    }
+
+    const uint8_t wBlendAmount = static_cast<uint8_t>(
+        (static_cast<uint16_t>(mTransitionStep) * 255U) / (mcTransitionSteps - 1U));
+
+    if (mTransitionPhase == TransitionPhase::FadeOut)
+    {
         for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
         {
-            mLeds[wLed] = blend(mTransitionFrom[wLed], wBackgroundColor, wBlendAmount);
+            mLeds[wLed] = blend(mTransitionFrom[wLed], mTransitionBackground, wBlendAmount);
         }
-
-        FastLED.show();
-
-        if (wStep + 1U < mcTransitionSteps)
+    }
+    else
+    {
+        for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
         {
-            delay(mcTransitionFrameDelay);
+            mLeds[wLed] = blend(mTransitionBackground, mTransitionTo[wLed], wBlendAmount);
         }
     }
 
-    /* Fade the new time display in from the background. */
-    for (uint8_t wStep = 0; wStep < mcTransitionSteps; ++wStep)
+    FastLED.show();
+
+    if (++mTransitionStep >= mcTransitionSteps)
     {
-        const uint8_t wBlendAmount = static_cast<uint8_t>(
-            (static_cast<uint16_t>(wStep) * 255U) / (mcTransitionSteps - 1U));
+        mTransitionStep = 0;
 
-        for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
+        if (mTransitionPhase == TransitionPhase::FadeOut)
         {
-            mLeds[wLed] = blend(wBackgroundColor, mTransitionTo[wLed], wBlendAmount);
+            mTransitionPhase = TransitionPhase::FadeIn;
         }
-
-        FastLED.show();
-
-        if (wStep + 1U < mcTransitionSteps)
+        else
         {
-            delay(mcTransitionFrameDelay);
+            mTransitionPhase = TransitionPhase::Idle;
+            memcpy(mLeds, mTransitionTo, sizeof(mLeds));
+            FastLED.show();
+
+            if (mpTransitionTimer != nullptr)
+            {
+                mpTransitionTimer->stop();
+            }
+
+            NotifyWebPreview();
         }
     }
-
-    /* Ensure the final frame exactly matches the target scene. */
-    memcpy(mLeds, mTransitionTo, sizeof(mLeds));
-
-    /* Publish a compact snapshot for the web UI */
-    NotifyWebPreview();
 }
 
 /**

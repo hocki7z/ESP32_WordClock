@@ -52,8 +52,21 @@ private:
     /* Current date and time */
     DateTimeNS::tDateTime mDateTime;
 
+    ApplicationNS::tTaskTimerObjects mTransitionTimerObjects{};
+    ApplicationNS::TaskTimer* mpTransitionTimer = nullptr;
+    enum class TransitionPhase : uint8_t
+    {
+        Idle,
+        FadeOut,
+        FadeIn
+    };
+    TransitionPhase mTransitionPhase = TransitionPhase::Idle;
+    uint8_t mTransitionStep = 0;
+    CRGB mTransitionBackground;
+
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
+    void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
 
     void Clear(void);
     void Fill(const CRGB aColor, const uint8_t aBrightness=100);
