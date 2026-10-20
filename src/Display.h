@@ -43,8 +43,19 @@ public:
 private:
     /* Leds */
     CRGB mLeds[LED_NUMBER];
-    CRGB mTransitionFrom[LED_NUMBER];
-    CRGB mTransitionTo[LED_NUMBER];
+    CRGB mFireworkTrails[LED_NUMBER]{};
+
+    static constexpr uint8_t mFireworkParticleCount = 48;
+    struct FireworkParticle
+    {
+        int16_t mX = 0;       // 8-bit fixed-point logical column
+        int16_t mY = 0;       // 8-bit fixed-point logical row
+        int16_t mVelocityX = 0;
+        int16_t mVelocityY = 0;
+        uint8_t mLife = 0;
+        bool mActive = false;
+    };
+    FireworkParticle mFireworkParticles[mFireworkParticleCount]{};
 
     /* Display scene */
     DisplayScene mDisplayScene;
@@ -54,16 +65,10 @@ private:
 
     ApplicationNS::tTaskTimerObjects mTransitionTimerObjects{};
     ApplicationNS::TaskTimer* mpTransitionTimer = nullptr;
-    enum class TransitionPhase : uint8_t
-    {
-        Idle,
-        FadeOut,
-        BackgroundPause,
-        FadeIn
-    };
-    TransitionPhase mTransitionPhase = TransitionPhase::Idle;
-    uint8_t mTransitionStep = 0;
-    CRGB mTransitionBackground;
+    bool mFireworksTimerStarted = false;
+    uint8_t mFireworkLaunchDelay = 0;
+    CRGB mFireworkBackground;
+    CRGB mFireworkColor;
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
@@ -75,6 +80,9 @@ private:
     void UpdateDisplay(void);
 
     void DisplayTimeScene(void);
+    void UpdateFireworks(void);
+    void LaunchFirework(void);
+    void DrawFireworkParticle(const FireworkParticle& arParticle, uint8_t aBrightness);
 
     void SetLedColor(const uint16_t aLedIndex, const CRGB aColor);
     void SetLedColor(BitMatrix& arLedMask, const CRGB aColor);

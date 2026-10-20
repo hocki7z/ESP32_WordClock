@@ -19,16 +19,11 @@
 #define LOG_LEVEL   (LOG_DEBUG)
 
 
-/* Delay in msec between display updates */
-static constexpr uint32_t mcUpdateDelay = 10;
-static constexpr uint8_t  mcTransitionSteps = 20;
-static constexpr uint32_t mcTransitionFrameDelay = 25; // About 950 ms total: 2 phases x 19 intervals x 25 ms
-static constexpr uint8_t  mcTransitionPauseSteps = 6;   // About 150 ms pause at background between fade phases
-static constexpr uint8_t  mcRainFadeSteps = 4;          // Per-LED fade length after the time-color cascade flash
-static constexpr uint32_t mcTransitionTimerId = 0xD15A;
-
-/* Intro color */
-static constexpr CRGB mIntroColor = CRGB::Orange;
+/* Fireworks animation updates at 40 frames per second. */
+static constexpr uint32_t mcFireworksFrameDelay = 25;
+static constexpr uint32_t mcFireworksTimerId = 0xD15A;
+static constexpr uint8_t mcFireworkParticleCountPerBurst = 12;
+static constexpr uint8_t mcFireworkTrailFade = 38;
 
 
 /**
@@ -58,11 +53,11 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
 
-    /* Create the periodic timer used to render transition frames asynchronously. */
+    /* Create the periodic timer used to render fireworks frames asynchronously. */
     mTransitionTimerObjects.mTaskHandle = getTaskHandle();
     mTransitionTimerObjects.mpTaskMessagesQueue = mpTaskObjects->mpMessageQueue;
     mpTransitionTimer = new ApplicationNS::TaskTimer(
-        mcTransitionTimerId, mcTransitionFrameDelay, true);
+        mcFireworksTimerId, mcFireworksFrameDelay, true);
     mpTransitionTimer->Init(&mTransitionTimerObjects);
 
     /* Initialize FastLED */
@@ -80,12 +75,8 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Switch OFF all LEDs */
     Clear();
 
-    /* Prepare display scene */
-    mDisplayScene.Clear();
-    /* Display intro */
-    PaintWord(WORD_WORDCLOCK, mIntroColor);
-
-    FastLED.show();
+    /* Begin the full-matrix fireworks animation (no clock words are rendered). */
+    UpdateDisplay();
 }
 
 void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -149,17 +140,22 @@ void Display::UpdateDisplay(void)
 {
     uint32_t wDwordValue = 0;
 
-    /* Keep the currently shown frame as the transition starting point. */
-    memcpy(mTransitionFrom, mLeds, sizeof(mLeds));
-
     /* LOG */
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
-    DisplayTimeScene();
+    const uint32_t wBackgroundColor = Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd) & COLOR_RGB_MASK;
+    const uint32_t wTimeColor = Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime) & COLOR_RGB_MASK;
 
-    /* Preserve the rendered scene while mLeds is used for animation frames. */
-    memcpy(mTransitionTo, mLeds, sizeof(mLeds));
+    mFireworkBackground = CRGB(wBackgroundColor);
+    mFireworkColor = CRGB(wTimeColor);
+
+    /* Keep the web preview scene synchronized, but intentionally leave its word groups empty. */
+    mDisplayScene.Clear();
+    mDisplayScene.mBackground = wBackgroundColor;
+    ConfigNS::StoreDisplayScenePreview(mDisplayScene);
 
     /* Retrieve LED brightness */
     uint8_t wBrightness = Settings.GetValue<uint8_t>(
@@ -206,130 +202,143 @@ void Display::UpdateDisplay(void)
     /* Set LED brightness */
     FastLED.setBrightness(wAlphaScale);
 
-    const CRGB wBackgroundColor(mDisplayScene.mBackground & COLOR_RGB_MASK);
-
-    /* Restart from the frame currently shown; replace any older target scene. */
-    if (mpTransitionTimer != nullptr)
-    {
-        mpTransitionTimer->stop();
-    }
-
-    mTransitionBackground = wBackgroundColor;
-    mTransitionStep = 0;
-    mTransitionPhase = TransitionPhase::FadeOut;
-
-    if (mpTransitionTimer != nullptr)
+    if (!mFireworksTimerStarted && (mpTransitionTimer != nullptr))
     {
         mpTransitionTimer->start();
+        mFireworksTimerStarted = true;
     }
-    else
+
+    if (!mFireworksTimerStarted)
     {
-        /* Fallback if the timer could not be initialized. */
-        memcpy(mLeds, mTransitionTo, sizeof(mLeds));
+        /* Timer unavailable: keep a stable background rather than showing a clock face. */
+        fill_solid(mLeds, LED_NUMBER, mFireworkBackground);
         FastLED.show();
-        NotifyWebPreview();
     }
+
+    NotifyWebPreview();
 }
 
 void Display::ProcessTimerEvent(const uint32_t aTimerId)
 {
-    if ((aTimerId != mcTransitionTimerId) ||
-        (mTransitionPhase == TransitionPhase::Idle))
+    if (aTimerId != mcFireworksTimerId)
     {
         return;
     }
 
-    if (mTransitionPhase == TransitionPhase::BackgroundPause)
+    UpdateFireworks();
+}
+
+void Display::LaunchFirework(void)
+{
+    static constexpr int16_t mcDirections[16][2] =
     {
-        if (++mTransitionStep >= mcTransitionPauseSteps)
+        {  256,    0 }, {  237,  -98 }, {  181, -181 }, {   98, -237 },
+        {    0, -256 }, {  -98, -237 }, { -181, -181 }, { -237,  -98 },
+        { -256,    0 }, { -237,   98 }, { -181,  181 }, {  -98,  237 },
+        {    0,  256 }, {   98,  237 }, {  181,  181 }, {  237,   98 }
+    };
+
+    const int16_t wOriginX = static_cast<int16_t>(random(2, MATRIX_WIDTH - 2)) * 256;
+    const int16_t wOriginY = static_cast<int16_t>(random(2, MATRIX_HEIGHT - 3)) * 256;
+    const uint8_t wDirectionOffset = static_cast<uint8_t>(random(0, 16));
+    uint8_t wCreated = 0;
+
+    for (uint8_t wI = 0; (wI < mFireworkParticleCount) &&
+                         (wCreated < mcFireworkParticleCountPerBurst); ++wI)
+    {
+        FireworkParticle& wParticle = mFireworkParticles[wI];
+        if (wParticle.mActive)
         {
-            mTransitionStep = 0;
-            mTransitionPhase = TransitionPhase::FadeIn;
+            continue;
         }
+
+        const uint8_t wDirection = (wDirectionOffset + (wCreated * 16U) /
+                                    mcFireworkParticleCountPerBurst) % 16U;
+        const int16_t wSpeed = static_cast<int16_t>(random(220, 480));
+
+        wParticle.mX = wOriginX;
+        wParticle.mY = wOriginY;
+        wParticle.mVelocityX = static_cast<int16_t>(
+            (mcDirections[wDirection][0] * wSpeed) / 256);
+        wParticle.mVelocityY = static_cast<int16_t>(
+            (mcDirections[wDirection][1] * wSpeed) / 256);
+        wParticle.mLife = static_cast<uint8_t>(random(9, 17));
+        wParticle.mActive = true;
+        ++wCreated;
+    }
+}
+
+void Display::DrawFireworkParticle(const FireworkParticle& arParticle, const uint8_t aBrightness)
+{
+    const int16_t wCol = arParticle.mX / 256;
+    const int16_t wRow = arParticle.mY / 256;
+    if ((wCol < 0) || (wCol >= MATRIX_WIDTH) ||
+        (wRow < 0) || (wRow >= MATRIX_HEIGHT))
+    {
         return;
     }
 
-    const uint8_t wBlendAmount = static_cast<uint8_t>(
-        (static_cast<uint16_t>(mTransitionStep) * 255U) / (mcTransitionSteps - 1U));
+    /* Map logical matrix coordinates to the physical zigzag LED strip. */
+    const uint16_t wPhysicalCol = (wRow % 2 == 0)
+        ? static_cast<uint16_t>(MATRIX_WIDTH - 1 - wCol)
+        : static_cast<uint16_t>(wCol);
+    const uint16_t wLedIndex = static_cast<uint16_t>(wRow * MATRIX_WIDTH + wPhysicalCol);
 
-    if (mTransitionPhase == TransitionPhase::FadeOut)
+    CRGB wSpark = mFireworkColor;
+    wSpark.nscale8_video(aBrightness);
+    mFireworkTrails[wLedIndex] += wSpark;
+}
+
+void Display::UpdateFireworks(void)
+{
+    /* Fade old spark pixels to leave short luminous trails. */
+    fadeToBlackBy(mFireworkTrails, LED_NUMBER, mcFireworkTrailFade);
+
+    if (mFireworkLaunchDelay > 0)
     {
-        for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
-        {
-            if (mTransitionFrom[wLed] == mTransitionBackground)
-            {
-                mLeds[wLed] = mTransitionBackground;
-                continue;
-            }
-
-            /* Stagger the green flash by physical row and column for a digital-rain cascade. */
-            const uint16_t wRow = wLed / MATRIX_WIDTH;
-            const uint16_t wCol = wLed % MATRIX_WIDTH;
-            const uint16_t wWavePosition = (wRow * 3U) + ((wCol * 5U) % MATRIX_WIDTH);
-            const uint16_t wWaveMaximum = ((MATRIX_HEIGHT - 1U) * 3U) + MATRIX_WIDTH - 1U;
-            const uint8_t wLatestStartStep = mcTransitionSteps - mcRainFadeSteps - 2U;
-            const uint8_t wStartStep = static_cast<uint8_t>(
-                (wWavePosition * wLatestStartStep) / wWaveMaximum);
-            const CRGB wFlashColor = (mTransitionTo[wLed] != mTransitionBackground)
-                ? mTransitionTo[wLed]
-                : mTransitionFrom[wLed];
-
-            if (mTransitionStep < wStartStep)
-            {
-                mLeds[wLed] = mTransitionFrom[wLed];
-            }
-            else
-            {
-                const uint8_t wFadeStep = mTransitionStep - wStartStep;
-                if (wFadeStep == 0)
-                {
-                    mLeds[wLed] = wFlashColor;
-                }
-                else if (wFadeStep >= mcRainFadeSteps)
-                {
-                    mLeds[wLed] = mTransitionBackground;
-                }
-                else
-                {
-                    const uint8_t wFadeAmount = static_cast<uint8_t>(
-                        (static_cast<uint16_t>(wFadeStep) * 255U) / mcRainFadeSteps);
-                    mLeds[wLed] = blend(wFlashColor, mTransitionBackground, wFadeAmount);
-                }
-            }
-        }
+        --mFireworkLaunchDelay;
     }
     else
     {
-        for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
+        LaunchFirework();
+        mFireworkLaunchDelay = static_cast<uint8_t>(random(8, 18));
+    }
+
+    for (FireworkParticle& wParticle : mFireworkParticles)
+    {
+        if (!wParticle.mActive)
         {
-            mLeds[wLed] = blend(mTransitionBackground, mTransitionTo[wLed], wBlendAmount);
+            continue;
         }
+
+        wParticle.mX += wParticle.mVelocityX;
+        wParticle.mY += wParticle.mVelocityY;
+        wParticle.mVelocityY += 22; // Gravity pulls sparks down in screen coordinates.
+
+        if (wParticle.mLife > 0)
+        {
+            const uint8_t wBrightness = static_cast<uint8_t>(
+                (static_cast<uint16_t>(wParticle.mLife) * 255U) / 16U);
+            DrawFireworkParticle(wParticle, wBrightness);
+            --wParticle.mLife;
+        }
+
+        if ((wParticle.mLife == 0) ||
+            (wParticle.mX < 0) || (wParticle.mX >= MATRIX_WIDTH * 256) ||
+            (wParticle.mY < 0) || (wParticle.mY >= MATRIX_HEIGHT * 256))
+        {
+            wParticle.mActive = false;
+        }
+    }
+
+    /* Composite the particle trails over the configured background. */
+    for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
+    {
+        mLeds[wLed] = mFireworkBackground;
+        mLeds[wLed] += mFireworkTrails[wLed];
     }
 
     FastLED.show();
-
-    if (++mTransitionStep >= mcTransitionSteps)
-    {
-        mTransitionStep = 0;
-
-        if (mTransitionPhase == TransitionPhase::FadeOut)
-        {
-            mTransitionPhase = TransitionPhase::BackgroundPause;
-        }
-        else
-        {
-            mTransitionPhase = TransitionPhase::Idle;
-            memcpy(mLeds, mTransitionTo, sizeof(mLeds));
-            FastLED.show();
-
-            if (mpTransitionTimer != nullptr)
-            {
-                mpTransitionTimer->stop();
-            }
-
-            NotifyWebPreview();
-        }
-    }
 }
 
 /**
