@@ -44,8 +44,10 @@ private:
     /* Leds */
     CRGB mLeds[LED_NUMBER];
 
-    /* Bit mask to indicate which LEDs are used for display */
-    BitMatrix mLedMask = BitMatrix(MATRIX_WIDTH, MATRIX_HEIGHT);
+    /* Display scene */
+    DisplayScene mDisplayScene;
+
+    /* Current date and time */
     DateTimeNS::tDateTime mDateTime;
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */
@@ -55,6 +57,8 @@ private:
     void Fill(const CRGB aColor, const uint8_t aBrightness=100);
 
     void UpdateDisplay(void);
+
+    void DisplayTimeScene(void);
 
     void SetLedColor(const uint16_t aLedIndex, const CRGB aColor);
     void SetLedColor(BitMatrix& arLedMask, const CRGB aColor);
