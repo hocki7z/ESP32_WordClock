@@ -24,7 +24,9 @@ static constexpr uint32_t mcUpdateDelay = 10;
 static constexpr uint8_t  mcTransitionSteps = 20;
 static constexpr uint32_t mcTransitionFrameDelay = 25; // About 950 ms total: 2 phases x 19 intervals x 25 ms
 static constexpr uint8_t  mcTransitionPauseSteps = 6;   // About 150 ms pause at background between fade phases
+static constexpr uint8_t  mcRainFadeSteps = 4;          // Per-LED fade length after the green cascade flash
 static constexpr uint32_t mcTransitionTimerId = 0xD15A;
+static constexpr CRGB mcRainColor(0, 255, 48);
 
 /* Intro color */
 static constexpr CRGB mIntroColor = CRGB::Orange;
@@ -255,7 +257,43 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
     {
         for (uint16_t wLed = 0; wLed < LED_NUMBER; ++wLed)
         {
-            mLeds[wLed] = blend(mTransitionFrom[wLed], mTransitionBackground, wBlendAmount);
+            if (mTransitionFrom[wLed] == mTransitionBackground)
+            {
+                mLeds[wLed] = mTransitionBackground;
+                continue;
+            }
+
+            /* Stagger the green flash by physical row and column for a digital-rain cascade. */
+            const uint16_t wRow = wLed / MATRIX_WIDTH;
+            const uint16_t wCol = wLed % MATRIX_WIDTH;
+            const uint16_t wWavePosition = (wRow * 3U) + ((wCol * 5U) % MATRIX_WIDTH);
+            const uint16_t wWaveMaximum = ((MATRIX_HEIGHT - 1U) * 3U) + MATRIX_WIDTH - 1U;
+            const uint8_t wLatestStartStep = mcTransitionSteps - mcRainFadeSteps - 2U;
+            const uint8_t wStartStep = static_cast<uint8_t>(
+                (wWavePosition * wLatestStartStep) / wWaveMaximum);
+
+            if (mTransitionStep < wStartStep)
+            {
+                mLeds[wLed] = mTransitionFrom[wLed];
+            }
+            else
+            {
+                const uint8_t wFadeStep = mTransitionStep - wStartStep;
+                if (wFadeStep == 0)
+                {
+                    mLeds[wLed] = mcRainColor;
+                }
+                else if (wFadeStep >= mcRainFadeSteps)
+                {
+                    mLeds[wLed] = mTransitionBackground;
+                }
+                else
+                {
+                    const uint8_t wFadeAmount = static_cast<uint8_t>(
+                        (static_cast<uint16_t>(wFadeStep) * 255U) / mcRainFadeSteps);
+                    mLeds[wLed] = blend(mcRainColor, mTransitionBackground, wFadeAmount);
+                }
+            }
         }
     }
     else
