@@ -132,7 +132,6 @@ void Display::UpdateDisplay(void)
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
-    
     DisplayTimeScene();
 
     /* Retrieve LED brightness */
@@ -182,6 +181,14 @@ void Display::UpdateDisplay(void)
 
     /* Show new data on the LED matrix */
     FastLED.show();
+
+    /* Publish a compact snapshot for the web UI */
+    MessageNS::Message wMessage{};
+    wMessage.mSource = MessageNS::tAddress::DISPLAY_MANAGER;
+    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+    wMessage.mId = MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY;
+
+    SendMessage(wMessage);
 }
 
 /**
@@ -324,6 +331,8 @@ void Display::DisplayTimeScene(void)
         LOG(LOG_VERBOSE, "    %s", wLogRow.c_str());
     }
 #endif /* (LOG_LEVEL == LOG_VERBOSE) */
+
+    ConfigNS::StoreDisplayScenePreview(mDisplayScene);
 
     auto wDisplayWordGroup = [this, &wBitMatrix](const WordGroup& arGroup)
     {

@@ -11,6 +11,8 @@
 #include "Application.h"
 #include "Settings.hpp"
 
+#include "DisplayLayout.h"
+
 
 /* Imports all symbols from the ApplicationNS namespace */
 using namespace ApplicationNS;
@@ -272,5 +274,11 @@ namespace ConfigNS
     /** @brief List of WiFi scan results */
     extern std::vector<tSSIDEntry> mSSSIDList;
 
+
+    /** @brief Store a consistent display-scene snapshot for the web preview */
+    void StoreDisplayScenePreview(const DisplayScene& arScene);
+
+    /** @brief Copy the latest display-scene snapshot for the web preview */
+    void CopyDisplayScenePreview(DisplayScene& arScene);
 
 }   /* end of namespace ConfigNS */
