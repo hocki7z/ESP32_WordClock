@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include <ESPUI.h>
+#include <array>
 
 #include "Application.h"
 #include "Configuration.h"
@@ -97,6 +98,10 @@ private:
 
     /** @brief List of available WiFi SSID entries */
     std::vector<ConfigNS::tSSIDEntry> mLocalSsidList;
+
+    /** @brief Bounded option pool; labels must outlive ESPUI controls. */
+    static constexpr size_t mcMaxSsidCount = 64;
+    std::array<std::array<char, 33>, mcMaxSsidCount> mWifiSsidLabels{};
 
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */

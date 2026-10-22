@@ -400,8 +400,6 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
                 ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,    false);
                 ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, false);
 
-                ESPUI.jsonReload();
-
                 /* Message to WiFi manager start scan command */
                 wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
                 wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
@@ -860,7 +858,7 @@ Control::ControlId_t WebSite::AddSelectControl(const char* apLabel, Control::Con
     {
         for (uint8_t wI = 0; wI < aItemsCount; wI++)
         {
-            ESPUI.addControl(Control::Type::Option, apItems[wI], String(wI), Control::Color::None, wControlId);
+            ESPUI.addControl(Control::Type::Option, apItems[wI], static_cast<long>(wI), Control::Color::None, wControlId);
         }
     }
 
@@ -968,21 +966,36 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     /* LOG */
     LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() Force update %d", aForceUpdate);
 
-    /* Snapshot to avoid race condition with WiFi event handler (different task context) */
-    mLocalSsidList = ConfigNS::mSSSIDList;
+    /* Bound the local snapshot and the number of allocated option controls.
+       Copying the shared list still requires producer-side synchronization. */
+    const size_t wCount = (ConfigNS::mSSSIDList.size() < mcMaxSsidCount)
+        ? ConfigNS::mSSSIDList.size() : mcMaxSsidCount;
+    mLocalSsidList.assign(ConfigNS::mSSSIDList.begin(), ConfigNS::mSSSIDList.begin() + wCount);
 
-    /* Remove all existing options from the select control */
-    for (const auto& controlId : mWebUIControlID.mWifiSSIDList)
-    {
-        ESPUI.removeControl(controlId);
-    }
-    mWebUIControlID.mWifiSSIDList.clear();
-
-    /* Add new options based on the scanned SSIDs */
+    /* Reuse controls and fixed-address labels instead of rebuilding the UI */
     for (size_t wI = 0; wI < mLocalSsidList.size(); wI++)
     {
-        Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Option, mLocalSsidList[wI].mSsid, String(wI), Control::Color::None, mWebUIControlID.mWifiSSIDs);
-        mWebUIControlID.mWifiSSIDList.push_back(wControlId);
+        auto& wLabel = mWifiSsidLabels[wI];
+        snprintf(wLabel.data(), wLabel.size(), "%s", mLocalSsidList[wI].mSsid);
+
+        if (wI < mWebUIControlID.mWifiSSIDList.size())
+        {
+            const auto wControlId = mWebUIControlID.mWifiSSIDList[wI];
+            ESPUI.updateControlLabel(wControlId, wLabel.data());
+            ESPUI.updateControlValue(wControlId, static_cast<long>(wI));
+        }
+        else
+        {
+            const auto wControlId = ESPUI.addControl(Control::Type::Option, wLabel.data(),
+                static_cast<long>(wI), Control::Color::None, mWebUIControlID.mWifiSSIDs);
+            mWebUIControlID.mWifiSSIDList.push_back(wControlId);
+        }
+    }
+
+    /* Remove surplus browser options, retaining their controls for later reuse */
+    for (size_t wI = wCount; wI < mWebUIControlID.mWifiSSIDList.size(); ++wI)
+    {
+        ESPUI.updateControlValue(mWebUIControlID.mWifiSSIDList[wI], -2L);
     }
 
     /* Check if captive portal is enabled */
