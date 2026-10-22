@@ -771,20 +771,24 @@ Control::ControlId_t WebSite::AddTextControl(const char* apLabel, Control::Contr
 Control::ControlId_t WebSite::AddColorControl(const char* apLabel, Control::ControlId_t aParent, const char* aElementStyle,
         SettingsNS::tKey aSettingsKey, const uint32_t aDefaultColor, ControlHandler aHandler)
 {
-    uint32_t wColorParam = 0;
-    char wHexColor[10] = {0};
+    uint32_t wColorParam = aDefaultColor;
+    char wHexColor[8] = {0};
 
     if (aSettingsKey != ConfigNS::mInvalidKey)
     {
         wColorParam = Settings.GetValue<uint32_t>(aSettingsKey, aDefaultColor);
-        sprintf(wHexColor, "#%06X", (wColorParam & 0x00FFFFFF));
     }
 
-    Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, String(wHexColor), aSettingsKey, aHandler);
-    ESPUI.setInputType(wControlId, "color");
+    snprintf(wHexColor, sizeof(wHexColor), "#%06lX",
+        static_cast<unsigned long>(wColorParam & 0x00FFFFFF));
 
-    LOG(LOG_DEBUG, "WebSite::AddColorInput() Control %04X, param 0x%08X, color %s",
-        wControlId, wColorParam, String(wHexColor).c_str());
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::ColorPickr, apLabel, String(wHexColor), Control::Color::Dark, aParent,
+            WebSite::ControlCallback, new ControlParam{aHandler, aSettingsKey});
+
+    ESPUI.setElementStyle(wControlId, aElementStyle);
+
+    LOG(LOG_DEBUG, "WebSite::AddColorControl() Control %04X, param 0x%08X, color %s",
+        wControlId, wColorParam, wHexColor);
 
     return wControlId;
 }
