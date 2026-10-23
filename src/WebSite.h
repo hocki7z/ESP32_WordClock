@@ -108,6 +108,7 @@ private:
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     void HandleControl(BasicControl* apControl, int aType, void* apParam = nullptr);
+    void HandleWiFiControls(ControlHandler aHandler, int aType);
 
     bool HandleTextControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
     bool HandleColorControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);

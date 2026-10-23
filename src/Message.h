@@ -43,6 +43,9 @@ namespace MessageNS
         CMD_WIFI_CONNECT,                   // No payload
         CMD_WIFI_START_SCAN,                // No payload
 
+        /** Local commands - WebSite Task */
+        CMD_WEBSITE_HANDLE_WIFI_CONTROLS,   // Payload: 1 byte  - ControlHandler number; 2..4 bytes - type (as int)
+
         /** Events       */
         MSG_EVENT_SW_TIMER_TIMEOUT,         // Payload: 4 byte  - Timer ID
 
@@ -88,7 +91,7 @@ namespace MessageNS
     };
 
     /**@brief Length of internal message payload */
-    constexpr uint8_t mMessagePayloadLen = 4;
+    constexpr uint8_t mMessagePayloadLen = 5;
     /** @brief Definition of internal message */
     using Message = MessageNS::tMessage<mMessagePayloadLen>;
 

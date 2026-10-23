@@ -8,6 +8,7 @@
 
 #include "Logger.h"
 #include "DateTime.h"
+#include "Serialize.h"
 #include "Settings.hpp"
 
 #include "WebSite.h"
@@ -170,11 +171,10 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiConnectButton);
 
-    mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
-        ControlHandler::WifiForgetButton);
-
     mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiScanButton);
+    mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+        ControlHandler::WifiForgetButton);
 
     /* Update LED brightness controls */
     UpdateLedBrightnessControls();
@@ -243,6 +243,32 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             UpdateWiFiSettingsControls();
             break;
 
+        case MessageNS::tMessageId::CMD_WEBSITE_HANDLE_WIFI_CONTROLS:
+        {
+            /* Received message for handling WiFi controls */
+            if (arMessage.mPayloadLength == 5)
+            {
+                ControlHandler wHandler;
+                uint32_t wTypeRaw;
+                int wType;
+
+                /* Retrieve ControlHandler from the payloads byte 0 */
+                wHandler = static_cast<ControlHandler>(arMessage.mPayload[0]);
+
+                /* Deserialize the type from the payloads bytes 2..5 */
+                SerializeNS::DeserializeData(arMessage.mPayload, &wTypeRaw, 1);
+                wType = static_cast<int32_t>(wTypeRaw);
+
+                /* Handle WiFi controls */
+                HandleWiFiControls(wHandler, wType);
+            }
+            else
+            {
+                LOG(LOG_ERROR, "WebSite::ProcessIncomingMessage() Invalid payload length for CMD_WEBSITE_HANDLE_WIFI_CONTROLS: %d", arMessage.mPayloadLength);
+            }
+        }
+            break;
+
         default:
             // do nothing
             break;
@@ -300,55 +326,68 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
             wSendMessage = HandleSliderControl(apControl, aType, wSettingsKey);
             break;
 
-        case ControlHandler::WifiSsidSelect:
-        {
-            bool wIsSsidValid     = false;
-            bool wIsPasswordValid = false;
-
-            /* WiFi SSID selection changed */
-            uint8_t wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
-
-            /* Get current WiFi password */
-            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
-
-            if (ESPUI.captivePortal)
-            {
-                wIsSsidValid = mLocalSsidList[wSsidIndex].IsValid();
-            }
-            else
-            {
-                wIsSsidValid = ((wSsidIndex > 0) && mLocalSsidList[wSsidIndex].IsValid());
-            }
-
-            wIsPasswordValid = ((wPassw.length() > 0) && mLocalSsidList[wSsidIndex].mEncrypted);
-
-            ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wIsSsidValid && wIsPasswordValid));
-        }
+        default:
+            /* LOG */
+            LOG(LOG_ERROR, "WebSite::HandleControl() Unknown control handler for control ID %04X", apControl->GetId());
             break;
+    }
 
+    /* Send message if needed */
+    if (wSendMessage)
+    {
+        SendMessage(wMessage);
+    }
+}
+
+void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
+{
+    /* Message to be sent if control changes */
+    MessageNS::Message wMessage;
+    /* Flag to indicate whether to send a message or not */
+    bool wSendMessage = false;  // default - false
+
+    /* Prepare message */
+    wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
+    wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
+
+    /* Handle control based on its handler tag */
+    switch (aHandler)
+    {
+        case ControlHandler::WifiSsidSelect:
         case ControlHandler::WifiPassword:
         {
             bool wIsSsidValid     = false;
             bool wIsPasswordValid = false;
 
             /* Get current WiFi SSID selection */
-            uint8_t wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
-
-            /* WiFi password changed */
+            const long wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
+            /* Get current WiFi password */
             String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
-            if (ESPUI.captivePortal)
-            {
-                wIsSsidValid = mLocalSsidList[wSsidIndex].IsValid();
-            }
-            else
-            {
-                wIsSsidValid = ((wSsidIndex > 0) && mLocalSsidList[wSsidIndex].IsValid());
-            }
+            /* Check selected index boundaries */
+            wIsSsidValid = (wSsidIndex >= 0) && (static_cast<size_t>(wSsidIndex) < mLocalSsidList.size());
 
-            wIsPasswordValid = ((wPassw.length() > 0) && mLocalSsidList[wSsidIndex].mEncrypted);
+            if (wIsSsidValid)
+            {
+                /* Allows any valid SSID in captive-portal mode;
+                 * otherwise, excludes index 0 (the current network) */
+                if (ESPUI.captivePortal)
+                {
+                    wIsSsidValid = mLocalSsidList[wSsidIndex].IsValid();
+                }
+                else
+                {
+                    wIsSsidValid = ((wSsidIndex > 0) && mLocalSsidList[wSsidIndex].IsValid());
+                }
+
+                /* Check password validity: it is non-empty and the selected network is encrypted */
+                wIsPasswordValid = ((wPassw.length() > 7) && mLocalSsidList[wSsidIndex].mEncrypted);    // Technical minimum length: 8 characters
+            }
 
             ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wIsSsidValid && wIsPasswordValid));
+
+            /* Wait a bit to avoid issues with the UI update */
+            delay(100);
         }
             break;
 
@@ -359,6 +398,9 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
 
             /* Set the input type of the password field based on the switcher state */
             ESPUI.setInputType(mWebUIControlID.mWifiPassword, wState ? "text" : "password");
+
+            /* Wait a bit to avoid issues with the UI update */
+            delay(100);
         }
             break;
 
@@ -369,8 +411,8 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
             {
                 LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi connect button pressed");
 
-                // Get selected SSID and password from the controls
-                uint8_t wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
+                /* Get selected SSID and password from the controls */
+                const long wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
                 String wSsid  = mLocalSsidList[wSsidIndex].mSsid;
                 String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
@@ -381,10 +423,7 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
                 Settings.SetValue<String>(ConfigNS::mKeyWifiPassword, wPassw.c_str());
 
                 /* Message to WiFi manager with connect command */
-                wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
-                wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
                 wMessage.mId = MessageNS::tMessageId::CMD_WIFI_CONNECT;
-
                 wSendMessage = true;
             }
         }
@@ -397,14 +436,22 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
             {
                 LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi scan button pressed");
 
-                ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,    false);
-                ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, false);
+                /* Update scan button label with ongoing status */
+                ESPUI.updateLabel(mWebUIControlID.mWifiScanButton, "WiFi scan ongoing, please wait...");
+
+                /* Disable WiFi settings controls during scanning */
+                ESPUI.setEnabled(mWebUIControlID.mWifiSSIDs,            false);
+                ESPUI.setEnabled(mWebUIControlID.mWifiPassword,         false);
+                ESPUI.setEnabled(mWebUIControlID.mWifiPasswordShowHide, false);
+                ESPUI.setEnabled(mWebUIControlID.mWifiForgetButton,     false);
+                ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,       false);
+                ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton,    false);
+
+                /* Wait a bit before sending the scan command to avoid issues with the UI update */
+                delay(100);
 
                 /* Message to WiFi manager start scan command */
-                wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
-                wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
                 wMessage.mId = MessageNS::tMessageId::CMD_WIFI_START_SCAN;
-
                 wSendMessage = true;
             }
         }
@@ -422,10 +469,7 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
                 Settings.RemoveKey(ConfigNS::mKeyWifiPassword);
 
                 /* Message to WiFi manager with connect command */
-                wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
-                wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
                 wMessage.mId = MessageNS::tMessageId::CMD_WIFI_CONNECT;
-
                 wSendMessage = true;
             }
         }
@@ -433,7 +477,7 @@ void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
 
         default:
             /* LOG */
-            LOG(LOG_ERROR, "WebSite::HandleControl() Unknown control handler for control ID %04X", apControl->GetId());
+            LOG(LOG_ERROR, "WebSite::HandleWiFiControls() Unknown control handler %d", aHandler);
             break;
     }
 
@@ -1023,12 +1067,28 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
         }
     }
 
-    ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, 0);
+    ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, mLocalSsidList.empty() ? -1 : 0);
     ESPUI.updateText(mWebUIControlID.mWifiPassword, wCurrentSsid.mPassword);
 
-    ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, false);
-    ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,    true);
-    ESPUI.setEnabled(mWebUIControlID.mWifiForgetButton,  (!ESPUI.captivePortal));   // Only enable forget button if connected to WiFi router
+    /* Restore scan button label */
+    ESPUI.updateLabel(mWebUIControlID.mWifiScanButton, "Search for WiFi");
+
+    /* Update forget network button label: "Forget network" or "Forget network <SSID>" if selected SSID is not valid */
+    String wLabel = "Forget network";
+    if (!ESPUI.captivePortal  && wCurrentSsid.IsValid())
+    {
+        wLabel += " ";
+        wLabel += wCurrentSsid.mSsid;
+    }
+    ESPUI.updateLabel(mWebUIControlID.mWifiForgetButton, wLabel);
+
+    /* Enable/disable controls based on current state */
+    ESPUI.setEnabled(mWebUIControlID.mWifiSSIDs,            true);
+    ESPUI.setEnabled(mWebUIControlID.mWifiPassword,         true);
+    ESPUI.setEnabled(mWebUIControlID.mWifiPasswordShowHide, true);
+    ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,       true);
+    ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton,    false);
+    ESPUI.setEnabled(mWebUIControlID.mWifiForgetButton,     (!ESPUI.captivePortal));   // Only enable forget button if connected to WiFi router
 
     if (aForceUpdate)
     {
@@ -1038,8 +1098,49 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
 
 void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
 {
-    if (mpWebSiteInstance)
+    if (apSender && apParam)
     {
-        mpWebSiteInstance->HandleControl(apSender, aType, apParam);
+        const ControlParam* wParam = static_cast<const ControlParam*>(apParam);
+
+        switch (wParam->mHandler)
+        {
+            /* Handle WiFi controls */
+            case ControlHandler::WifiSsidSelect:
+            case ControlHandler::WifiPassword:
+            case ControlHandler::WifiPasswordShowHide:
+            case ControlHandler::WifiConnectButton:
+            case ControlHandler::WifiScanButton:
+            case ControlHandler::WifiForgetButton:
+                if (mpWebSiteInstance)
+                {
+                    LOG(LOG_DEBUG, "WebSite::ControlCallback() WiFi control handler %d, type %d, sizeof type %d",
+                        static_cast<int>(wParam->mHandler), aType, sizeof(aType));
+
+                    MessageNS::Message wMessage{};
+                    wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
+                    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+                    wMessage.mId = MessageNS::tMessageId::CMD_WEBSITE_HANDLE_WIFI_CONTROLS;
+
+                    /* Set payload 2 bytes:
+                     *     1 byte  - ControlHandler number;
+                     *     2..4 bytes - type (as int) */
+                    const uint32_t wTypeRaw = static_cast<uint32_t>(static_cast<int32_t>(aType));
+
+                    wMessage.mPayloadLength = 5;
+                    wMessage.mPayload[0] = static_cast<uint8_t>(wParam->mHandler);
+                    SerializeNS::SerializeData(wTypeRaw, wMessage.mPayload, 1);
+
+                    mpWebSiteInstance->SendMessage(wMessage);
+                }
+                break;
+
+            /* Handle other controls */
+            default:
+                if (mpWebSiteInstance)
+                {
+                    mpWebSiteInstance->HandleControl(apSender, aType, apParam);
+                }
+                break;
+        }
     }
 }
