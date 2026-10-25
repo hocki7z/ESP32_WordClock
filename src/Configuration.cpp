@@ -6,8 +6,5 @@
  */
 #include "Configuration.h"
 
-namespace ConfigNS
-{
-    /** @brief List of WiFi scan results - single shared instance */
-    std::vector<tSSIDEntry> mSSSIDList;
-}
+/** @brief Shared list instance of discovered WiFi SSIDs */
+SSIDList mSSIDList;

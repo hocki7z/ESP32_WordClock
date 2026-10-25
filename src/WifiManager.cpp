@@ -74,7 +74,7 @@ void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     ApplicationNS::Task::Init(apTaskObjects);
 
     /* Initialize global SSIDs list */
-    ConfigNS::mSSSIDList.clear();
+    mSSIDList.Clear();
 
     /* Create periodical timer */
     mTimerObjects.mTaskHandle = this->getTaskHandle();
@@ -376,79 +376,78 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
 
 void WiFiManager::UpdateSSIDList(bool aCheckScanResults)
 {
-    /* Clear the previous SSID list */
-    ConfigNS::mSSSIDList.clear();
-
-    /* In WiFi STA mode, add first the currently connected network */
-    if (WiFi.getMode() == WIFI_STA)
+    /* Update of the SSID list */
     {
-        bool mEncrypted = false;
+        auto wListUpdate = mSSIDList.BeginUpdate();
 
-        /* Check if the current network is encrypted */
-        wifi_ap_record_t wApInfo;
-        if (esp_wifi_sta_get_ap_info(&wApInfo) == ESP_OK)
+        /* Remove all entries from the update list */
+        wListUpdate.Clear();
+
+        /* In WiFi STA mode, add first the currently connected network */
+        if (WiFi.getMode() == WIFI_STA)
         {
-            mEncrypted = (wApInfo.authmode != WIFI_AUTH_OPEN);
-        }
+            bool mEncrypted = false;
 
-        /* Add the currently connected network to the list */
-        ConfigNS::tSSIDEntry wCurNetwork;
-        wCurNetwork.Set(WiFi.SSID().c_str(), WiFi.psk().c_str(), WiFi.RSSI());
-
-        ConfigNS::mSSSIDList.push_back(wCurNetwork);
-    }
-
-    /* Check scan results */
-    if (aCheckScanResults)
-    {
-        if (WiFi.scanComplete() == WIFI_SCAN_RUNNING)
-        {
-            LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() WiFi scan is still running, skipping update");
-        }
-        else
-        {
-            for (int wI = 0; wI < WiFi.scanComplete(); wI++)
+            /* Check if the current network is encrypted */
+            wifi_ap_record_t wApInfo;
+            if (esp_wifi_sta_get_ap_info(&wApInfo) == ESP_OK)
             {
-                ConfigNS::tSSIDEntry wEntry;
-                /* Put SSID, RSSI and encryption type */
-                wEntry.Set(WiFi.SSID(wI).c_str(), nullptr, WiFi.encryptionType(wI) != WIFI_AUTH_OPEN, WiFi.RSSI());
+                mEncrypted = (wApInfo.authmode != WIFI_AUTH_OPEN);
+            }
 
-                /* Search for duplicates in the list */
-                bool wDuplicateFound = false;
-                for (const auto& wExistingEntry : ConfigNS::mSSSIDList)
+            /* Add the currently connected network to the list */
+            tSSIDEntry wCurNetwork;
+            wCurNetwork.Set(WiFi.SSID().c_str(), WiFi.psk().c_str(), mEncrypted, WiFi.RSSI());
+            wListUpdate.AddIfUnique(wCurNetwork);
+        }
+
+        /* Check scan results */
+        if (aCheckScanResults)
+        {
+            if (WiFi.scanComplete() == WIFI_SCAN_RUNNING)
+            {
+                LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() WiFi scan is still running, skipping update");
+            }
+            else
+            {
+                for (int16_t wI = 0; wI < WiFi.scanComplete(); wI++)
                 {
-                    if (wEntry == wExistingEntry)
+                    tSSIDEntry wEntry;
+
+                    /* Put SSID, RSSI and encryption type */
+                    wEntry.Set(WiFi.SSID(wI).c_str(), nullptr, WiFi.encryptionType(wI) != WIFI_AUTH_OPEN, WiFi.RSSI());
+
+                    /* Add entry to the list if not a duplicate */
+                    if (!wListUpdate.AddIfUnique(wEntry))
                     {
-                        wDuplicateFound = true;
-                        break;
+                        LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() Skipping duplicate SSID entry: %s", wEntry.mSsid);
                     }
-                }
-
-                /* Add entry to the list if not a duplicate */
-                if (!wDuplicateFound)
-                {
-                    ConfigNS::mSSSIDList.push_back(wEntry);
-                }
-                else
-                {
-                    LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() Skipping duplicate SSID entry: %s", wEntry.mSsid);
                 }
             }
         }
+
+        // Release the update lock on the SSID list
     }
 
     /* LOG */
-    LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() Found %d networks", ConfigNS::mSSSIDList.size());
+    const size_t wSsidCount = mSSIDList.Size();
+    LOG(LOG_DEBUG, "WiFiManager::UpdateSSIDList() Found %d networks", wSsidCount);
 
 #if (LOG_LEVEL == LOG_VERBOSE)  // don't compile this code each time
-    /* Log all found network */
-    for (const auto& entry : ConfigNS::mSSSIDList)
+    /* Log all found networks */
+    for (size_t wI = 0; wI < wSsidCount; ++wI)
     {
-        LOG(LOG_VERBOSE, "WiFiManager::UpdateSSIDList()     %s, RSSI: %d dBm, Encryption: %d",
-                entry.mSsid, entry.mRssi, entry.mEncrypted);
+        tSSIDEntry entry;
+
+        if (mSSIDList.Get(wI, entry))
+        {
+            LOG(LOG_VERBOSE, "WiFiManager::UpdateSSIDList()     %s, RSSI: %d dBm, Encryption: %d",
+                    entry.mSsid, entry.mRssi, entry.mEncrypted);
+        }
     }
 #endif /* (LOG_LEVEL == LOG_VERBOSE) */
 
+    /* Notify WiFi scan done */
     SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE);
 }
 
@@ -562,12 +561,15 @@ bool WiFiManager::ConnectWifi(void)
         /* LOG */
         LOG(LOG_DEBUG, "WiFiManager::ConnectWifi() Start WiFi Station mode, SSID: %s", wSsid.c_str());
 
-        ConfigNS::mSSSIDList.clear();
+        {
+            auto wListUpdate = mSSIDList.BeginUpdate();
+            wListUpdate.Clear();
 
-        /* Add entry to the list */
-        ConfigNS::tSSIDEntry wSsidEntry = {};
-        strncpy(wSsidEntry.mSsid, wSsid.c_str(), sizeof(wSsidEntry.mSsid) - 1);
-        ConfigNS::mSSSIDList.push_back(wSsidEntry);
+            /* Add entry to the list */
+            tSSIDEntry wSsidEntry = {};
+            strncpy(wSsidEntry.mSsid, wSsid.c_str(), sizeof(wSsidEntry.mSsid) - 1);
+            wListUpdate.AddIfUnique(wSsidEntry);
+        }
 
         /* Start Wifi connection */
         WiFi.begin(wSsid.c_str(), wPassw.c_str());

@@ -96,14 +96,11 @@ private:
     /** @brief Web UI control IDs */
     tWebUIControlID mWebUIControlID;
 
-    /** @brief Maximum SSID name size, including null terminator */
-    static constexpr size_t mcSsidNameSize = 33;    // Wi‑Fi SSIDs are limited to 32 bytes + null terminator
-
     /** @brief Bounded option pool; labels must outlive ESPUI controls. */
     static constexpr size_t mcMaxSsidCount = 64;
 
     /** @brief SSID labels for the bounded option pool */
-    std::array<std::array<char, mcSsidNameSize>, mcMaxSsidCount> mWifiSsidLabels{};
+    std::array<std::array<char, SSID_NAME_SIZE>, mcMaxSsidCount> mWifiSsidLabels{};
 
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */
