@@ -365,7 +365,7 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
             String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
             /* Check selected index boundaries */
-            wIsSsidValid = (wSsidIndex >= 0) && (static_cast<size_t>(wSsidIndex) < mLocalSsidList.size());
+            wIsSsidValid = (wSsidIndex >= 0) && (static_cast<size_t>(wSsidIndex) < ConfigNS::mSSSIDList.size());
 
             if (wIsSsidValid)
             {
@@ -373,15 +373,15 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
                  * otherwise, excludes index 0 (the current network) */
                 if (ESPUI.captivePortal)
                 {
-                    wIsSsidValid = mLocalSsidList[wSsidIndex].IsValid();
+                    wIsSsidValid = ConfigNS::mSSSIDList[wSsidIndex].IsValid();
                 }
                 else
                 {
-                    wIsSsidValid = ((wSsidIndex > 0) && mLocalSsidList[wSsidIndex].IsValid());
+                    wIsSsidValid = ((wSsidIndex > 0) && ConfigNS::mSSSIDList[wSsidIndex].IsValid());
                 }
 
                 /* Check password validity: it is non-empty and the selected network is encrypted */
-                wIsPasswordValid = ((wPassw.length() > 7) && mLocalSsidList[wSsidIndex].mEncrypted);    // Technical minimum length: 8 characters
+                wIsPasswordValid = ((wPassw.length() > 7) && ConfigNS::mSSSIDList[wSsidIndex].mEncrypted);    // Technical minimum length: 8 characters
             }
 
             ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wIsSsidValid && wIsPasswordValid));
@@ -413,7 +413,7 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
 
                 /* Get selected SSID and password from the controls */
                 const long wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
-                String wSsid  = mLocalSsidList[wSsidIndex].mSsid;
+                String wSsid  = ConfigNS::mSSSIDList[wSsidIndex].mSsid;
                 String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
 
                 LOG(LOG_DEBUG, "WebSite::HandleControl() Connecting to SSID: %s, password: %s", wSsid.c_str(), wPassw.c_str());
@@ -1010,17 +1010,15 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     /* LOG */
     LOG(LOG_DEBUG, "WebSite::UpdateWiFiSettingsControls() Force update %d", aForceUpdate);
 
-    /* Bound the local snapshot and the number of allocated option controls.
-       Copying the shared list still requires producer-side synchronization. */
+    /* Limit the SSID count to the UI's maximum supported options */
     const size_t wCount = (ConfigNS::mSSSIDList.size() < mcMaxSsidCount)
         ? ConfigNS::mSSSIDList.size() : mcMaxSsidCount;
-    mLocalSsidList.assign(ConfigNS::mSSSIDList.begin(), ConfigNS::mSSSIDList.begin() + wCount);
 
     /* Reuse controls and fixed-address labels instead of rebuilding the UI */
-    for (size_t wI = 0; wI < mLocalSsidList.size(); wI++)
+    for (size_t wI = 0; wI < wCount; wI++)
     {
         auto& wLabel = mWifiSsidLabels[wI];
-        snprintf(wLabel.data(), wLabel.size(), "%s", mLocalSsidList[wI].mSsid);
+        snprintf(wLabel.data(), wLabel.size(), "%s", ConfigNS::mSSSIDList[wI].mSsid);
 
         if (wI < mWebUIControlID.mWifiSSIDList.size())
         {
@@ -1052,11 +1050,11 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     {
         /* Connected to WiFi router */
 
-        if (mLocalSsidList.size() > 0)
+        if (ConfigNS::mSSSIDList.size() > 0)
         {
             /* The first available SSID is currently connected network */
-            wCurrentSsid.Set(mLocalSsidList[0].mSsid, mLocalSsidList[0].mPassword,
-                mLocalSsidList[0].mEncrypted, mLocalSsidList[0].mRssi);
+            wCurrentSsid.Set(ConfigNS::mSSSIDList[0].mSsid, ConfigNS::mSSSIDList[0].mPassword,
+                ConfigNS::mSSSIDList[0].mEncrypted, ConfigNS::mSSSIDList[0].mRssi);
         }
         else
         {
@@ -1067,7 +1065,7 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
         }
     }
 
-    ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, mLocalSsidList.empty() ? -1 : 0);
+    ESPUI.updateSelect(mWebUIControlID.mWifiSSIDs, ConfigNS::mSSSIDList.empty() ? -1 : 0);
     ESPUI.updateText(mWebUIControlID.mWifiPassword, wCurrentSsid.mPassword);
 
     /* Restore scan button label */
