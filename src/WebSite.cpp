@@ -5,6 +5,14 @@
  *      Author: hocki
  */
 #include <ESPUI.h>
+#include <ESPmDNS.h>
+#include <sdkconfig.h>
+#include "WordClockTlsCredentials.h"
+
+#if !defined(CONFIG_ESP_HTTPS_SERVER_ENABLE) || !CONFIG_ESP_HTTPS_SERVER_ENABLE \
+    || !defined(CONFIG_HTTPD_WS_SUPPORT) || !CONFIG_HTTPD_WS_SUPPORT
+#error "WordClock HTTPS requires a framework built with HTTPS server and WebSocket support"
+#endif
 
 #include "Logger.h"
 #include "Configuration.h"
@@ -69,6 +77,12 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     /* ESPUI log mode - turn on/off verbose debugging */
     ESPUI.setVerbosity((LOG_LEVEL == LOG_VERBOSE) ? Verbosity::Verbose : Verbosity::Quiet);
+
+    /* Both PEM strings are copied before HTTP/AP or HTTPS/STA can start. */
+    if (!ESPUI.setCertificate(WordClockTls::Certificate, WordClockTls::PrivateKey))
+    {
+        LOG(LOG_ERROR, "Cannot configure HTTPS certificate; HTTPS will not fall back to HTTP");
+    }
 
 	/* Make sliders continually report their position as they are being dragged. */
 	ESPUI.sliderContinuous = true;
@@ -209,8 +223,23 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             /* Update WiFi settings controls */
             UpdateWiFiSettingsControls();
 
-            /* Start WEB UI */
-            ESPUI.begin("Wordclock");
+            /* Advertise the certificate's stable hostname instead of a DHCP IP. */
+            MDNS.end();
+            if (MDNS.begin(WordClockTls::Hostname))
+            {
+                MDNS.addService("https", "tcp", 443);
+            }
+            else
+            {
+                LOG(LOG_ERROR, "Cannot start mDNS; HTTPS remains accessible by IP with a name warning");
+            }
+
+            /* Normal operation is TLS only. No silent plaintext fallback. */
+            ESPUI.beginHTTPS("Wordclock");
+            if (ESPUI.WebServer() && ESPUI.WebServer()->isRunning() && ESPUI.WebServer()->getPort() == 443)
+            {
+                LOG(LOG_INFO, "Web UI: https://%s.local/", WordClockTls::Hostname);
+            }
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
@@ -219,11 +248,12 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
             /* Offline Mode - enable captive portal */
             ESPUI.captivePortal = true;
+            MDNS.end();
 
             /* Update WiFi settings controls */
             UpdateWiFiSettingsControls();
 
-            /* Start WEB UI */
+            /* AP provisioning deliberately remains HTTP for captive discovery. */
             ESPUI.begin("Wordclock");
             break;
 
@@ -799,7 +829,7 @@ Control::ControlId_t WebSite::AddColorControl(const char* apLabel, Control::Cont
     snprintf(wHexColor, sizeof(wHexColor), "#%06lX",
         static_cast<unsigned long>(wColorParam & 0x00FFFFFF));
 
-    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::ColorPickr, apLabel, String(wHexColor), Control::Color::Dark, aParent,
+    Control::ControlId_t wControlId = ESPUI.addControl(Control::Type::Text, apLabel, String(wHexColor), Control::Color::Dark, aParent,
             WebSite::ControlCallback, new ControlParam{aHandler, aSettingsKey});
 
     ESPUI.setElementStyle(wControlId, aElementStyle);
@@ -1167,8 +1197,8 @@ void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)
     DisplayScene wSceneSnapshot;
     mDisplaySceneSnapshot.Get(wSceneSnapshot);
 
-    ESPUI.updateLabel(mWebUIControlID.mDisplayPreview,
-        BuildDisplayPreviewSvg(&wSceneSnapshot));
+    //ESPUI.updateLabel(mWebUIControlID.mDisplayPreview,
+    //    BuildDisplayPreviewSvg(&wSceneSnapshot));
 }
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
