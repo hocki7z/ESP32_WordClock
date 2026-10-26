@@ -43,9 +43,6 @@ namespace MessageNS
         CMD_WIFI_CONNECT,                   // No payload
         CMD_WIFI_START_SCAN,                // No payload
 
-        /** Local commands - WebSite Task */
-        CMD_WEBSITE_HANDLE_WIFI_CONTROLS,   // Payload: 1 byte  - ControlHandler number; 2..4 bytes - type (as int)
-
         /** Events       */
         MSG_EVENT_SW_TIMER_TIMEOUT,         // Payload: 4 byte  - Timer ID
 

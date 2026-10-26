@@ -4,15 +4,17 @@
  *  Created on: 25.09.2025
  *      Author: hocki
  */
-#ifndef WEBSITE_H_
-#define WEBSITE_H_
+#pragma once
 
 #include <Arduino.h>
-#include <ESPUI.h>
 #include <array>
+#include <type_traits>
+
+#include <ESPUI.h>
 
 #include "Application.h"
 #include "Configuration.h"
+#include "Settings.hpp"
 
 
 class WebSite : public ApplicationNS::Task
@@ -48,12 +50,49 @@ private:
         WifiForgetButton,
     };
 
-    /** @brief Data handed to ESPUI as the control's void* callback param, recovered in HandleControl() */
+    /** @brief Parameters associated with a control (used as the void* callback param in ESPUI) */
     struct ControlParam
     {
-        ControlHandler   mHandler;
-        SettingsNS::tKey mSettingsKey;
+        ControlHandler mHandler = ControlHandler::None;
+        SettingsNS::tKey mSettingsKey = ConfigNS::mInvalidKey;
     };
+
+    /** @brief Value snapshot copied from ESPUI's asynchronous callback into the WebSite task queue */
+    struct ControlEvent
+    {
+        /* Control event metadata */
+        Control::ControlId_t mControlId = Control::noParent;
+        int mEventType = 0;
+        ControlParam mControlParam{};
+
+        /** @brief Exactly one payload is active, selected by mHandler. */
+        union
+        {
+            struct
+            {
+                int32_t mValue;
+                char mValueText[SSID_PASSWORD_SIZE];
+            } mParameter;
+
+            struct
+            {
+                int32_t mSsidIndex;
+                char mPassword[SSID_PASSWORD_SIZE];
+            } mWifi;
+        } mPayload{};
+    };
+
+    /** @brief Ensure ControlEvent remains trivially copyable */
+    static_assert(std::is_trivially_copyable<ControlEvent>::value,
+        "ControlEvent must remain byte-copyable for the FreeRTOS queue");
+
+    /** @brief Task notification value for control events */
+    static constexpr uint32_t mTaskNotificationControlEvent = 0x82;     //binary: 00000000 00000000 00000000 10000010
+    /** @brief Length of the control event queue */
+    static constexpr UBaseType_t   mControlEventQueueLength = 16;
+
+    /** @brief Type alias for the control event queue */
+    using ControlEventQueue = FreeRTOScpp::Queue<ControlEvent, mControlEventQueueLength>;
 
     struct tWebUIControlID
     {
@@ -104,19 +143,17 @@ private:
     /** @brief SSID labels for the bounded option pool */
     std::array<std::array<char, SSID_NAME_SIZE>, mcMaxSsidCount> mWifiSsidLabels{};
 
+    /** @brief Pointers to the control event queue and its notification */
+    ControlEventQueue* mpControlEventQueue = nullptr;
+    TaskNotification*  mpControlEventNotification = nullptr;
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
+    /* ApplicationNS::Task::ProcessUnknownNotification() */
+    void ProcessUnknownNotification(uint32_t aNotificationValue) override;
 
-    void HandleControl(BasicControl* apControl, int aType, void* apParam = nullptr);
-    void HandleWiFiControls(ControlHandler aHandler, int aType);
-
-    bool HandleTextControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    bool HandleColorControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    bool HandleSwitcherControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    bool HandleSelectControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    bool HandleSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
-    bool HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey);
+    void HandleControlEvent(const ControlEvent& arEvent);
+    void HandleWiFiControlEvent(const ControlEvent& arEvent);
 
     Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None);
 
@@ -160,5 +197,3 @@ private:
 
     static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);
 };
-
-#endif /* WEBSITE_H_ */

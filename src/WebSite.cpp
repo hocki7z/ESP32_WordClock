@@ -9,7 +9,6 @@
 #include "Logger.h"
 #include "Configuration.h"
 #include "DateTime.h"
-#include "Serialize.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
 #include "Settings.hpp"
@@ -31,6 +30,9 @@
 #define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
 #define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
+
+/* Delay for web UI updates in milliseconds */
+#define WEB_UI_UPDATE_DELAY             100     // It seems that a small delay is enough to avoid issues with the web UI updates, especially when updating control states
 
 
 /**
@@ -54,6 +56,13 @@ WebSite::WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 WebSite::~WebSite()
 {
+    /* Delete the control event queue and notification */
+    delete mpControlEventQueue;
+    delete mpControlEventNotification;
+
+    mpControlEventQueue = nullptr;
+    mpControlEventNotification = nullptr;
+
     /* Clear "this" static pointer */
     mpWebSiteInstance = nullptr;
 }
@@ -62,6 +71,20 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
+
+    /* Create a queue for ESPUI control events */
+    mpControlEventQueue = new ControlEventQueue();
+    if (mpControlEventQueue == nullptr)
+    {
+        LOG(LOG_ERROR, "WebSite::Init() Failed to create control event queue");
+    }
+
+    /* Create a task notification for control events */
+    mpControlEventNotification = new TaskNotification(getTaskHandle(), mTaskNotificationControlEvent);
+    if (mpControlEventNotification == nullptr)
+    {
+        LOG(LOG_ERROR, "WebSite::Init() Failed to create control event notification");
+    }
 
     /*
      * Initialize WEB UI but do not start it yet
@@ -227,59 +250,9 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             ESPUI.begin("Wordclock");
             break;
 
-        case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
-        {
-            /* Check if message sent by this task */
-            if (arMessage.mSource == MessageNS::tAddress::WEB_MANAGER)
-            {
-                /* Update LED brightness controls */
-                UpdateLedBrightnessControls();
-
-                /* Redirect this message to display manager */
-                MessageNS::Message wMessage = arMessage;
-
-                /* Send message to display */
-                wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
-                SendMessage(wMessage);
-
-                /* Send message to time manager */
-                wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
-                SendMessage(wMessage);
-
-                break;
-            }
-        }
-            break;
-
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
             /* WiFi scan finished, update WiFi settings */
             UpdateWiFiSettingsControls();
-            break;
-
-        case MessageNS::tMessageId::CMD_WEBSITE_HANDLE_WIFI_CONTROLS:
-        {
-            /* Received message for handling WiFi controls */
-            if (arMessage.mPayloadLength == 5)
-            {
-                ControlHandler wHandler;
-                uint32_t wTypeRaw;
-                int wType;
-
-                /* Retrieve ControlHandler from the payloads byte 0 */
-                wHandler = static_cast<ControlHandler>(arMessage.mPayload[0]);
-
-                /* Deserialize the type from the payloads bytes 2..5 */
-                SerializeNS::DeserializeData(arMessage.mPayload, &wTypeRaw, 1);
-                wType = static_cast<int32_t>(wTypeRaw);
-
-                /* Handle WiFi controls */
-                HandleWiFiControls(wHandler, wType);
-            }
-            else
-            {
-                LOG(LOG_ERROR, "WebSite::ProcessIncomingMessage() Invalid payload length for CMD_WEBSITE_HANDLE_WIFI_CONTROLS: %d", arMessage.mPayloadLength);
-            }
-        }
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY:
@@ -292,71 +265,194 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
     }
 }
 
-void WebSite::HandleControl(BasicControl* apControl, int aType, void* apParam)
+void WebSite::ProcessUnknownNotification(uint32_t aNotificationValue)
 {
-    ControlHandler       wHandler = ControlHandler::None;
-    SettingsNS::tKey wSettingsKey = ConfigNS::mInvalidKey;
+    /* Process control event notification */
+    if ((aNotificationValue & mTaskNotificationControlEvent) != 0)
+    {
+        ControlEvent wEvent{};
 
-    /* Message to be sent if control changes */
-    MessageNS::Message wMessage;
+        /* Process all pending control events */
+        while (mpControlEventQueue->pop(wEvent, 0))
+        {
+            switch (wEvent.mControlParam.mHandler)
+            {
+                /* Handle WiFi controls */
+                case ControlHandler::WifiSsidSelect:
+                case ControlHandler::WifiPassword:
+                case ControlHandler::WifiPasswordShowHide:
+                case ControlHandler::WifiConnectButton:
+                case ControlHandler::WifiScanButton:
+                case ControlHandler::WifiForgetButton:
+                    HandleWiFiControlEvent(wEvent);
+                    break;
+
+                /* Handle other controls */
+                default:
+                    HandleControlEvent(wEvent);
+                    break;
+            }
+
+            /* Allow other tasks to run */
+            yield();
+        }
+
+        /* Clear the control event notification bit */
+        aNotificationValue &= ~mTaskNotificationControlEvent;
+    }
+}
+
+/** @brief Handle a control event
+ *
+ * @param arEvent The control event to handle
+ */
+void WebSite::HandleControlEvent(const ControlEvent& arEvent)
+{
     /* Flag to indicate whether to send a message or not */
     bool wSendMessage = false;  // default - false
 
-    /* Prepare message */
-    wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
-    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
-    wMessage.mId = MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED;
+    SettingsNS::tKey wSettingsKey = arEvent.mControlParam.mSettingsKey;
 
-    /* Recover the handler tag + settings key handed to ESPUI at control creation time */
-    if (apParam != nullptr)
+    if (wSettingsKey != ConfigNS::mInvalidKey)
     {
-        const ControlParam* wParam = static_cast<const ControlParam*>(apParam);
+        /* Handle control based on its handler tag */
+        switch (arEvent.mControlParam.mHandler)
+        {
+            case ControlHandler::Text:
+            {
+                /* LOG */
+                LOG(LOG_DEBUG, "WebSite::HandleControlEvent() Text control %04X, new value %s",
+                        arEvent.mControlId, arEvent.mPayload.mParameter.mValueText);
 
-        wHandler     = wParam->mHandler;
-        wSettingsKey = wParam->mSettingsKey;
-    }
+                /* Store new text value in settings */
+                wSendMessage = Settings.SetValue<String>(wSettingsKey, arEvent.mPayload.mParameter.mValueText);
+            }
+                break;
 
-    /* Handle control based on its handler tag */
-    switch (wHandler)
-    {
-        case ControlHandler::Text:
-            wSendMessage = HandleTextControl(apControl, aType, wSettingsKey);
-            break;
+            case ControlHandler::Color:
+            {
+                /* Retrieve the color value */
+                std::string wColorStr = arEvent.mPayload.mParameter.mValueText;
+                uint32_t  wColorValue = std::stoi(wColorStr.substr(1), nullptr, 16); // skip '#'
 
-        case ControlHandler::Color:
-            wSendMessage = HandleColorControl(apControl, aType, wSettingsKey);
-            break;
+                /* Update displayed value */
+                ESPUI.updateText(arEvent.mControlId, arEvent.mPayload.mParameter.mValueText);
 
-        case ControlHandler::Timer:
-            wSendMessage = HandleTimerControl(apControl, aType, wSettingsKey);
-            break;
+                /* LOG */
+                LOG(LOG_DEBUG, "WebSite::HandleControlEvent() Color control %04X, new color %s (0x%08X)",
+                        arEvent.mControlId, wColorStr.c_str(), wColorValue);
 
-        case ControlHandler::Switcher:
-            wSendMessage = HandleSwitcherControl(apControl, aType, wSettingsKey);
-            break;
+                /* Store new color value as uint32_t in settings */
+                wSendMessage = Settings.SetValue<uint32_t>(wSettingsKey, wColorValue);
+            }
+                break;
 
-        case ControlHandler::Select:
-            wSendMessage = HandleSelectControl(apControl, aType, wSettingsKey);
-            break;
+            case ControlHandler::Timer:
+            {
+                /* Retreive new time value in format HH:MM */
+                std::string wTimeStr = arEvent.mPayload.mParameter.mValueText;
 
-        case ControlHandler::Slider:
-            wSendMessage = HandleSliderControl(apControl, aType, wSettingsKey);
-            break;
+                uint8_t wHour   = static_cast<uint8_t>(std::stoi(wTimeStr.substr(0, 2)));
+                uint8_t wMinute = static_cast<uint8_t>(std::stoi(wTimeStr.substr(3, 2)));
 
-        default:
-            /* LOG */
-            LOG(LOG_ERROR, "WebSite::HandleControl() Unknown control handler for control ID %04X", apControl->GetId());
-            break;
+                /* LOG */
+                LOG(LOG_DEBUG, "WebSite::HandleControlEvent() Timer control %04X, new time %02u:%02u",
+                        arEvent.mControlId, wHour, wMinute);
+
+                /* Convert to uint32_t in format HHMM */
+                DateTimeNS::tDateTime wDateTime;
+                wDateTime.mTime.mHour   = wHour;
+                wDateTime.mTime.mMinute = wMinute;
+                wDateTime.mTime.mSecond = 0;
+                wDateTime.mDate.mDay    = 1;
+                wDateTime.mDate.mMonth  = 1;
+                wDateTime.mDate.mYear   = DateTimeNS::mYearRangeStart;
+
+                uint32_t wTimeDword = DateTimeNS::DateTimeToDword(wDateTime);
+
+                /* Store new time value as uint32_t in settings */
+                wSendMessage = Settings.SetValue<uint32_t>(wSettingsKey, wTimeDword);
+            }
+                break;
+
+            case ControlHandler::Switcher:
+            {
+                /* Retrieve new switcher state */
+                bool wState = (arEvent.mPayload.mParameter.mValue != 0);
+
+                LOG(LOG_DEBUG, "WebSite::HandleControlEvent() Switcher control %04X, new state %d",
+                        arEvent.mControlId, wState);
+
+                /* Store new text value as bool in settings*/
+                wSendMessage = Settings.SetValue<bool>(wSettingsKey, wState);
+            }
+                break;
+
+            case ControlHandler::Select:
+            {
+                /* Retrieve new selected option */
+                uint8_t wSelectedOption = static_cast<uint8_t>(arEvent.mPayload.mParameter.mValue);
+
+                /* LOG */
+                LOG(LOG_DEBUG, "WebSite::HandleControlEvent() Select control %04X, type %d, selection %d",
+                        arEvent.mControlId, arEvent.mEventType, wSelectedOption);
+
+                /* Store new selected option as uint8_t in settings */
+                wSendMessage = Settings.SetValue<uint8_t>(wSettingsKey, wSelectedOption);
+            }
+                break;
+
+            case ControlHandler::Slider:
+            {
+                /* Retrieve new slider value */
+                uint8_t wValue = static_cast<uint8_t>(arEvent.mPayload.mParameter.mValue);
+
+                /* LOG */
+                LOG(LOG_DEBUG, "WebSite::HandleControlEvent() Slider control %04X, new value %d",
+                        arEvent.mControlId, wValue);
+
+                /* Store new slider value as uint8_t in settings */
+                wSendMessage = Settings.SetValue<uint8_t>(wSettingsKey, wValue);
+            }
+                break;
+
+            default:
+                /* LOG */
+                LOG(LOG_ERROR, "WebSite::HandleControl() Unknown control handler for control ID %04X", arEvent.mControlId);
+                break;
+        }
     }
 
     /* Send message if needed */
     if (wSendMessage)
     {
+        /* Update LED brightness controls if DisplayUseNightMode parameter changed */
+        if (wSettingsKey == ConfigNS::mKeyDisplayUseNightMode)
+        {
+            UpdateLedBrightnessControls();
+        }
+
+        /* Prepare message */
+        MessageNS::Message wMessage;
+
+        wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
+        wMessage.mId = MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED;
+
+        /* Send message to display */
+        wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
+        SendMessage(wMessage);
+
+        /* Send message to time manager */
+        wMessage.mDestination = MessageNS::tAddress::TIME_MANAGER;
         SendMessage(wMessage);
     }
 }
 
-void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
+/** @brief Handle a WiFi control event
+ *
+ * @param arEvent The WiFi control event to handle
+ */
+void WebSite::HandleWiFiControlEvent(const ControlEvent& arEvent)
 {
     /* Message to be sent if control changes */
     MessageNS::Message wMessage;
@@ -368,7 +464,7 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
     wMessage.mDestination = MessageNS::tAddress::WIFI_MANAGER;
 
     /* Handle control based on its handler tag */
-    switch (aHandler)
+    switch (arEvent.mControlParam.mHandler)
     {
         case ControlHandler::WifiSsidSelect:
         case ControlHandler::WifiPassword:
@@ -378,9 +474,9 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
             tSSIDEntry wSelectedSsid{};
 
             /* Get current WiFi SSID selection */
-            const long wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
-            /* Get current WiFi password */
-            String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
+            const long wSsidIndex = arEvent.mPayload.mWifi.mSsidIndex;
+            /* Use the password snapshot captured with this event. */
+            String wPassw = arEvent.mPayload.mWifi.mPassword;
 
             wIsSsidValid = (wSsidIndex >= 0) &&
                 (static_cast<size_t>(wSsidIndex) < mcMaxSsidCount) &&
@@ -399,41 +495,46 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
 
             ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton, (wIsSsidValid && wIsPasswordValid));
 
-            /* Wait a bit to avoid issues with the UI update */
-            delay(100);
         }
             break;
 
         case ControlHandler::WifiPasswordShowHide:
         {
             /* WiFi password show/hide switcher changed */
-            bool wState = (aType == S_ACTIVE) ? true : false;
+            bool wState = (arEvent.mEventType == S_ACTIVE);
 
             /* Set the input type of the password field based on the switcher state */
             ESPUI.setInputType(mWebUIControlID.mWifiPassword, wState ? "text" : "password");
 
             /* Wait a bit to avoid issues with the UI update */
-            delay(100);
+            delay(WEB_UI_UPDATE_DELAY);
         }
             break;
 
         case ControlHandler::WifiConnectButton:
         {
             /* Connect to selected network button pressed */
-            if (aType == B_UP)
+            if (arEvent.mEventType == B_UP)
             {
                 LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi connect button pressed");
 
                 /* Get selected SSID and password from the controls */
-                const long wSsidIndex = ESPUI.getControl(mWebUIControlID.mWifiSSIDs)->getValueInt();
-                /* Copy the selected entry through the synchronized Configuration API */
+                const long wSsidIndex = arEvent.mPayload.mWifi.mSsidIndex;
                 tSSIDEntry wSelectedSsid{};
-                mSSIDList.Get(static_cast<size_t>(wSsidIndex), wSelectedSsid);
+                const bool wIsSsidValid = (wSsidIndex >= 0) &&
+                    (static_cast<size_t>(wSsidIndex) < mcMaxSsidCount) &&
+                    mSSIDList.Get(static_cast<size_t>(wSsidIndex), wSelectedSsid) &&
+                    wSelectedSsid.IsValid();
+                if (!wIsSsidValid)
+                {
+                    LOG(LOG_ERROR, "WebSite::HandleWiFiControls() Ignoring connect request with invalid SSID index %ld", wSsidIndex);
+                    break;
+                }
 
-                String wSsid  = wSelectedSsid.mSsid;
-                String wPassw = ESPUI.getControl(mWebUIControlID.mWifiPassword)->getValue().c_str();
+                String wSsid = wSelectedSsid.mSsid;
+                String wPassw = arEvent.mPayload.mWifi.mPassword;
 
-                LOG(LOG_DEBUG, "WebSite::HandleControl() Connecting to SSID: %s, password: %s", wSsid.c_str(), wPassw.c_str());
+                LOG(LOG_DEBUG, "WebSite::HandleWiFiControls() Connecting to SSID: %s", wSsid.c_str());
 
                 /* Store SSID and password in settings */
                 Settings.SetValue<String>(ConfigNS::mKeyWifiSSID, wSsid.c_str());
@@ -449,7 +550,7 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
         case ControlHandler::WifiScanButton:
         {
             /* Scan WiFi networks button pressed */
-            if (aType == B_UP)
+            if (arEvent.mEventType == B_UP)
             {
                 LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi scan button pressed");
 
@@ -464,8 +565,8 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
                 ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,       false);
                 ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton,    false);
 
-                /* Wait a bit before sending the scan command to avoid issues with the UI update */
-                delay(100);
+                /* Wait a bit to avoid issues with the UI update */
+                delay(WEB_UI_UPDATE_DELAY);
 
                 /* Message to WiFi manager start scan command */
                 wMessage.mId = MessageNS::tMessageId::CMD_WIFI_START_SCAN;
@@ -477,7 +578,7 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
         case ControlHandler::WifiForgetButton:
         {
             /* Forget WiFi network button pressed */
-            if (aType == B_UP)
+            if (arEvent.mEventType == B_UP)
             {
                 LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi forget button pressed");
 
@@ -494,7 +595,8 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
 
         default:
             /* LOG */
-            LOG(LOG_ERROR, "WebSite::HandleWiFiControls() Unknown control handler %d", aHandler);
+            LOG(LOG_ERROR, "WebSite::HandleWiFiControls() Unknown control handler %d",
+                static_cast<int>(arEvent.mControlParam.mHandler));
             break;
     }
 
@@ -503,189 +605,6 @@ void WebSite::HandleWiFiControls(ControlHandler aHandler, int aType)
     {
         SendMessage(wMessage);
     }
-}
-
-/**
- * @brief Handle text control changes and update settings
- * @param aControl Pointer to the BasicControl that triggered the change
- * @param aType The type of the control event (e.g., S_ACTIVE, S_INACTIVE)
- * @param aSettingsKey The settings key associated with the control
- *
- * @return True if the settings were updated successfully, false otherwise
- */
-bool WebSite::HandleTextControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
-{
-    bool wRetValue = false;
-
-    LOG(LOG_DEBUG, "WebSite::HandleTextControl() Control %04X, new value %s",
-        aControl->GetId(), aControl->getValue().c_str());
-
-    /* Store new text value in settings if setting key is valid */
-    if (aSettingsKey != ConfigNS::mInvalidKey)
-    {
-        /* Set return value based on whether the settings were updated successfully */
-        wRetValue = Settings.SetValue<String>(aSettingsKey, aControl->getValue());
-    }
-
-    return wRetValue;
-}
-
-/**
- * @brief Handle color control changes and update settings
- * @param aControl Pointer to the BasicControl that triggered the change
- * @param aType The type of the control event (e.g., S_ACTIVE, S_INACTIVE)
- * @param aSettingsKey The settings key associated with the control
- *
- * @return True if the settings were updated successfully, false otherwise
- */
-bool WebSite::HandleColorControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
-{
-    bool wRetValue = false;
-
-    /* Retreive new color value */
-    std::string wColorStr = aControl->getValue().c_str();
-    uint32_t  wColorValue = std::stoi(wColorStr.substr(1), nullptr, 16); // skip '#'
-
-    /* Update displayed value */
-    ESPUI.updateText(aControl->GetId(), aControl->getValue());
-
-    LOG(LOG_DEBUG, "WebSite::HandleColorControl() Control %04X, new color %s (0x%08X)",
-            aControl->GetId(), wColorStr.c_str(), wColorValue);
-
-    /* Store new text value in settings if setting key is valid */
-    if (aSettingsKey != ConfigNS::mInvalidKey)
-    {
-        /* Set return value based on whether the settings were updated successfully */
-        wRetValue = Settings.SetValue<uint32_t>(aSettingsKey, wColorValue);
-
-    }
-
-    return wRetValue;
-}
-
-/**
- * @brief Handle switcher control changes and update settings
- * @param aControl Pointer to the BasicControl that triggered the change
- * @param aType The type of the control event (e.g., S_ACTIVE, S_INACTIVE)
- * @param aSettingsKey The settings key associated with the control
- *
- * @return True if the settings were updated successfully, false otherwise
- */
-bool WebSite::HandleSwitcherControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
-{
-    bool wRetValue = false;
-
-    /* Retreive new switcher state */
-    bool wState = (aType == S_ACTIVE) ? true : false;
-
-    LOG(LOG_DEBUG, "WebSite::HandleSwitcherControl() Control %04X, new state %d",
-            aControl->GetId(), wState);
-
-    /* Store new text value in settings if setting key is valid */
-    if (aSettingsKey != ConfigNS::mInvalidKey)
-    {
-        /* Set return value based on whether the settings were updated successfully */
-        wRetValue = Settings.SetValue<bool>(aSettingsKey, wState);
-    }
-
-    return wRetValue;
-}
-
-/**
- * @brief Handle select control changes and update settings
- * @param aControl Pointer to the BasicControl that triggered the change
- * @param aType The type of the control event (e.g., S_ACTIVE, S_INACTIVE)
- * @param aSettingsKey The settings key associated with the control
- *
- * @return True if the settings were updated successfully, false otherwise
- */
-bool WebSite::HandleSelectControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
-{
-    bool wRetValue = false;
-
-    /* Retreive new selected option */
-    uint8_t wSelectedOption = aControl->getValueInt();
-
-    LOG(LOG_DEBUG, "WebSite::HandleSelectControl() control %04X, type %d, selection %d",
-            aControl->GetId(), aType, wSelectedOption);
-
-    /* Store new selected option in settings if setting key is valid */
-    if (aSettingsKey != ConfigNS::mInvalidKey)
-    {
-        /* Set return value based on whether the settings were updated successfully */
-        wRetValue = Settings.SetValue<uint8_t>(aSettingsKey, wSelectedOption);
-    }
-
-    return wRetValue;
-}
-
-/**
- * @brief Handle slider control changes and update settings
- * @param aControl Pointer to the BasicControl that triggered the change
- * @param aType The type of the control event (e.g., S_ACTIVE, S_INACTIVE)
- * @param aSettingsKey The settings key associated with the control
- *
- * @return True if the settings were updated successfully, false otherwise
- */
-bool WebSite::HandleSliderControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
-{
-    bool wRetValue = false;
-
-    /* Retreive new slider value */
-    uint8_t wValue = aControl->getValueInt();
-
-    LOG(LOG_DEBUG, "WebSite::HandleSliderControl() Control %04X, new value %d",
-            aControl->GetId(), wValue);
-
-    /* Store new slider value in settings if setting key is valid */
-    if (aSettingsKey != ConfigNS::mInvalidKey)
-    {
-        /* Set return value based on whether the settings were updated successfully */
-        wRetValue = Settings.SetValue<uint8_t>(aSettingsKey, wValue);
-    }
-
-    return wRetValue;
-}
-
-/**
- * @brief Handle timer control changes and update settings
- * @param aControl Pointer to the BasicControl that triggered the change
- * @param aType The type of the control event (e.g., S_ACTIVE, S_INACTIVE)
- * @param aSettingsKey The settings key associated with the control
- *
- * @return True if the settings were updated successfully, false otherwise
- */
-bool WebSite::HandleTimerControl(BasicControl* aControl, int aType, SettingsNS::tKey aSettingsKey)
-{
-    bool wRetValue = false;
-
-    /* Retreive new time value in format HH:MM */
-    std::string wTimeStr = aControl->getValue().c_str();
-
-    uint8_t wHour   = static_cast<uint8_t>(std::stoi(wTimeStr.substr(0, 2)));
-    uint8_t wMinute = static_cast<uint8_t>(std::stoi(wTimeStr.substr(3, 2)));
-
-    LOG(LOG_DEBUG, "WebSite::HandleTimerControl() Control %04X, new time %02u:%02u",
-            aControl->GetId(), wHour, wMinute);
-
-    /* Store new time value in settings */
-    if (aSettingsKey != ConfigNS::mInvalidKey)
-    {
-        DateTimeNS::tDateTime wDateTime;
-        wDateTime.mTime.mHour   = wHour;
-        wDateTime.mTime.mMinute = wMinute;
-        wDateTime.mTime.mSecond = 0;
-        wDateTime.mDate.mDay    = 1;
-        wDateTime.mDate.mMonth  = 1;
-        wDateTime.mDate.mYear   = DateTimeNS::mYearRangeStart;
-
-        uint32_t wTimeDword = DateTimeNS::DateTimeToDword(wDateTime);
-
-        /* Set return value based on whether the settings were updated successfully */
-        wRetValue = Settings.SetValue<uint32_t>(aSettingsKey, wTimeDword);
-    }
-
-    return wRetValue;
 }
 
 /**
@@ -1156,6 +1075,9 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
     ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
     ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
 
+    /* Wait a bit to avoid issues with the UI update */
+    delay(WEB_UI_UPDATE_DELAY);
+
     if (aForceUpdate)
     {
         ESPUI.jsonReload();
@@ -1278,49 +1200,106 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
 
 void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
 {
-    if (apSender && apParam)
+    /* Check if the website instances and inputs are valid */
+    if (mpWebSiteInstance &&                                // Check if the website instance is valid
+        mpWebSiteInstance->mpControlEventQueue &&           // Check if the control event queue
+        mpWebSiteInstance->mpControlEventNotification &&    //          and control event notification are available
+        apSender && apParam)                                // Check if the sender and parameter are valid
     {
         const ControlParam* wParam = static_cast<const ControlParam*>(apParam);
+        WebSite* wWebSite = mpWebSiteInstance;
 
-        switch (wParam->mHandler)
+        ControlEvent wEvent{};
+
+        wEvent.mControlId    = apSender->GetId();
+        wEvent.mEventType    = aType;
+        wEvent.mControlParam = *wParam;
+
+        wEvent.mPayload.mParameter.mValue = static_cast<int32_t>(apSender->getValueInt());
+
+        /* Lambda function to safely copy text into a destination buffer */
+        auto wCopyText = [](char* apDestination, size_t aDestinationSize, const String& arText) -> bool
         {
-            /* Handle WiFi controls */
+            bool wRetValue = false;
+
+            if (arText.length() < aDestinationSize)
+            {
+                snprintf(apDestination, aDestinationSize, "%s", arText.c_str());
+                wRetValue = true;
+            }
+
+            return wRetValue;
+        };
+
+        switch (wEvent.mControlParam.mHandler)
+        {
+            /* For controls that require text or color values, copy the value into the event structure */
+            case ControlHandler::Text:
+            case ControlHandler::Color:
+            case ControlHandler::Timer:
+                /* Copy the text value from the sender control into the event structure */
+                if (!wCopyText(wEvent.mPayload.mParameter.mValueText,
+                        sizeof(wEvent.mPayload.mParameter.mValueText), apSender->getValue()))
+                {
+                    LOG(LOG_ERROR, "WebSite::ControlCallback() Text value too long for control %04X", wEvent.mControlId);
+                    /* Set the handler to None to indicate that the event should not be processed further */
+                    wEvent.mControlParam.mHandler = ControlHandler::None;
+                }
+                break;
+
+            /* For WiFi controls, copy the SSID index and password into the event structure */
             case ControlHandler::WifiSsidSelect:
             case ControlHandler::WifiPassword:
             case ControlHandler::WifiPasswordShowHide:
             case ControlHandler::WifiConnectButton:
             case ControlHandler::WifiScanButton:
             case ControlHandler::WifiForgetButton:
-                if (mpWebSiteInstance)
+            {
+                BasicControl* wSsidControl     = ESPUI.getControl(wWebSite->mWebUIControlID.mWifiSSIDs);
+                BasicControl* wPasswordControl = ESPUI.getControl(wWebSite->mWebUIControlID.mWifiPassword);
+
+                if (wSsidControl && wPasswordControl)
                 {
-                    LOG(LOG_DEBUG, "WebSite::ControlCallback() WiFi control handler %d, type %d, sizeof type %d",
-                        static_cast<int>(wParam->mHandler), aType, sizeof(aType));
+                        wEvent.mPayload.mWifi.mSsidIndex = static_cast<int32_t>(wSsidControl->getValueInt());
 
-                    MessageNS::Message wMessage{};
-                    wMessage.mSource = MessageNS::tAddress::WEB_MANAGER;
-                    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
-                    wMessage.mId = MessageNS::tMessageId::CMD_WEBSITE_HANDLE_WIFI_CONTROLS;
-
-                    /* Set payload 2 bytes:
-                     *     1 byte  - ControlHandler number;
-                     *     2..4 bytes - type (as int) */
-                    const uint32_t wTypeRaw = static_cast<uint32_t>(static_cast<int32_t>(aType));
-
-                    wMessage.mPayloadLength = 5;
-                    wMessage.mPayload[0] = static_cast<uint8_t>(wParam->mHandler);
-                    SerializeNS::SerializeData(wTypeRaw, wMessage.mPayload, 1);
-
-                    mpWebSiteInstance->SendMessage(wMessage);
+                        if (!wCopyText(wEvent.mPayload.mWifi.mPassword,
+                                sizeof(wEvent.mPayload.mWifi.mPassword), wPasswordControl->getValue()))
+                    {
+                        LOG(LOG_ERROR, "WebSite::ControlCallback() WiFi password exceeds the supported length");
+                        /* Set the handler to None to indicate that the event should not be processed further */
+                        wEvent.mControlParam.mHandler = ControlHandler::None;
+                    }
+                }
+                else
+                {
+                    LOG(LOG_ERROR, "WebSite::ControlCallback() WiFi controls are unavailable");
+                    /* Set the handler to None to indicate that the event should not be processed further */
+                    wEvent.mControlParam.mHandler = ControlHandler::None;
                 }
                 break;
+            }
 
-            /* Handle other controls */
+            /* Handle other control types that do not require additional data copying */
+            case ControlHandler::Switcher:
+            case ControlHandler::Select:
+            case ControlHandler::Slider:
             default:
-                if (mpWebSiteInstance)
-                {
-                    mpWebSiteInstance->HandleControl(apSender, aType, apParam);
-                }
+                // nothing to do here
                 break;
+        }
+
+        /* Send the control event to the queue if it has a valid handler */
+        if (wEvent.mControlParam.mHandler != ControlHandler::None)
+        {
+            /* Attempt to send the control event to the FreeRTOS queue and notify the task if successful */
+            if (mpWebSiteInstance->mpControlEventQueue->add(wEvent, 0) == pdTRUE)
+            {
+                mpWebSiteInstance->mpControlEventNotification->Notify();
+            }
+            else
+            {
+                LOG(LOG_ERROR, "WebSite::ControlCallback() Control event queue is full; dropping control %04X", wEvent.mControlId);
+            }
         }
     }
 }
