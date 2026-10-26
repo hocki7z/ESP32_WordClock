@@ -8,3 +8,6 @@
 
 /** @brief Shared list instance of discovered WiFi SSIDs */
 SSIDList mSSIDList;
+
+/** @brief Shared display-scene snapshot */
+DisplaySceneSnapshot mDisplaySceneSnapshot;

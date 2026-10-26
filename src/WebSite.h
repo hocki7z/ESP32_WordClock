@@ -57,6 +57,7 @@ private:
 
     struct tWebUIControlID
     {
+        Control::ControlId_t mOverViewGroup;
         Control::ControlId_t mSettingsWordclockGroup;
         Control::ControlId_t mSettingsLedGroup;
         Control::ControlId_t mSettingsTimeGroup;
@@ -67,6 +68,7 @@ private:
         Control::ControlId_t mDisplayClockSingleMinutes;
         Control::ControlId_t mDisplayColorTime;
         Control::ControlId_t mDisplayColorBackground;
+        Control::ControlId_t mDisplayPreview;
 
         Control::ControlId_t mDisplayLedBrightness;
 
@@ -149,8 +151,11 @@ private:
     Control::ControlId_t AddButtonControl(const char* apLabel, const String& arValue, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         ControlHandler aHandler = ControlHandler::None);
 
-    void UpdateLedBrightnessControls(bool aForceUpdate = false);
 
+    String BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const;
+
+    void UpdateLedBrightnessControls(bool aForceUpdate = false);
+    void UpdateDisplayPreview(const MessageNS::Message& arMessage);
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
     static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);

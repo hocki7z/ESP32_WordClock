@@ -8,6 +8,7 @@
 #define DISPLAY_LAYOUT_H_
 
 #include <FastLED.h>
+#include <MutexCPP.h>
 
 #include "Application.h"
 
@@ -92,6 +93,46 @@ struct DisplayScene
         }
     }
 };
+
+/** @brief Thread-safe owner of the latest display-scene snapshot (e.g. for the web preview) */
+class DisplaySceneSnapshot
+{
+public:
+    DisplaySceneSnapshot() : mMutex("DisplaySceneSnapshot")
+    {
+    }
+
+    /** @brief Store a consistent snapshot of the scene
+     *
+     * @param arScene The scene to copy from
+     */
+    void Store(const DisplayScene& arScene)
+    {
+        FreeRTOScpp::Lock wLock(mMutex);
+        mScene.CopyFrom(arScene);
+    }
+
+    /** @brief Copy the latest snapshot
+     *
+     * @param arScene The scene to copy into
+     */
+    void Get(DisplayScene& arScene) const
+    {
+        FreeRTOScpp::Lock wLock(mMutex);
+        arScene.CopyFrom(mScene);
+    }
+
+private:
+    /** @brief Mutex protecting the scene */
+    mutable FreeRTOScpp::Mutex mMutex;
+
+    /** @brief Latest scene snapshot */
+    DisplayScene mScene;
+};
+
+/** @brief Shared snapshot instance; access only through synchronized methods */
+extern DisplaySceneSnapshot mDisplaySceneSnapshot;
+
 
 /***************************************************************************************************
   LED matrix configuration

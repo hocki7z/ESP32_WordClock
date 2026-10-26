@@ -12,6 +12,8 @@
 #include "SSIDList.h"
 #include "Settings.hpp"
 
+#include "DisplayLayout.h"
+
 
 /* Imports all symbols from the ApplicationNS namespace */
 using namespace ApplicationNS;

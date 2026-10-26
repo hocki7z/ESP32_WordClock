@@ -7,8 +7,11 @@
 #include <ESPUI.h>
 
 #include "Logger.h"
+#include "Configuration.h"
 #include "DateTime.h"
 #include "Serialize.h"
+#include "BitMatrix.h"
+#include "DisplayLayout.h"
 #include "Settings.hpp"
 
 #include "WebSite.h"
@@ -24,6 +27,7 @@
 #define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left; padding: 0;"
 #define CSS_STYLE_INPUT                 "color: black; width: calc(100% - 8px); height: 26px; margin-left: 8px; box-sizing: border-box;"
 #define CSS_STYLE_SLIDER                "margin-left: 8px; width: calc(100% - 53px); box-sizing: border-box;"
+#define CSS_STYLE_PREVIEW               "background-color: #000000; padding: 0; width: 100%; text-align: center;"
 #define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
 #define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
@@ -68,6 +72,15 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
 	/* Make sliders continually report their position as they are being dragged. */
 	ESPUI.sliderContinuous = true;
+
+    /**
+     * Group Overview
+     */
+    mWebUIControlID.mOverViewGroup = AddGroupHelper("Overview", Control::noParent, Control::Color::Wetasphalt);
+
+    /* Live preview of the word-clock LED matrix */
+    mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mOverViewGroup, CSS_STYLE_PREVIEW,
+        "Here will be a live preview of the word-clock LED matrix");    // Please wait until the first update is received from the device
 
     /**
      * Group Wordclock settings
@@ -267,6 +280,10 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 LOG(LOG_ERROR, "WebSite::ProcessIncomingMessage() Invalid payload length for CMD_WEBSITE_HANDLE_WIFI_CONTROLS: %d", arMessage.mPayloadLength);
             }
         }
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY:
+            UpdateDisplayPreview(arMessage);
             break;
 
         default:
@@ -977,6 +994,144 @@ Control::ControlId_t WebSite::AddButtonControl(const char* apLabel, const String
     return wControlId;
 }
 
+/**
+ * @brief Build an SVG representation of the display preview
+ * @param apDisplayScene Pointer to the display scene
+ * @return SVG string representing the display preview
+ */
+String WebSite::BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const
+{
+    /* Array for cell colors */
+    tColor wCellColors[MATRIX_HEIGHT][MATRIX_WIDTH] = {};
+
+    /* Retrieve background color from settings */
+    tColor wBackgroundColor = static_cast<tColor>(Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd) & COLOR_RGB_MASK);
+
+    /* Check if display scene is available */
+    if (apDisplayScene)
+    {
+        /* Use background color from display scene */
+        wBackgroundColor = apDisplayScene->mBackground & COLOR_RGB_MASK;
+
+        /* Fill colors array with background color */
+        for (uint8_t wRow = 0; wRow < MATRIX_HEIGHT; ++wRow)
+        {
+            for (uint8_t wCol = 0; wCol < MATRIX_WIDTH; ++wCol)
+            {
+                wCellColors[wRow][wCol] = wBackgroundColor;
+            }
+        }
+
+        /* Lambda to add a word group to the display preview */
+        auto wAddGroup = [&wCellColors](const WordGroup& arGroup)
+        {
+            if (arGroup.IsEnabled())
+            {
+                tColor wGroupColor = arGroup.mColor & COLOR_RGB_MASK;
+
+                /**
+                 * Iterate over the words in the group and fill the corresponding cells
+                 *  in the colors array with the group's color.
+                 *  Cells not covered by any word keep the background color.
+                 */
+                for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
+                {
+                    tWord wWord = arGroup.mWords[wI];
+
+                    if ((wWord > WORD_END_OF_WORDS) &&
+                        (wWord < WORD_MAX_NUMBER))
+                    {
+                        const tWordData& wData = mcWordDataArray[wWord];
+
+                        if ((wData.mRow < MATRIX_HEIGHT) &&
+                            (wData.mColumn < MATRIX_WIDTH))
+                        {
+                            /* Calculate the end column for the word */
+                            uint16_t wEndColumn = min(
+                                static_cast<uint16_t>(wData.mColumn + wData.mLength),
+                                static_cast<uint16_t>(MATRIX_WIDTH));
+
+                            for (uint16_t wCol = wData.mColumn; wCol < wEndColumn; ++wCol)
+                            {
+                                wCellColors[wData.mRow][wCol] = wGroupColor;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        /* Add word groups to the display preview */
+        wAddGroup(apDisplayScene->mItIs);
+        wAddGroup(apDisplayScene->mTime);
+        wAddGroup(apDisplayScene->mExtraMinutes);
+    }
+
+    /**
+     * Build SVG for display preview
+     */
+
+    /* Reserve 16 KB for the SVG string to avoid frequent reallocations */
+    String wSvg;
+    wSvg.reserve(16 * 1024);
+
+    /* SVG element buffer */
+    char wElement[128];
+
+    /* Initialize SVG string */
+    wSvg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160' "
+           "width='160' height='160' style='display:block;width:100%;height:auto;margin:0 auto'>";
+    /* Add styles */
+    wSvg += "<style type='text/css'>"
+        "text{font-size:7px;font-weight:600;font-family:monospace;stroke-width:0.25;stroke:#404040}"
+        ".none{fill:#000000}"
+        "</style>";
+
+    /* Add background rectangle in black color */
+    wSvg += "<rect width='160' height='160' fill='#000000'/>";
+
+    /* Add letters to the SVG */
+    for (uint16_t wRow = 0; wRow < MATRIX_HEIGHT; ++wRow)
+    {
+        for (uint16_t wCol = 0; wCol < MATRIX_WIDTH; ++wCol)
+        {
+            /* Extract the letter from the display layout */
+            char wLetter = mDisplayLayout[wRow][wCol * 3 + 2];
+
+            if (apDisplayScene)
+            {
+                /* Format the SVG text element for the letter */
+                snprintf(wElement, sizeof(wElement),
+                        "<text x='%u' y='%u' fill='#%06lX'>%c</text>",
+                        static_cast<unsigned>(wCol * 10 + 7),
+                        static_cast<unsigned>(wRow * 10 + 7),
+                        static_cast<unsigned long>(wCellColors[wRow][wCol]),
+                        wLetter);
+            }
+            else
+            {
+                /* Format the SVG text element for the letter with the 'none' class */
+                snprintf(wElement, sizeof(wElement),
+                        "<text x='%u' y='%u' class='none'>%c</text>",
+                        static_cast<unsigned>(wCol * 10 + 7),
+                        static_cast<unsigned>(wRow * 10 + 7),
+                        wLetter);
+            }
+
+            /* Append the formatted SVG element to the SVG string */
+            wSvg += wElement;
+        }
+    }
+
+    /* Close the SVG element */
+    wSvg += "</svg>";
+
+    LOG(LOG_DEBUG, "WebSite::BuildDisplayPreviewSvg() SVG length: %u", wSvg.length());
+
+    return wSvg;
+}
+
 void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
 {
     bool wUseNightMode = Settings.GetValue<bool>(ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
@@ -1005,6 +1160,15 @@ void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
     {
         ESPUI.jsonReload();
     }
+}
+
+void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)
+{
+    DisplayScene wSceneSnapshot;
+    mDisplaySceneSnapshot.Get(wSceneSnapshot);
+
+    ESPUI.updateLabel(mWebUIControlID.mDisplayPreview,
+        BuildDisplayPreviewSvg(&wSceneSnapshot));
 }
 
 void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
