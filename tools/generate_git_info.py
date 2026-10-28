@@ -146,7 +146,9 @@ def _generate_git_info(project_dir):
     try:
         content = _make_header(project_dir)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        print("Git info: unable to read Git metadata ({}); generating fallback header".format(error))
+        detail = getattr(error, "stderr", None)
+        detail = detail.strip() if detail else str(error)
+        print("Git info: unable to read Git metadata: {}; generating fallback header".format(detail))
         fallback = dict.fromkeys(
             (
                 "AGI_GIT_VERSION", "AGI_ISO_8601_DATE", "AGI_LOCALE_DATE", "AGI_GIT_BRANCH",
