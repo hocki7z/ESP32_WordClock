@@ -32,6 +32,9 @@ namespace SettingsNS
 template<typename T>
 T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
 {
+    /* Lock the mutex to ensure thread-safe access to Preferences */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     T wRetValue = aDefaultValue;
 
     /* Check if key exists and open preferences in read-only mode */
@@ -101,6 +104,9 @@ T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
 template<typename T>
 bool Settings::SetValue(const tKey& arKey, const T aValue)
 {
+    /* Lock the mutex to ensure thread-safe access to Preferences */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     size_t wRetSize = 0;
 
     /* Open preferences in read-write mode */
