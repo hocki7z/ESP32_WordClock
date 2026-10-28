@@ -149,13 +149,6 @@ namespace ConfigNS
     static constexpr uint32_t mDefaultNtpSyncPeriod                 = 600;          // 10 minutes
     static constexpr uint32_t mDefaultNtpSyncTimeout                = 5000;         // 5 seconds
 
-
-    static constexpr uint8_t mcClockModeItemsCount = 2;
-    static constexpr const char* mcClockModeItems[mcClockModeItemsCount] = {
-        "Wessi",
-        "Rhein-Ruhr"
-    };
-
     /* List of all NTP servers */
     static constexpr uint8_t mcNtpServerItemsCount = 10;
     static constexpr const char* mcNtpServerItems[mcNtpServerItemsCount] = {

@@ -4,8 +4,7 @@
  *  Created on: 02.09.2025
  *      Author: hocki
  */
-#ifndef DISPLAY_H_
-#define DISPLAY_H_
+#pragma once
 
 #include <FastLED.h>
 
@@ -58,7 +57,11 @@ private:
 
     void UpdateDisplay(void);
 
-    void DisplayTimeScene(void);
+    bool DisplayTimeScene(void);
+
+    bool IsDayMode(void) const;
+
+    tColor ScaleColor(const tColor aColor, const uint8_t aBrightness) const;
 
     void SetLedColor(const uint16_t aLedIndex, const CRGB aColor);
     void SetLedColor(BitMatrix& arLedMask, const CRGB aColor);
@@ -66,5 +69,3 @@ private:
     void PaintWord(const tWord aWord, const CRGB aColor);
     void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
 };
-
-#endif /* DISPLAY_H_ */

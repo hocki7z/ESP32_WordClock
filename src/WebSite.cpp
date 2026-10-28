@@ -995,7 +995,7 @@ String WebSite::BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const
     if (apDisplayScene)
     {
         /* Use background color from display scene */
-        wBackgroundColor = apDisplayScene->mBackground & COLOR_RGB_MASK;
+        wBackgroundColor = apDisplayScene->mColorBkgd & COLOR_RGB_MASK;
 
         /* Fill colors array with background color */
         for (uint8_t wRow = 0; wRow < MATRIX_HEIGHT; ++wRow)
