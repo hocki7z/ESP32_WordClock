@@ -64,9 +64,12 @@ namespace ConfigNS
     /**
      * Settings configurations
      */
+
+    /* Configuration groups */
     static constexpr uint8_t      mParamsConfig                     = 0x00;
     static constexpr uint8_t      mCountersConfig                   = 0x01;
 
+    /* Groups for different managers */
     static constexpr uint8_t      mApplicationGroup                 = MessageNS::tAddress::APPLICATION_MANAGER;
     static constexpr uint8_t      mDisplayGroup                     = MessageNS::tAddress::DISPLAY_MANAGER;
     static constexpr uint8_t      mTimeManagerGroup                 = MessageNS::tAddress::TIME_MANAGER;
@@ -84,21 +87,28 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayClockMode             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x00);
     static const SettingsNS::tKey  mKeyDisplayClockItIs             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x01);
     static const SettingsNS::tKey  mKeyDisplayClockSingleMins       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x02);
+    //
     static const SettingsNS::tKey  mKeyDisplayColorTime             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x10);
     static const SettingsNS::tKey  mKeyDisplayColorBkgd             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x11);
+    static const SettingsNS::tKey  mKeyDisplayColorTimeNight        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x12);
+    static const SettingsNS::tKey  mKeyDisplayColorBkgdNight        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x13);
+    //
+    static const SettingsNS::tKey  mKeyDisplayUseDayNightMode       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x20);
+    static const SettingsNS::tKey  mKeyDisplayBrightnessTime        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x21);
+    static const SettingsNS::tKey  mKeyDisplayBrightnessBkgd        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x22);
+    static const SettingsNS::tKey  mKeyDisplayBrightnessTimeNight   = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x23);
+    static const SettingsNS::tKey  mKeyDisplayBrightnessBkgdNight   = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x24);
+    static const SettingsNS::tKey  mKeyDisplayDayModeStartTime      = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x25);
+    static const SettingsNS::tKey  mKeyDisplayDayModeEndTime        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x26);
 
-    static const SettingsNS::tKey  mKeyDisplayLedBrightness         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x20);
-    static const SettingsNS::tKey  mKeyDisplayUseNightMode          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x21);
-    static const SettingsNS::tKey  mKeyDisplayBrightnessNightMode   = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x22);
-    static const SettingsNS::tKey  mKeyDisplayNightModeStartTime    = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x23);
-    static const SettingsNS::tKey  mKeyDisplayNightModeEndTime      = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x24);
-
+    /* Key for time settings */
     static const SettingsNS::tKey  mKeyNtpServer                    = SettingsNS::tKey(mParamsConfig, mTimeManagerGroup, 0x00);
     static const SettingsNS::tKey  mKeyNtpSyncPeriod                = SettingsNS::tKey(mParamsConfig, mTimeManagerGroup, 0x01);
     static const SettingsNS::tKey  mKeyNtpSyncTimeout               = SettingsNS::tKey(mParamsConfig, mTimeManagerGroup, 0x02);
-
+    //
     static const SettingsNS::tKey  mKeyTimeZone                     = SettingsNS::tKey(mParamsConfig, mTimeManagerGroup, 0x10);
 
+    /* Key for WiFi settings */
     static const SettingsNS::tKey  mKeyWifiSSID                     = SettingsNS::tKey(mParamsConfig, mWifiManagerGroup, 0x00);
     static const SettingsNS::tKey  mKeyWifiPassword                 = SettingsNS::tKey(mParamsConfig, mWifiManagerGroup, 0x01);
 
@@ -107,36 +117,37 @@ namespace ConfigNS
 
 
     /* Default values for display settings */
-    static constexpr uint8_t  mDefaultDisplayClockMode              = 1;            // Rhein-Ruhr
-    static constexpr bool     mDefaultDisplayClockItIs              = true;
-    static constexpr bool     mDefaultDisplayClockSingleMins        = true;
+    static constexpr bool     mDefaultDisplayClockItIs              = true;         // Show "It is" in the display
+    static constexpr bool     mDefaultDisplayClockSingleMins        = true;         // Show single minutes in the display
     static constexpr uint32_t mDefaultDisplayColorTime              = 0x00FF00;     // Green
+    static constexpr uint32_t mDefaultDisplayColorTimeNight         = 0xFFA500;     // FastLED CRGB::Orange
     static constexpr uint32_t mDefaultDisplayColorBkgd              = 0x000000;     // Black
+    static constexpr uint32_t mDefaultDisplayColorBkgdNight         = 0x000000;     // Black
 
-    static constexpr bool     mDefaultDisplayUseNightMode           = true;
+    static constexpr bool     mDefaultDisplayUseDayNightMode        = true;         // Use day/night mode for brightness
 
     /*
      * Brightness values in percentage (0-100)
      */
-    static constexpr uint8_t  mDefaultDisplayLedBrightness          = 100;
-    static constexpr uint8_t  mDefaultDisplayBrightnessNightMode    = 20;
+    static constexpr uint8_t  mDefaultDisplayBrightnessTime         = 100;
+    static constexpr uint8_t  mDefaultDisplayBrightnessBkgd         = 20;
+    static constexpr uint8_t  mDefaultDisplayBrightnessTimeNight    = 20;
+    static constexpr uint8_t  mDefaultDisplayBrightnessBkgdNight    = 5;
 
     /*
-    * Dword (4 bytes) for savinig a time in format hh:mm
+    * Dword (4 bytes) for saving a time in format hh:mm
     *  00000000 0000000s ssssmmmm mm000000
     *                        ---- --            Minutes  : range 0-59; 6 bits, mask 0x3F, offset 06
     *                  - ----                   Hours    : range 0-23; 5 bits, mask 0x1F, offset 12
     */
-    static constexpr uint32_t mDefaultDisplayNightModeStartTime     = (21 & 0x3F) << 12 | (30 & 0x3F) << 06;    // 21:30
-    static constexpr uint32_t mDefaultDisplayNightModeEndTime       = (06 & 0x3F) << 12 | (30 & 0x3F) << 06;    // 06:30
+    static constexpr uint32_t mDefaultDisplayDayModeStartTime       = (06 & 0x3F) << 12 | (30 & 0x3F) << 06;    // 06:30
+    static constexpr uint32_t mDefaultDisplayDayModeEndTime         = (21 & 0x3F) << 12 | (30 & 0x3F) << 06;    // 21:30
 
     /* Default values for datetime settings */
-    static constexpr uint8_t mDefaultNtpServer                      = 0;            // "pool.ntp.org"
-    static constexpr uint8_t mDefaultTimeZone                       = 6;            // CET timezone
+    static constexpr uint8_t  mDefaultNtpServer                     = 0;            // "pool.ntp.org"
+    static constexpr uint8_t  mDefaultTimeZone                      = 6;            // CET timezone
     static constexpr uint32_t mDefaultNtpSyncPeriod                 = 600;          // 10 minutes
     static constexpr uint32_t mDefaultNtpSyncTimeout                = 5000;         // 5 seconds
-
-
 
 
     static constexpr uint8_t mcClockModeItemsCount = 2;
@@ -145,6 +156,7 @@ namespace ConfigNS
         "Rhein-Ruhr"
     };
 
+    /* List of all NTP servers */
     static constexpr uint8_t mcNtpServerItemsCount = 10;
     static constexpr const char* mcNtpServerItems[mcNtpServerItemsCount] = {
         "pool.ntp.org",                     // NTP Pool Project servers

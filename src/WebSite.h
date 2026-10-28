@@ -96,39 +96,51 @@ private:
 
     struct tWebUIControlID
     {
-        Control::ControlId_t mOverViewGroup;
-        Control::ControlId_t mSettingsWordclockGroup;
-        Control::ControlId_t mSettingsLedGroup;
-        Control::ControlId_t mSettingsTimeGroup;
-        Control::ControlId_t mSettingsWiFiGroup;
+        /* Top-level tabs */
+        Control::ControlId_t mOverViewTab;
+        Control::ControlId_t mLedDisplayTab;
+        Control::ControlId_t mSettingsTab;
 
+        /* Overview tab controls */
+        Control::ControlId_t mPreviewGroup;
+        Control::ControlId_t mDisplayPreview;
+
+        /* LED Display tab controls */
+        Control::ControlId_t mLedDisplayDisplayGroup;
         Control::ControlId_t mDisplayClockMode;
         Control::ControlId_t mDisplayClockItIs;
         Control::ControlId_t mDisplayClockSingleMinutes;
+        //
+        Control::ControlId_t mLedDisplayColorGroup;
         Control::ControlId_t mDisplayColorTime;
-        Control::ControlId_t mDisplayColorBackground;
-        Control::ControlId_t mDisplayPreview;
+        Control::ControlId_t mDisplayColorBkgd;
+        Control::ControlId_t mDisplayColorTimeNight;
+        Control::ControlId_t mDisplayColorBkgdNight;
+        //
+        Control::ControlId_t mLedDisplayBrightnessGroup;
+        Control::ControlId_t mDisplayUseDayNightMode;
+        Control::ControlId_t mDisplayDayModeStartTime;
+        Control::ControlId_t mDisplayDayModeEndTime;
+        Control::ControlId_t mDisplayBrightnessTime;
+        Control::ControlId_t mDisplayBrightnessBkgd;
+        Control::ControlId_t mDisplayBrightnessTimeNight;
+        Control::ControlId_t mDisplayBrightnessBkgdNight;
 
-        Control::ControlId_t mDisplayLedBrightness;
-
-        Control::ControlId_t mDisplayUseNightMode;
-        Control::ControlId_t mDisplayBrightnessNightMode;
-        Control::ControlId_t mDisplayNightModeStartTime;
-        Control::ControlId_t mDisplayNightModeEndTime;
-
+        /* Settings tab controls */
+        Control::ControlId_t mSettingsTimeGroup;
         Control::ControlId_t mDatetimeNtpServer;
         Control::ControlId_t mDatetimeTimeZone;
-
+        //
+        Control::ControlId_t mSettingsWiFiGroup;
         Control::ControlId_t mWifiSSIDs;
         Control::ControlId_t mWifiPassword;
         Control::ControlId_t mWifiPasswordShowHide;
-
+        //
         std::vector<Control::ControlId_t> mWifiSSIDList;
-
+        //
         Control::ControlId_t mWifiScanButton;
         Control::ControlId_t mWifiConnectButton;
         Control::ControlId_t mWifiForgetButton;
-
     };
 
     /** @brief "This" pointer for created WebSite instance */
@@ -155,10 +167,13 @@ private:
     void HandleControlEvent(const ControlEvent& arEvent);
     void HandleWiFiControlEvent(const ControlEvent& arEvent);
 
-    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None);
+    Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None,
+        const bool aExpandable = false, const bool aExpanded = false);
 
     Control::ControlId_t AddLabelControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         const String& arValue = emptyString);
+
+    Control::ControlId_t AddSeparator(Control::ControlId_t aParent, bool aDrawLine = false);
 
     Control::ControlId_t AddTextControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         const String& arValue = emptyString, SettingsNS::tKey aSettingsKey = ConfigNS::mInvalidKey, ControlHandler aHandler = ControlHandler::None);
@@ -189,9 +204,8 @@ private:
         ControlHandler aHandler = ControlHandler::None);
 
 
-    String BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const;
+    String BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene = nullptr) const;
 
-    void UpdateLedBrightnessControls(bool aForceUpdate = false);
     void UpdateDisplayPreview(const MessageNS::Message& arMessage);
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
