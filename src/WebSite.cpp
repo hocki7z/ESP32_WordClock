@@ -22,18 +22,27 @@
 /* CSS styles for the web UI controls */
 #define CSS_STYLE_NONE                  ""
 #define CSS_STYLE_GROUP                 "background-color: unset; width: 100%; text-align: center;"
-#define CSS_STYLE_SEPARATOR             "background-color: unset; width: 100%;" // min-height:2px
-#define CSS_STYLE_LABEL                 "background-color: unset; width: 100%; text-align: left; padding: 0;"
-#define CSS_STYLE_INPUT                 "color: black; width: calc(100% - 8px); height: 26px; margin-left: 8px; box-sizing: border-box;"
+#define CSS_STYLE_SEPARATOR_GAP         "background-color: unset; width: 100%; height: 4px; min-height: 4px; box-sizing: border-box; line-height: 0; padding: 0; margin: 0;"
+#define CSS_STYLE_SEPARATOR_LINE        "background-color: unset; width: 100%; height: 4px; min-height: 4px; box-sizing: border-box; padding: 0; margin: 0; border-top: 1px solid #808080;"
+#define CSS_STYLE_LABEL_DEFAULT         "background-color: unset; text-align: left; padding: 0; margin-bottom: 4px; top: 0; vertical-align: bottom;"
+#define CSS_STYLE_LABEL_H2              CSS_STYLE_LABEL_DEFAULT "width: 100%;"
+#define CSS_STYLE_LABEL                 CSS_STYLE_LABEL_DEFAULT "font-weight: normal;  width: 100%;"
+#define CSS_STYLE_LABEL_LIGHTER         CSS_STYLE_LABEL_DEFAULT "font-weight: 300; font-size: 0.9em; width: 100%;"
+#define CSS_STYLE_LABEL_LIGHTER_HALF    CSS_STYLE_LABEL_DEFAULT "font-weight: 300; font-size: 0.9em; width: 50%;"
+#define CSS_STYLE_INPUT_DEFAULT         "color: black; height: 26px; margin-left: 8px; box-sizing: border-box;"
+#define CSS_STYLE_INPUT                 CSS_STYLE_INPUT_DEFAULT "width: calc(100% - 8px);"
+#define CSS_STYLE_INPUT_HALF_WIDTH      CSS_STYLE_INPUT_DEFAULT "width: calc(50% - 8px);" // display: inline-block;
 #define CSS_STYLE_SLIDER                "margin-left: 8px; width: calc(100% - 53px); box-sizing: border-box;"
 #define CSS_STYLE_PREVIEW               "background-color: #000000; padding: 0; width: 100%; text-align: center;"
 #define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
-#define CSS_STYLE_SWITCH_LABEL          "background-color: unset; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
+#define CSS_STYLE_SWITCH_LABEL          "background-color: unset; font-weight: normal; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
 
 /* Delay for web UI updates in milliseconds */
 #define WEB_UI_UPDATE_DELAY             100     // It seems that a small delay is enough to avoid issues with the web UI updates, especially when updating control states
 
+/* Define group control color */
+#define GROUP_CONTROL_COLOR             Control::Color::Wetasphalt
 
 /**
  * Initialize the private static pointer
@@ -96,82 +105,118 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 	/* Make sliders continually report their position as they are being dragged. */
 	ESPUI.sliderContinuous = true;
 
+    /* Add the tabs for the web UI */
+    mWebUIControlID.mOverViewTab   = ESPUI.addControl(Control::Type::Tab, "", "Overview");
+    mWebUIControlID.mLedDisplayTab = ESPUI.addControl(Control::Type::Tab, "", "LED Display");
+    mWebUIControlID.mSettingsTab   = ESPUI.addControl(Control::Type::Tab, "", "Settings");
+
+
     /**
-     * Group Overview
+     * Tab Overview / Group Preview
      */
-    mWebUIControlID.mOverViewGroup = AddGroupHelper("Overview", Control::noParent, Control::Color::Wetasphalt);
+    mWebUIControlID.mPreviewGroup = AddGroupHelper("Preview", mWebUIControlID.mOverViewTab, GROUP_CONTROL_COLOR);
 
     /* Live preview of the word-clock LED matrix */
-    mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mOverViewGroup, CSS_STYLE_PREVIEW,
-        "Here will be a live preview of the word-clock LED matrix");    // Please wait until the first update is received from the device
+    mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mPreviewGroup, CSS_STYLE_PREVIEW,
+        BuildDisplayPreviewSvg()); // "Here will be a live preview of the word-clock LED matrix. Please wait until the first update is received from the device
+
 
     /**
-     * Group Wordclock settings
+     * Tab LED Display / Group Display
      */
-    mWebUIControlID.mSettingsWordclockGroup = AddGroupHelper("Wordclock", Control::noParent, Control::Color::Wetasphalt);
+    mWebUIControlID.mLedDisplayDisplayGroup = AddGroupHelper("Display", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
 
     /* Clock mode */
-    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_LABEL, "Clock mode");
-    mWebUIControlID.mDisplayClockMode = AddSelectControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_INPUT,
-            ConfigNS::mcClockModeItems, ConfigNS::mcClockModeItemsCount,
-            ConfigNS::mKeyDisplayClockMode, ConfigNS::mDefaultDisplayClockMode);
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Clock mode");
+    mWebUIControlID.mDisplayClockMode = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
+            mcClockModeItems, WORDCLOCK_MODE_NUMBER,
+            ConfigNS::mKeyDisplayClockMode, mcDefaultDisplayClockMode);
 
     /* Switcher for 'IT IS' words */
-    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH_LABEL, "Show 'IT IS'");
-    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH,
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show 'IT IS'");
+    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
 
     /* Switch for single minutes */
-    AddLabelControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH_LABEL, "Show single minutes");
-    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mSettingsWordclockGroup, CSS_STYLE_SWITCH,
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show single minutes");
+    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
 
     /**
-     * Group LED settings
+     * Tab LED Display / Group Color
      */
-    mWebUIControlID.mSettingsLedGroup = AddGroupHelper("LED", Control::noParent, Control::Color::Wetasphalt);
+    mWebUIControlID.mLedDisplayColorGroup = AddGroupHelper("Colors", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
 
-    /* Time color */
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Time color");
-    mWebUIControlID.mDisplayColorTime = AddColorControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
-            ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
+    /* Day time and background colors */
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Day");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
 
-    /* Background color */
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Background color");
-    mWebUIControlID.mDisplayColorBackground = AddColorControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
-            ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
+    mWebUIControlID.mDisplayColorTime = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
+    mWebUIControlID.mDisplayColorBkgd = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
 
-    /* Slider for LED brightness selection */
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "LED brightness");
-    mWebUIControlID.mDisplayLedBrightness = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SLIDER,
-            ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
+    /* Separator */
+    AddSeparator(mWebUIControlID.mLedDisplayColorGroup);
 
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SEPARATOR, "");
+    /* Night time and background colors */
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Night");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
 
-    /* Switcher for day/night mode activation */
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
-
-    mWebUIControlID.mDisplayUseNightMode = AddSwitcherControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SWITCH,
-            ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
-    /* Slider for night brightness selection */
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode brightness");
-    mWebUIControlID.mDisplayBrightnessNightMode = AddPercentageSliderControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_SLIDER,
-            ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
-    /* Time input for night mode start */
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode start time");
-    mWebUIControlID.mDisplayNightModeStartTime = AddTimeControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
-            ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
-    /* Time input for night mode end */
-    AddLabelControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_LABEL, "Night mode end time");
-    mWebUIControlID.mDisplayNightModeEndTime = AddTimeControl("", mWebUIControlID.mSettingsLedGroup, CSS_STYLE_INPUT,
-            ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
+    mWebUIControlID.mDisplayColorTimeNight = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorTimeNight, ConfigNS::mDefaultDisplayColorTimeNight);
+    mWebUIControlID.mDisplayColorBkgdNight = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorBkgdNight, ConfigNS::mDefaultDisplayColorBkgdNight);
 
 
     /**
-     * Group Time settings
+     * Tab LED Display / Group Brightness
      */
-    mWebUIControlID.mSettingsTimeGroup = AddGroupHelper("Time settings", Control::noParent, Control::Color::Wetasphalt);
+    mWebUIControlID.mLedDisplayBrightnessGroup = AddGroupHelper("Brightness", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+
+    /* Switcher for day/night mode activation */
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
+    mWebUIControlID.mDisplayUseDayNightMode = AddSwitcherControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayUseDayNightMode, ConfigNS::mDefaultDisplayUseDayNightMode);
+
+    /* Time input for day mode start/end */
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day mode");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "start time");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "end time");
+    mWebUIControlID.mDisplayDayModeStartTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayDayModeStartTime, ConfigNS::mDefaultDisplayDayModeStartTime);
+    mWebUIControlID.mDisplayDayModeEndTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayDayModeEndTime, ConfigNS::mDefaultDisplayDayModeEndTime);
+
+    AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup, true); // Draw a line separator
+
+    /* Sliders for day time/background brightness */
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
+    mWebUIControlID.mDisplayBrightnessTime = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime);
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
+    mWebUIControlID.mDisplayBrightnessBkgd = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+            ConfigNS::mKeyDisplayBrightnessBkgd, ConfigNS::mDefaultDisplayBrightnessBkgd);
+
+    AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Night");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
+    mWebUIControlID.mDisplayBrightnessTimeNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTimeNight);
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
+    mWebUIControlID.mDisplayBrightnessBkgdNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
+
+
+    /**
+     * Tab Settings / Group Time
+     */
+    mWebUIControlID.mSettingsTimeGroup = AddGroupHelper("Time", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
 
     /* NTP server selection */
     AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "NTP server");
@@ -186,9 +231,9 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
 
     /**
-     * Group WiFi settings
+     * Tab Settings / Group WiFi
      */
-    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", Control::noParent, Control::Color::Wetasphalt);
+    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", mWebUIControlID.mSettingsTab, Control::Color::Wetasphalt);
 
     /* WiFi settings controls here (e.g., SSID, password, etc.) */
     AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
@@ -211,9 +256,6 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
         ControlHandler::WifiScanButton);
     mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiForgetButton);
-
-    /* Update LED brightness controls */
-    UpdateLedBrightnessControls();
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -426,12 +468,6 @@ void WebSite::HandleControlEvent(const ControlEvent& arEvent)
     /* Send message if needed */
     if (wSendMessage)
     {
-        /* Update LED brightness controls if DisplayUseNightMode parameter changed */
-        if (wSettingsKey == ConfigNS::mKeyDisplayUseNightMode)
-        {
-            UpdateLedBrightnessControls();
-        }
-
         /* Prepare message */
         MessageNS::Message wMessage;
 
@@ -638,6 +674,18 @@ Control::ControlId_t WebSite::AddLabelControl(const char* apLabel, Control::Cont
     ESPUI.setElementStyle(wControlId, aElementStyle);
 
     return wControlId;
+}
+
+/**
+ * @brief Add a visual separator or a small gap to the web UI
+ * @param aParent The parent control ID
+ * @param aDrawLine True to draw a horizontal line; false to add a small gap
+ * @return The control ID of the separator label
+ */
+Control::ControlId_t WebSite::AddSeparator(Control::ControlId_t aParent, bool aDrawLine)
+{
+    const char* wpStyle = aDrawLine ? CSS_STYLE_SEPARATOR_LINE : CSS_STYLE_SEPARATOR_GAP;
+    return AddLabelControl("", aParent, wpStyle, "");
 }
 
 /**
@@ -931,7 +979,7 @@ String WebSite::BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const
     if (apDisplayScene)
     {
         /* Use background color from display scene */
-        wBackgroundColor = apDisplayScene->mBackground & COLOR_RGB_MASK;
+        wBackgroundColor = apDisplayScene->mColorBkgd & COLOR_RGB_MASK;
 
         /* Fill colors array with background color */
         for (uint8_t wRow = 0; wRow < MATRIX_HEIGHT; ++wRow)
@@ -1049,39 +1097,6 @@ String WebSite::BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const
     LOG(LOG_DEBUG, "WebSite::BuildDisplayPreviewSvg() SVG length: %u", wSvg.length());
 
     return wSvg;
-}
-
-void WebSite::UpdateLedBrightnessControls(bool aForceUpdate)
-{
-    bool wUseNightMode = Settings.GetValue<bool>(ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
-
-    LOG(LOG_DEBUG, "WebSite::UpdateLedBrightnessControls() Use night mode %d, force update %d", wUseNightMode, aForceUpdate);
-
-    /* Issue:
-          The UI controls have not been displayed properly after
-          the visibility was changed from false to true.
-
-          The UI controls in the web interface do not display correctly after
-          their visibility is changed (e.g. from false to true).
-
-       Workaround:
-          Instead of changing the visibility of the controls, enable/disable them. */
-
-    // ESPUI.updateVisibility(mWebUIControlID.mDisplayBrightnessNightMode, wUseNightMode);
-    // ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
-    // ESPUI.updateVisibility(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
-
-    ESPUI.setEnabled(mWebUIControlID.mDisplayBrightnessNightMode, wUseNightMode);
-    ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeStartTime,  wUseNightMode);
-    ESPUI.setEnabled(mWebUIControlID.mDisplayNightModeEndTime,    wUseNightMode);
-
-    /* Wait a bit to avoid issues with the UI update */
-    delay(WEB_UI_UPDATE_DELAY);
-
-    if (aForceUpdate)
-    {
-        ESPUI.jsonReload();
-    }
 }
 
 void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)

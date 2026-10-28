@@ -23,7 +23,7 @@
 static constexpr uint32_t mcUpdateDelay = 10;
 
 /* Intro color */
-static constexpr CRGB mIntroColor = CRGB::Orange;
+static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 
 
 /**
@@ -66,8 +66,9 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Prepare display scene */
     mDisplayScene.Clear();
     /* Display intro */
-    PaintWord(WORD_WORDCLOCK, mIntroColor);
+    PaintWord(WORD_WORDCLOCK, mIntroColor & COLOR_RGB_MASK);
 
+    /* Show new data on the LED matrix */
     FastLED.show();
 }
 
@@ -126,70 +127,27 @@ void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
 
 void Display::UpdateDisplay(void)
 {
-    uint32_t wDwordValue = 0;
-
     /* LOG */
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
-    
-    DisplayTimeScene();
+    /* Prepare time scene */
+    bool wUpdated = DisplayTimeScene();
 
-    /* Retrieve LED brightness */
-    uint8_t wBrightness = Settings.GetValue<uint8_t>(
-            ConfigNS::mKeyDisplayLedBrightness, ConfigNS::mDefaultDisplayLedBrightness);
-
-    /* Check if night mode is enabled */
-    bool wUseNightMode = Settings.GetValue<bool>(
-            ConfigNS::mKeyDisplayUseNightMode, ConfigNS::mDefaultDisplayUseNightMode);
-
-    if (wUseNightMode)
+    /* Display scene changed */
+    if (wUpdated)
     {
-        /* Retrieve night mode start and end times */
-        wDwordValue = Settings.GetValue<uint32_t>(
-                ConfigNS::mKeyDisplayNightModeStartTime, ConfigNS::mDefaultDisplayNightModeStartTime);
-        DateTimeNS::tDateTime wNightModeStartDateTime = DateTimeNS::DwordToDateTime(wDwordValue);
+        /* Show new data on the LED matrix */
+        FastLED.show();
 
-        wDwordValue = Settings.GetValue<uint32_t>(
-                ConfigNS::mKeyDisplayNightModeEndTime, ConfigNS::mDefaultDisplayNightModeEndTime);
-        DateTimeNS::tDateTime wNightModeEndDateTime = DateTimeNS::DwordToDateTime(wDwordValue);
+        /* Publish a compact snapshot for the web UI */
+        MessageNS::Message wMessage{};
+        wMessage.mSource = MessageNS::tAddress::DISPLAY_MANAGER;
+        wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+        wMessage.mId = MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY;
 
-        /* Determine if we are in the night mode */
-        bool wIsNightMode = DateTimeNS::IsTimeInInterval(
-                mDateTime.mTime,
-                wNightModeStartDateTime.mTime,
-                wNightModeEndDateTime.mTime);
-
-        if (wIsNightMode)
-        {
-            /* Apply night mode brightness */
-            wBrightness = Settings.GetValue<uint8_t>(
-                    ConfigNS::mKeyDisplayBrightnessNightMode, ConfigNS::mDefaultDisplayBrightnessNightMode);
-        }
+        SendMessage(wMessage);
     }
-
-    /* Set the brightness value to a range of 0–100% */
-    if (wBrightness > 100)
-    {
-        wBrightness = 100;
-    }
-
-    /* Convert the brightness value (0–100%) to a range of the LED hardware scale (0–255) */
-    uint8_t wAlphaScale = map(wBrightness, 0, 100, 0, 255);
-
-    /* Set LED brightness */
-    FastLED.setBrightness(wAlphaScale);
-
-    /* Show new data on the LED matrix */
-    FastLED.show();
-
-    /* Publish a compact snapshot for the web UI */
-    MessageNS::Message wMessage{};
-    wMessage.mSource = MessageNS::tAddress::DISPLAY_MANAGER;
-    wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
-    wMessage.mId = MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY;
-
-    SendMessage(wMessage);
 }
 
 /**
@@ -199,22 +157,49 @@ void Display::UpdateDisplay(void)
  *          time, optionally logs the scene, then renders each enabled group
  *          using its configured color.
  */
-void Display::DisplayTimeScene(void)
+bool Display::DisplayTimeScene(void)
 {
-    BitMatrix wBitMatrix(MATRIX_WIDTH, MATRIX_HEIGHT);
+    bool wUpdated = false;
 
-    /* Retrieve background color from settings */
-    uint32_t wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
-    tColor wBackgroundColor = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
+    uint32_t wDwordValue;
 
-    /* Retrieve time color from settings */
-    wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
-    tColor   wTimeColor  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
+    tColor  wColorTime;
+    tColor  wColorBkgd;
+    uint8_t wBrightnessTime;
+    uint8_t wBrightnessBkgd;
+
+    /* Retrieve values from settings */
+    if (IsDayMode())
+    {
+        wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
+        wColorTime  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
+
+        wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
+        wColorBkgd  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
+
+        wBrightnessTime = Settings.GetValue<uint8_t>(
+            ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime);
+        wBrightnessBkgd = Settings.GetValue<uint8_t>(
+            ConfigNS::mKeyDisplayBrightnessBkgd, ConfigNS::mDefaultDisplayBrightnessBkgd);
+    }
+    else
+    {
+        wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorTimeNight, ConfigNS::mDefaultDisplayColorTimeNight);
+        wColorTime  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
+
+        wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgdNight, ConfigNS::mDefaultDisplayColorBkgdNight);
+        wColorBkgd  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
+
+        wBrightnessTime = Settings.GetValue<uint8_t>(
+            ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTime);
+        wBrightnessBkgd = Settings.GetValue<uint8_t>(
+            ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
+    }
 
     /* Prepare display scene */
     mDisplayScene.Clear();
-    mDisplayScene.mBackground = wBackgroundColor;
-
+    mDisplayScene.mColorBkgd      = wColorBkgd;
+    mDisplayScene.mBrightnessBkgd = wBrightnessBkgd;
 
     /* Check current time validity */
     if ((mDateTime.mTime.mHour   < 24) &&       // Support only 24 hours format
@@ -253,13 +238,16 @@ void Display::DisplayTimeScene(void)
         bool  wExtraMinutesEnabled = Settings.GetValue<bool>(ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
         mDisplayScene.mItIs.SetEnabled(wItIsEnabled);
-        mDisplayScene.mItIs.mColor   = wTimeColor;
+        mDisplayScene.mItIs.mColor      = wColorTime;
+        mDisplayScene.mItIs.mBrightness = wBrightnessTime;
 
         mDisplayScene.mTime.SetEnabled(true);       // Always display time words
-        mDisplayScene.mTime.mColor = wTimeColor;
+        mDisplayScene.mTime.mColor      = wColorTime;
+        mDisplayScene.mTime.mBrightness = wBrightnessTime;
 
         mDisplayScene.mExtraMinutes.SetEnabled(wExtraMinutesEnabled);
-        mDisplayScene.mExtraMinutes.mColor = wTimeColor;
+        mDisplayScene.mExtraMinutes.mColor      = wColorTime;
+        mDisplayScene.mExtraMinutes.mBrightness = wBrightnessTime;
 
         /* Add "IT IS" words */
         mDisplayScene.mItIs.mWords[0] = WORD_ES;
@@ -282,92 +270,150 @@ void Display::DisplayTimeScene(void)
 
         mDisplayScene.mExtraMinutes.mWordsCount = MAX_EXTRA_MINUTE_WORDS;
     }
-
-#if (LOG_LEVEL == LOG_VERBOSE)      // don't compile this code each time
-    wBitMatrix.ClearAll();
-
-    auto wAddGroupToBitMatrix = [&wBitMatrix](const WordGroup& arGroup)
+    else
     {
-        if (arGroup.IsEnabled())
-        {
-            for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
-            {
-                const tWord wWord = arGroup.mWords[wI];
+        /* Invalid time, disable all words */
+        mDisplayScene.mItIs.SetEnabled(false);
+        mDisplayScene.mTime.SetEnabled(false);
+        mDisplayScene.mExtraMinutes.SetEnabled(false);
+    }
 
-                if ((wWord > WORD_END_OF_WORDS) &&
-                    (wWord < WORD_MAX_NUMBER))
+    /* Store the display scene snapshot for the web UI */
+    wUpdated = mDisplaySceneSnapshot.Store(mDisplayScene);
+
+    if (wUpdated)
+    {
+#if (LOG_LEVEL == LOG_VERBOSE)      // don't compile this code each time
+        BitMatrix wBitMatrix(MATRIX_WIDTH, MATRIX_HEIGHT);
+
+        auto wAddGroupToBitMatrix = [&wBitMatrix](const WordGroup& arGroup)
+        {
+            if (arGroup.IsEnabled())
+            {
+                for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
                 {
-                    const tWordData& wData = mcWordDataArray[wWord];
-                    wBitMatrix.SetLine(wData.mRow, wData.mColumn, wData.mLength);
+                    const tWord wWord = arGroup.mWords[wI];
+
+                    if ((wWord > WORD_END_OF_WORDS) &&
+                        (wWord < WORD_MAX_NUMBER))
+                    {
+                        const tWordData& wData = mcWordDataArray[wWord];
+                        wBitMatrix.SetLine(wData.mRow, wData.mColumn, wData.mLength);
+                    }
                 }
             }
-        }
-    };
+        };
 
-    wAddGroupToBitMatrix(mDisplayScene.mItIs);
-    wAddGroupToBitMatrix(mDisplayScene.mTime);
-    wAddGroupToBitMatrix(mDisplayScene.mExtraMinutes);
+        wAddGroupToBitMatrix(mDisplayScene.mItIs);
+        wAddGroupToBitMatrix(mDisplayScene.mTime);
+        wAddGroupToBitMatrix(mDisplayScene.mExtraMinutes);
 
-    /* Log the display scene with the painted time */
-    LOG(LOG_VERBOSE, "Display::PaintTime() Display scene:");
-    for (uint16_t wRow = 0; wRow < wBitMatrix.GetHeight(); wRow++)
-    {
-        String wLogRow;
-
-        for (uint16_t wCol = 0; wCol < wBitMatrix.GetWidth(); wCol++)
+        /* Log the display scene with the painted time */
+        LOG(LOG_VERBOSE, "Display::PaintTime() Display scene:");
+        for (uint16_t wRow = 0; wRow < wBitMatrix.GetHeight(); wRow++)
         {
-            if (wBitMatrix.IsBitSet(wRow, wCol))
+            String wLogRow;
+
+            for (uint16_t wCol = 0; wCol < wBitMatrix.GetWidth(); wCol++)
             {
-                wLogRow += mDisplayLayout[wRow][wCol*3 + 2];  // 2, 5, 8, ...
-            }
-            else
-            {
-                wLogRow += '.';
+                if (wBitMatrix.IsBitSet(wRow, wCol))
+                {
+                    wLogRow += mDisplayLayout[wRow][wCol*3 + 2];  // 2, 5, 8, ...
+                }
+                else
+                {
+                    wLogRow += '.';
+                }
+
+                wLogRow += ' ';
             }
 
-            wLogRow += ' ';
+            /* Add row to the log */
+            LOG(LOG_VERBOSE, "    %s", wLogRow.c_str());
         }
-
-        /* Add row to the log */
-        LOG(LOG_VERBOSE, "    %s", wLogRow.c_str());
-    }
 #endif /* (LOG_LEVEL == LOG_VERBOSE) */
 
-    mDisplaySceneSnapshot.Store(mDisplayScene);
-
-    auto wDisplayWordGroup = [this, &wBitMatrix](const WordGroup& arGroup)
-    {
-        if (arGroup.IsEnabled())
+        /* Lambda function to display a word group */
+        auto wDisplayWordGroup = [this](const WordGroup& arGroup)
         {
-            wBitMatrix.ClearAll();
-
-            for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
+            if (arGroup.IsEnabled())
             {
-                const tWord wWord = arGroup.mWords[wI];
+                BitMatrix wBitMatrix(MATRIX_WIDTH, MATRIX_HEIGHT);
 
-                if ((wWord > WORD_END_OF_WORDS) &&
-                    (wWord < WORD_MAX_NUMBER))
+                for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
                 {
-                    const tWordData& wData = mcWordDataArray[wWord];
-                    wBitMatrix.SetLine(wData.mRow, wData.mColumn, wData.mLength);
+                    const tWord wWord = arGroup.mWords[wI];
+
+                    if ((wWord > WORD_END_OF_WORDS) &&
+                        (wWord < WORD_MAX_NUMBER))
+                    {
+                        const tWordData& wData = mcWordDataArray[wWord];
+                        wBitMatrix.SetLine(wData.mRow, wData.mColumn, wData.mLength);
+                    }
                 }
+
+                /* Match the logical LED mask to the physical layout (zigzag order) */
+                wBitMatrix.SetZigzagOrder(true);
+
+                /* Now paint all LEDs marked in the mask */
+                tColor wColor = ScaleColor(arGroup.mColor, arGroup.mBrightness);
+                SetLedColor(wBitMatrix, CRGB(wColor & COLOR_RGB_MASK));
             }
+        };
 
-            /* Match the logical LED mask to the physical layout (zigzag order) */
-            wBitMatrix.SetZigzagOrder(true);
+        /* Fill background */
+        wColorBkgd = ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd);
+        Fill(CRGB(wColorBkgd & COLOR_RGB_MASK));
 
-            /* Now paint all LEDs marked in the mask */
-            SetLedColor(wBitMatrix, CRGB(arGroup.mColor & COLOR_RGB_MASK));
-        }
-    };
+        /* Display word groups */
+        wDisplayWordGroup(mDisplayScene.mItIs);
+        wDisplayWordGroup(mDisplayScene.mTime);
+        wDisplayWordGroup(mDisplayScene.mExtraMinutes);
+    }
 
-    /* Fill background */
-    Fill(CRGB(mDisplayScene.mBackground & COLOR_RGB_MASK));
+    return wUpdated;
+}
 
-    /* Display word groups */
-    wDisplayWordGroup(mDisplayScene.mItIs);
-    wDisplayWordGroup(mDisplayScene.mTime);
-    wDisplayWordGroup(mDisplayScene.mExtraMinutes);
+bool Display::IsDayMode(void) const
+{
+    bool wIsDayMode = true;
+
+    /* Check if day/night mode is enabled */
+    bool wUseDayNightMode = Settings.GetValue<bool>(
+            ConfigNS::mKeyDisplayUseDayNightMode, ConfigNS::mDefaultDisplayUseDayNightMode);
+
+    if (wUseDayNightMode)
+    {
+        uint32_t wDwordValue = 0;
+
+        /* Retrieve day mode start and end times */
+        wDwordValue = Settings.GetValue<uint32_t>(
+                ConfigNS::mKeyDisplayDayModeStartTime, ConfigNS::mDefaultDisplayDayModeStartTime);
+        DateTimeNS::tDateTime wDayModeStartDateTime = DateTimeNS::DwordToDateTime(wDwordValue);
+
+        wDwordValue = Settings.GetValue<uint32_t>(
+                ConfigNS::mKeyDisplayDayModeEndTime, ConfigNS::mDefaultDisplayDayModeEndTime);
+        DateTimeNS::tDateTime wDayModeEndDateTime = DateTimeNS::DwordToDateTime(wDwordValue);
+
+        /* Determine if we are in the day mode */
+        wIsDayMode = DateTimeNS::IsTimeInInterval(
+            mDateTime.mTime,
+            wDayModeStartDateTime.mTime,
+            wDayModeEndDateTime.mTime);
+    }
+
+    return wIsDayMode;
+}
+
+tColor Display::ScaleColor(const tColor aColor, const uint8_t aBrightness) const
+{
+    uint8_t wBrightness = (aBrightness > 100) ? 100 : aBrightness;
+    uint8_t wAlphaScale = map(wBrightness, 0, 100, 0, 255);
+
+    CRGB wLedColor = CRGB(aColor & COLOR_RGB_MASK);
+    wLedColor.nscale8(wAlphaScale);
+
+    return static_cast<tColor>(wLedColor.as_uint32_t() & COLOR_RGB_MASK);
 }
 
 void Display::SetLedColor(const uint16_t aLedIndex, const CRGB aColor)

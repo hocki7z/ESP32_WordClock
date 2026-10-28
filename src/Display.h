@@ -58,7 +58,11 @@ private:
 
     void UpdateDisplay(void);
 
-    void DisplayTimeScene(void);
+    bool DisplayTimeScene(void);
+
+    bool IsDayMode(void) const;
+
+    tColor ScaleColor(const tColor aColor, const uint8_t aBrightness) const;
 
     void SetLedColor(const uint16_t aLedIndex, const CRGB aColor);
     void SetLedColor(BitMatrix& arLedMask, const CRGB aColor);

@@ -33,10 +33,24 @@ using tColor = uint32_t;
 /** @brief Maximum number of words per group */
 #define MAX_WORDS_PER_GROUP         5       // Main time needs at most 3 minute words + 2 hour words = 5
 
+
+/** @brief Struct to store word data */
+typedef struct tWordData
+{
+    /* Row index [0..MATRIX_HEIGHT-1] */
+    uint8_t mRow;
+    /* Column index [0..MATRIX_WIDTH-1] */
+    uint8_t mColumn;
+    /* Word length */
+    uint8_t mLength;
+} tWordData;
+
 /** @brief Group of words with associated color and state */
 struct WordGroup
 {
     tColor   mColor = 0;
+    uint8_t  mBrightness = 100;  // Brightness percentage (0-100)
+
     tWord    mWords[MAX_WORDS_PER_GROUP] = {};
     uint8_t  mWordsCount = 0;
     bool     mEnabled = false;
@@ -54,6 +68,8 @@ struct WordGroup
     void Clear(void)
     {
         mColor = 0;
+        mBrightness = 100;
+        memset(mWords, 0, sizeof(mWords));
         mWordsCount = 0;
         mEnabled = false;
     }
@@ -65,12 +81,27 @@ struct WordGroup
             *this = arOther;
         }
     }
+
+    bool operator==(const WordGroup& arOther) const
+    {
+        return (mColor == arOther.mColor) &&
+               (mBrightness == arOther.mBrightness) &&
+               (mWordsCount == arOther.mWordsCount) &&
+               (mEnabled == arOther.mEnabled) &&
+               (memcmp(mWords, arOther.mWords, sizeof(mWords)) == 0);
+    }
+
+    bool operator!=(const WordGroup& arOther) const
+    {
+        return !(*this == arOther);
+    }
 };
 
 /** @brief Structure representing the entire display scene */
 struct DisplayScene
 {
-    tColor    mBackground = 0;
+    tColor   mColorBkgd      = 0;
+    uint8_t  mBrightnessBkgd = 100;  // Brightness percentage (0-100)
 
     WordGroup mItIs;
     WordGroup mTime;
@@ -78,7 +109,8 @@ struct DisplayScene
 
     void Clear(void)
     {
-        mBackground  = 0;
+        mColorBkgd      = 0;
+        mBrightnessBkgd = 100;
 
         mItIs.Clear();
         mTime.Clear();
@@ -91,6 +123,20 @@ struct DisplayScene
         {
             *this = arOther;
         }
+    }
+
+    bool operator==(const DisplayScene& arOther) const
+    {
+        return (mColorBkgd == arOther.mColorBkgd) &&
+               (mBrightnessBkgd == arOther.mBrightnessBkgd) &&
+               (mItIs == arOther.mItIs) &&
+               (mTime == arOther.mTime) &&
+               (mExtraMinutes == arOther.mExtraMinutes);
+    }
+
+    bool operator!=(const DisplayScene& arOther) const
+    {
+        return !(*this == arOther);
     }
 };
 
@@ -105,11 +151,21 @@ public:
     /** @brief Store a consistent snapshot of the scene
      *
      * @param arScene The scene to copy from
+     * @return true if the snapshot was updated, false if the scene was unchanged
      */
-    void Store(const DisplayScene& arScene)
+    bool Store(const DisplayScene& arScene)
     {
+        bool wUpdated = false;
+
         FreeRTOScpp::Lock wLock(mMutex);
-        mScene.CopyFrom(arScene);
+
+        if (mScene != arScene)
+        {
+            mScene.CopyFrom(arScene);
+            wUpdated = true;
+        }
+
+        return wUpdated;
     }
 
     /** @brief Copy the latest snapshot
@@ -274,17 +330,6 @@ typedef enum tWordClockMode
     WORDCLOCK_MODE_NUMBER
 } tWordClockMode;
 
-/* Struct to store word data */
-typedef struct tWordData
-{
-    /* Row index [0..MATRIX_HEIGHT-1] */
-    uint8_t mRow;
-    /* Column index [0..MATRIX_WIDTH-1] */
-    uint8_t mColumn;
-    /* Word length */
-    uint8_t mLength;
-} tWordData;
-
 /* Stuct to store the data to display minutes */
 typedef struct tMinuteDisplay
 {
@@ -292,6 +337,16 @@ typedef struct tMinuteDisplay
     uint8_t   mFlags;
     tWord     wMinuteWords[MAX_MINUTE_WORDS];
 } tMinuteDisplay;
+
+/* List of all display modes */
+static constexpr const char* mcClockModeItems[WORDCLOCK_MODE_NUMBER] =
+{
+    "Wessi",
+    "Rhein-Ruhr"
+};
+
+/* Default display mode */
+static constexpr tWordClockMode mcDefaultDisplayClockMode = WORDCLOCK_MODE_1;    // Rhein-Ruhr
 
 /* Word data array */
 const tWordData mcWordDataArray[WORD_MAX_NUMBER] =
