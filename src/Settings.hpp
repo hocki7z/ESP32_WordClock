@@ -7,12 +7,16 @@
 #pragma once
 
 #include <Arduino.h>
+
+#include <MutexCPP.h>
 #include <Preferences.h>
 
 #include "Logger.h"
 
+
 /* Log level for this module */
 #define LOG_LEVEL_SETTINGS   (LOG_NONE)
+
 
 /**
  * @brief Namespace for settings related definitions
@@ -162,7 +166,11 @@ namespace SettingsNS
         /** @brief Namespace name for counter storage in Preferences */
         static constexpr const char* mcPrefsCounterNamespace = "counters";
 
+        /** @brief Preferences instance for accessing persistent storage */
         Preferences mPrefs;
+
+        /** @brief Recursive mutex protecting mPrefs from concurrent access across tasks */
+        FreeRTOScpp::RecursiveMutex mMutex;
 
         /**
          * @brief Converts a tKey to its string representation.

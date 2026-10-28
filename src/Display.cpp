@@ -168,8 +168,10 @@ bool Display::DisplayTimeScene(void)
     uint8_t wBrightnessTime;
     uint8_t wBrightnessBkgd;
 
+    bool wIsDayMode = IsDayMode();
+
     /* Retrieve values from settings */
-    if (IsDayMode())
+    if (wIsDayMode)
     {
         wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
         wColorTime  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
@@ -195,6 +197,9 @@ bool Display::DisplayTimeScene(void)
         wBrightnessBkgd = Settings.GetValue<uint8_t>(
             ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
     }
+
+//    LOG(LOG_DEBUG, "Display::DisplayTimeScene() IsDayMode %d; Display colors: Time=0x%06X, Bkgd=0x%06X, Brightness: Time=%u%%, Bkgd=%u%%",
+//        wIsDayMode, wColorTime, wColorBkgd, wBrightnessTime, wBrightnessBkgd);
 
     /* Prepare display scene */
     mDisplayScene.Clear();
@@ -270,13 +275,6 @@ bool Display::DisplayTimeScene(void)
 
         mDisplayScene.mExtraMinutes.mWordsCount = MAX_EXTRA_MINUTE_WORDS;
     }
-    else
-    {
-        /* Invalid time, disable all words */
-        mDisplayScene.mItIs.SetEnabled(false);
-        mDisplayScene.mTime.SetEnabled(false);
-        mDisplayScene.mExtraMinutes.SetEnabled(false);
-    }
 
     /* Store the display scene snapshot for the web UI */
     wUpdated = mDisplaySceneSnapshot.Store(mDisplayScene);
@@ -308,8 +306,8 @@ bool Display::DisplayTimeScene(void)
         wAddGroupToBitMatrix(mDisplayScene.mTime);
         wAddGroupToBitMatrix(mDisplayScene.mExtraMinutes);
 
-        /* Log the display scene with the painted time */
-        LOG(LOG_VERBOSE, "Display::PaintTime() Display scene:");
+        /* Log the display scene */
+        LOG(LOG_VERBOSE, "Display::DisplayTimeScene() Display scene changed:");
         for (uint16_t wRow = 0; wRow < wBitMatrix.GetHeight(); wRow++)
         {
             String wLogRow;
@@ -370,6 +368,10 @@ bool Display::DisplayTimeScene(void)
         wDisplayWordGroup(mDisplayScene.mTime);
         wDisplayWordGroup(mDisplayScene.mExtraMinutes);
     }
+    else
+    {
+        LOG(LOG_VERBOSE, "Display::DisplayTimeScene() Display scene unchanged");
+    }
 
     return wUpdated;
 }
@@ -400,6 +402,16 @@ bool Display::IsDayMode(void) const
             mDateTime.mTime,
             wDayModeStartDateTime.mTime,
             wDayModeEndDateTime.mTime);
+
+        LOG(LOG_VERBOSE, "Display::IsDayMode() Day/Night mode enabled; Day mode start: %02u:%02u, end: %02u:%02u; Current time: %02u:%02u; IsDayMode: %d",
+            wDayModeStartDateTime.mTime.mHour, wDayModeStartDateTime.mTime.mMinute,
+            wDayModeEndDateTime.mTime.mHour,   wDayModeEndDateTime.mTime.mMinute,
+            mDateTime.mTime.mHour, mDateTime.mTime.mMinute,
+            wIsDayMode);
+    }
+    else
+    {
+        LOG(LOG_VERBOSE, "Display::IsDayMode() Day/Night mode disabled; Always day mode");
     }
 
     return wIsDayMode;

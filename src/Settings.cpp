@@ -15,7 +15,8 @@ namespace SettingsNS
 /**
  * @brief Constructor
  */
-Settings::Settings()
+Settings::Settings() :
+    mMutex("Settings")
 {
     // do nothing
 }
@@ -33,6 +34,9 @@ Settings::~Settings()
  */
 void Settings::Clear(void)
 {
+    /* Lock the mutex */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     /* Open preferences in read-write mode */
     if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
@@ -50,6 +54,9 @@ void Settings::Clear(void)
  */
 bool Settings::HasKey(const tKey& arKey)
 {
+    /* Lock the mutex */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     bool wRetValue = false;
 
     /* Open preferences in read-only mode */
@@ -64,6 +71,7 @@ bool Settings::HasKey(const tKey& arKey)
         /* Close the Preferences */
         mPrefs.end();
     }
+
     return wRetValue;
 }
 
@@ -75,6 +83,9 @@ bool Settings::HasKey(const tKey& arKey)
  */
 bool Settings::RemoveKey(const tKey& arKey)
 {
+    /* Lock the mutex */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     bool wRetValue = false;
 
     /* Open preferences in read-write mode */
@@ -89,6 +100,7 @@ bool Settings::RemoveKey(const tKey& arKey)
         /* Close the Preferences */
         mPrefs.end();
     }
+
     return wRetValue;
 }
 
@@ -102,6 +114,9 @@ bool Settings::RemoveKey(const tKey& arKey)
  */
 bool Settings::GetBytes(const tKey& arKey, uint8_t* apData, const size_t aDataSize)
 {
+    /* Lock the mutex */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     size_t wRetSize = 0;
 
     /* Open preferences in read-only mode */
@@ -132,6 +147,9 @@ bool Settings::GetBytes(const tKey& arKey, uint8_t* apData, const size_t aDataSi
  */
 bool Settings::SetBytes(const tKey& arKey, const uint8_t* apData, const size_t aDataSize)
 {
+    /* Lock the mutex */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     size_t wRetSize = 0;
 
     /* Open preferences in read-write mode */
@@ -172,6 +190,9 @@ bool Settings::SetBytes(const tKey& arKey, const uint8_t* apData, const size_t a
  */
 bool Settings::IncreaseCounter(const tKey& arKey, const uint32_t aNewValue)
 {
+    /* Lock the mutex */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     size_t wRetSize = 0;
 
     /* Get current counter value */
@@ -207,6 +228,9 @@ bool Settings::IncreaseCounter(const tKey& arKey, const uint32_t aNewValue)
  */
 uint32_t Settings::GetCounter(const tKey& arKey, const uint32_t aDefaultValue)
 {
+    /* Lock the mutex */
+    FreeRTOScpp::Lock wLock(mMutex);
+
     uint32_t wCounter = aDefaultValue;
 
     /* Open preferences in read-only mode */
