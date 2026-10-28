@@ -91,7 +91,7 @@ def _make_header(project_dir):
     now_utc = datetime.now(timezone.utc)
     modified = _working_tree_modified(project_dir)
     tag, tag_version, ticks = _closest_tag(project_dir)
-    software_version = _UNKNOWN_VERSION if modified else tag_version
+    software_version = tag_version
 
     git_version = _git(project_dir, "--version")
     commit_count = int(_git(project_dir, "rev-list", "--count", "HEAD"))
@@ -124,7 +124,7 @@ def _make_header(project_dir):
         "AGI_LOCALE_DATE": "Local generation date",
         "AGI_GIT_BRANCH": "Current Git branch",
         "AGI_TAG": "Nearest reachable tag matching XX.YY.ZZ",
-        "AGI_SW_VERSION": "Software version (0xFF bytes if dirty or no valid tag)",
+        "AGI_SW_VERSION": "Software version split from AGI_TAG (0xFF bytes if no valid tag)",
         "AGI_SW_VERSION_MAJOR": "Software version major byte",
         "AGI_SW_VERSION_MINOR": "Software version minor byte",
         "AGI_SW_VERSION_BUILD": "Software version build byte",
