@@ -106,9 +106,9 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 	ESPUI.sliderContinuous = true;
 
     /* Add the tabs for the web UI */
-    mWebUIControlID.mOverViewTab   = ESPUI.addControl(Control::Type::Tab, "", "Overview");
-    mWebUIControlID.mLedDisplayTab = ESPUI.addControl(Control::Type::Tab, "", "LED Display");
-    mWebUIControlID.mSettingsTab   = ESPUI.addControl(Control::Type::Tab, "", "Settings");
+    mWebUIControlID.mOverViewTab   = ESPUI.addControl(Control::Type::Tab, "overview", "Overview");
+    mWebUIControlID.mLedDisplayTab = ESPUI.addControl(Control::Type::Tab, "led-display", "LED Display");
+    mWebUIControlID.mSettingsTab   = ESPUI.addControl(Control::Type::Tab, "settings", "Settings");
 
 
     /**
