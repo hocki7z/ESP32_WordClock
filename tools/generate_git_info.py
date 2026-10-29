@@ -91,12 +91,12 @@ def _closest_tag(project_dir):
 
 
 def _working_tree_modified(project_dir):
-    # Exclude this generated file so regenerating it does not mark its own build dirty.
+    # Ignore untracked files and exclude this generated file from the modified check.
     status = _git(
         project_dir,
         "status",
         "--porcelain",
-        "--untracked-files=all",
+        "--untracked-files=no",
         "--",
         ".",
         ":(exclude)src/AutoGitInfo.h",
