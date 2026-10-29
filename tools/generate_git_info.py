@@ -15,7 +15,7 @@ except NameError:
 
 _VERSION_PATTERN = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
 _UNKNOWN_VERSION = (0xFF, 0xFF, 0xFF)
-_GENERATED_HEADER = Path("src") / "AutoGitInfo.h"
+_GENERATED_HEADER = "AutoGitInfo.h"     # Path("src") / "AutoGitInfo.h"
 _DEFINE_VALUE_COLUMN = 49
 
 
