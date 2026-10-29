@@ -144,7 +144,7 @@ def _make_header(project_dir):
         "AUTO_GIT_INFO_COMMIT_FULL_HASH": "Full Git hash",
         "AUTO_GIT_INFO_COMMIT_SHORT_HASH": "Short Git hash",
         "AUTO_GIT_INFO_COMMIT_TAG": "Nearest reachable XX.YY.ZZ tag, or 255.255.255 if no valid tag",
-        "AUTO_GIT_INFO_SW_VERSION": "Software version split from AUTO_GIT_INFO_COMMIT_TAG",
+        "AUTO_GIT_INFO_SW_VERSION": "Software version",
         "AUTO_GIT_INFO_SW_VERSION_MAJOR": "Software version major byte",
         "AUTO_GIT_INFO_SW_VERSION_MINOR": "Software version minor byte",
         "AUTO_GIT_INFO_SW_VERSION_BUILD": "Software version build byte",
