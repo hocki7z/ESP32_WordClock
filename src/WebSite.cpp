@@ -58,114 +58,6 @@ constexpr char kOtaPage[] = R"html(<!doctype html>
 <meta http-equiv="refresh" content="0;url=/#settings"><title>Firmware update</title></head>
 <body><p>Opening the Settings firmware uploader… <a href="/#settings">Continue</a></p></body></html>)html";
 
-constexpr uint8_t kProductInfoMagic[8] = {'W', 'C', 'P', 'R', 'O', 'D', 'I', 'N'};
-constexpr uint8_t kProductInfoFormatVersion = 2;
-
-uint32_t CalculateProductInfoCrc32(const uint8_t* apData, size_t aLength)
-{
-    uint32_t wCrc = 0xFFFFFFFFU;
-    for (size_t wIndex = 0; wIndex < aLength; ++wIndex)
-    {
-        wCrc ^= apData[wIndex];
-        for (uint8_t wBit = 0; wBit < 8; ++wBit)
-        {
-            wCrc = (wCrc >> 1) ^ ((wCrc & 1U) ? 0xEDB88320U : 0U);
-        }
-    }
-    return ~wCrc;
-}
-
-bool IsInvalidSoftwareVersion(const ProductInfoNS::tSoftwareVersion& arVersion)
-{
-    return arVersion.mMajor == 0xFF && arVersion.mMinor == 0xFF && arVersion.mBuild == 0xFF;
-}
-
-int CompareSoftwareVersions(const ProductInfoNS::tSoftwareVersion& arLeft,
-    const ProductInfoNS::tSoftwareVersion& arRight)
-{
-    const uint8_t wLeft[] = {arLeft.mMajor, arLeft.mMinor, arLeft.mBuild};
-    const uint8_t wRight[] = {arRight.mMajor, arRight.mMinor, arRight.mBuild};
-    for (size_t wIndex = 0; wIndex < 3; ++wIndex)
-    {
-        if (wLeft[wIndex] != wRight[wIndex])
-        {
-            return (wLeft[wIndex] > wRight[wIndex]) ? 1 : -1;
-        }
-    }
-    return 0;
-}
-
-bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImageSize,
-    ProductInfoNS::Record& arRecord)
-{
-    constexpr size_t kReadChunkSize = 1024;
-    constexpr size_t kMagicSize = sizeof(kProductInfoMagic);
-    uint8_t wBuffer[kReadChunkSize]{};
-
-    for (size_t wOffset = 0; wOffset < aImageSize;)
-    {
-        const size_t wReadSize = (aImageSize - wOffset < sizeof(wBuffer))
-            ? aImageSize - wOffset
-            : sizeof(wBuffer);
-        if (esp_partition_read(apPartition, wOffset, wBuffer, wReadSize) != ESP_OK)
-        {
-            return false;
-        }
-
-        for (size_t wIndex = 0; wIndex + kMagicSize <= wReadSize; ++wIndex)
-        {
-            if (memcmp(wBuffer + wIndex, kProductInfoMagic, kMagicSize) != 0)
-            {
-                continue;
-            }
-
-            const size_t wRecordOffset = wOffset + wIndex;
-            if (wRecordOffset + sizeof(arRecord) > aImageSize ||
-                esp_partition_read(apPartition, wRecordOffset, &arRecord, sizeof(arRecord)) != ESP_OK)
-            {
-                continue;
-            }
-
-            const uint32_t wCalculatedCrc = CalculateProductInfoCrc32(
-                reinterpret_cast<const uint8_t*>(&arRecord), offsetof(ProductInfoNS::Record, crc32));
-            const uint32_t wStoredCrc = static_cast<uint32_t>(arRecord.crc32[0]) |
-                (static_cast<uint32_t>(arRecord.crc32[1]) << 8) |
-                (static_cast<uint32_t>(arRecord.crc32[2]) << 16) |
-                (static_cast<uint32_t>(arRecord.crc32[3]) << 24);
-            if (arRecord.formatVersion == kProductInfoFormatVersion && wCalculatedCrc == wStoredCrc)
-            {
-                return true;
-            }
-        }
-
-        if (wReadSize <= kMagicSize - 1)
-        {
-            break;
-        }
-        wOffset += (wReadSize == sizeof(wBuffer)) ? wReadSize - (kMagicSize - 1) : wReadSize;
-    }
-    return false;
-}
-
-bool IsNewVersionAllowed(const ProductInfoNS::tSoftwareVersion& arNewVersion,
-    ProductInfoNS::tSoftwareVersion& arCurrentVersion)
-{
-    if (IsInvalidSoftwareVersion(arNewVersion))
-    {
-        return false;
-    }
-
-    ProductInfoNS::Record wCurrentRecord{};
-    if (!ConfigNS::GetProductInfo(wCurrentRecord) || IsInvalidSoftwareVersion(wCurrentRecord.softwareVersion))
-    {
-        arCurrentVersion = {0xFF, 0xFF, 0xFF};
-        return true;
-    }
-
-    arCurrentVersion = wCurrentRecord.softwareVersion;
-    return CompareSoftwareVersions(arNewVersion, arCurrentVersion) > 0;
-}
-
 const char kOtaCustomJs[] = R"js((() => {
     function addFirmwareUploader() {
         const settings = document.getElementById('settings');
@@ -370,7 +262,7 @@ void RegisterOtaRoutes()
         ProductInfoNS::Record wRecord{};
         ProductInfoNS::tSoftwareVersion wVersion{0xFF, 0xFF, 0xFF};
         bool wValid = false;
-        if (ConfigNS::GetProductInfo(wRecord) && !IsInvalidSoftwareVersion(wRecord.softwareVersion))
+        if (ConfigNS::GetProductInfo(wRecord) && !ProductInfoNS::IsInvalidSoftwareVersion(wRecord.softwareVersion))
         {
             wVersion = wRecord.softwareVersion;
             wValid = true;
@@ -501,7 +393,7 @@ void RegisterOtaRoutes()
                 }
 
                 ProductInfoNS::tSoftwareVersion wCurrentVersion{};
-                if (IsInvalidSoftwareVersion(wNewRecord.softwareVersion))
+                if (ProductInfoNS::IsInvalidSoftwareVersion(wNewRecord.softwareVersion))
                 {
                     gOtaError = ESP_FAIL;
                     gOtaFailureReason = "Update refused: the selected firmware version is invalid (255.255.255).";

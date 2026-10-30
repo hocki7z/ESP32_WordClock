@@ -1,6 +1,11 @@
 #pragma once
 
+#include <Arduino.h>
+
 #include <cstdint>
+
+#include <esp_ota_ops.h>
+#include <esp_system.h>
 
 namespace ProductInfoNS
 {
@@ -9,6 +14,36 @@ namespace ProductInfoNS
         uint8_t mMajor;  // Software version major component.
         uint8_t mMinor;  // Software version minor component.
         uint8_t mBuild;  // Software version build/patch component.
+
+        bool operator==(const tSoftwareVersion& other) const
+        {
+            return mMajor == other.mMajor && mMinor == other.mMinor && mBuild == other.mBuild;
+        }
+
+        bool operator!=(const tSoftwareVersion& other) const
+        {
+            return !(*this == other);
+        }
+
+        bool operator<(const tSoftwareVersion& other) const
+        {
+            if (mMajor != other.mMajor)
+                return mMajor < other.mMajor;
+            if (mMinor != other.mMinor)
+                return mMinor < other.mMinor;
+            return mBuild < other.mBuild;
+        }
+
+        bool operator>(const tSoftwareVersion& other) const
+        {
+            // Check if != and not <
+            return *this != other && !(*this < other);
+        }
+
+        bool IsValid(void) const
+        {
+            return mMajor != 0xFF || mMinor != 0xFF || mBuild != 0xFF;
+        }
     };
 
     /** Fixed-format record stored at flash offset 0x3FF000. */
@@ -44,4 +79,11 @@ namespace ProductInfoNS
      * @return true if the partition matches the embedded image and contains a valid record.
      */
     bool SyncFlashPartitionWithFirmware();
-}
+
+    uint32_t CalculateCrc32(const uint8_t* apData, const size_t aLength);
+    bool IsInvalidSoftwareVersion(const tSoftwareVersion& arVersion);
+
+    bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImageSize, Record& arRecord);
+    int CompareSoftwareVersions(const tSoftwareVersion& arLeft, const tSoftwareVersion& arRight);
+    bool IsNewVersionAllowed(const tSoftwareVersion& arNewVersion, tSoftwareVersion& arCurrentVersion);
+} // namespace ProductInfoNS
