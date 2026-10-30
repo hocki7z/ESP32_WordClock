@@ -81,15 +81,16 @@ def _c_string(value):
 
 
 def _version_tags(project_dir):
-    """List tags formatted as three decimal byte-sized version components.
+    """List suitable version tags attached directly to the selected commit.
 
     Tags that do not match ``MAJOR.MINOR.PATCH`` or contain components above
-    255 are ignored.
+    255 are ignored. ``git tag --points-at HEAD`` limits candidates to tags
+    whose target is the current commit; tags on earlier commits are excluded.
     """
 
     candidates = []
 
-    for tag in _git(project_dir, "tag", "--list").splitlines():
+    for tag in _git(project_dir, "tag", "--points-at", "HEAD").splitlines():
         match = _VERSION_PATTERN.fullmatch(tag.strip())
         if match is None:
             continue
@@ -101,14 +102,13 @@ def _version_tags(project_dir):
 
 
 def _highest_version_tag(project_dir):
-    """Return the tag with the highest suitable semantic version.
+    """Return the highest suitable version tag attached directly to ``HEAD``.
 
-    All Git tags are considered, regardless of whether they are ancestors of
-    ``HEAD``. Components above one byte and tags not formatted as
-    ``MAJOR.MINOR.PATCH`` are excluded by :func:`_version_tags`. When multiple
-    tags have the same version, the lexicographically greatest tag name wins
-    to keep selection deterministic. If no suitable tag exists, use the
-    documented sentinel tag and all-0xFF version bytes.
+    Components above one byte and tags not formatted as ``MAJOR.MINOR.PATCH``
+    are excluded by :func:`_version_tags`. When multiple suitable tags point
+    at ``HEAD``, the highest version wins; duplicate versions are resolved by
+    lexicographically greatest tag name. If no suitable tag points at the
+    selected commit, use the sentinel tag and all-0xFF version bytes.
     """
 
     candidates = _version_tags(project_dir)
