@@ -303,6 +303,11 @@ def _generate_git_info(project_dir):
 
     if _PLATFORMIO_ENV is not None:
         _generate_flash_record(build_info)
+        # PlatformIO's ESP32 uploader appends these images to its normal
+        # esptool write_flash command; this makes regular Upload flash ProductInfo.
+        _PLATFORMIO_ENV.Append(
+            FLASH_EXTRA_IMAGES=[("0x3FF000", "$BUILD_DIR/productinfo.bin")]
+        )
 
     pass    # end of _generate_git_info
 
