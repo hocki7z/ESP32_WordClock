@@ -34,4 +34,14 @@ namespace ProductInfoNS
      * @return true if a valid record was read.
      */
     bool ReadFlashPartition(Record& arRecord);
+
+    /**
+     * @brief Restore the ProductInfo partition from the copy embedded in this firmware.
+     *
+     * Call early during startup. This lets a standard application OTA image carry
+     * both the application and its matching ProductInfo data.
+     *
+     * @return true if the partition matches the embedded image and contains a valid record.
+     */
+    bool SyncFlashPartitionWithFirmware();
 }

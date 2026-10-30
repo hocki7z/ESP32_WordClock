@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import shutil
 import subprocess
 import zipfile
 
@@ -57,6 +58,12 @@ def _make_images(target, source, env):
     update_path = build_dir / "firmware_productinfo_update.bin"
     update_path.write_bytes(update_image)
     print("Product info: generated app+ProductInfo update image {}".format(update_path))
+
+    # The application now embeds ProductInfo and synchronizes its partition on boot,
+    # making this ordinary app image a single-file OTA payload.
+    ota_path = build_dir / "firmware_productinfo_ota.bin"
+    shutil.copyfile(app_image, ota_path)
+    print("Product info: generated single-file OTA image {}".format(ota_path))
 
     # Also provide a self-describing package with individual files/offsets for OTA or tooling.
     manifest = {

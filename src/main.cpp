@@ -4,6 +4,7 @@
 #include "Settings.hpp"
 
 #include "Configuration.h"
+#include "ProductInfo.h"
 
 #include "Application.h"
 #include "Communication.h"
@@ -110,6 +111,12 @@ void setup()
     /* Start the serial communication */
     Serial.begin(115200);
     Serial.setDebugOutput(true);
+
+    /* Restore build metadata embedded in the application OTA image if needed. */
+    if (!ProductInfoNS::SyncFlashPartitionWithFirmware())
+    {
+        Serial.println("ProductInfo: failed to synchronize the flash partition");
+    }
 
     /* LOG */
     LOG(LOG_INFO, "Welcome to WordClock");
