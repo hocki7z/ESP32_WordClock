@@ -6,6 +6,11 @@
  */
 #include "Configuration.h"
 
+bool ConfigNS::GetProductInfo(ProductInfoNS::Record& arRecord)
+{
+	return ProductInfoNS::ReadFlashPartition(arRecord);
+}
+
 /** @brief Shared list instance of discovered WiFi SSIDs */
 SSIDList mSSIDList;
 

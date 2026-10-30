@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace ProductInfo
+namespace ProductInfoNS
 {
     struct tSoftwareVersion
     {

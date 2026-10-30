@@ -11,6 +11,7 @@
 #include "Application.h"
 #include "SSIDList.h"
 #include "Settings.hpp"
+#include "ProductInfo.h"
 
 #include "DisplayLayout.h"
 
@@ -207,5 +208,14 @@ namespace ConfigNS
         /* WAT  */  "WAT-1",
         /* WET  */  "WET0WEST,M3.5.0/1,M10.5.0",
     };
+
+
+    /** @brief Read and validate compile-time product/build information from flash.
+     * 
+     * @param[out] arRecord Receives the record after successful validation.
+     * @return true if a valid record was read.
+    */
+    bool GetProductInfo(ProductInfoNS::Record& arRecord);
+
 
 }   /* end of namespace ConfigNS */

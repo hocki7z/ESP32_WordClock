@@ -257,6 +257,53 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
         ControlHandler::WifiScanButton);
     mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiForgetButton);
+
+
+    /**
+     * Tab Settings / Group Product Information
+     */
+    const Control::ControlId_t wProductInfoGroup =
+        AddGroupHelper("Product Information", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+
+    ProductInfoNS::Record wProductInfo{};
+    String wSoftwareVersion = "Unavailable";
+    String wBuildDateTime = "Unavailable";
+    String wCommitHash = "Unavailable";
+    String wBranch = "Unavailable";
+
+    if (ConfigNS::GetProductInfo(wProductInfo))
+    {
+        if ((wProductInfo.softwareVersion.mMajor == 0xFF) &&
+            (wProductInfo.softwareVersion.mMinor == 0xFF) &&
+            (wProductInfo.softwareVersion.mBuild == 0xFF))
+        {
+            wSoftwareVersion = "Unknown";
+        }
+        else
+        {
+            char wVersionText[12] = {0};
+            snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
+                static_cast<unsigned>(wProductInfo.softwareVersion.mMajor),
+                static_cast<unsigned>(wProductInfo.softwareVersion.mMinor),
+                static_cast<unsigned>(wProductInfo.softwareVersion.mBuild));
+            wSoftwareVersion = wVersionText;
+        }
+
+        wBuildDateTime = wProductInfo.buildDateTimeUtc;
+        if (wProductInfo.commitHashShort[0] != '\0')
+        {
+            wCommitHash = wProductInfo.commitHashShort;
+        }
+        if (wProductInfo.branchShort[0] != '\0')
+        {
+            wBranch = wProductInfo.branchShort;
+        }
+    }
+
+    AddLabelControl("Software version", wProductInfoGroup, CSS_STYLE_LABEL, wSoftwareVersion);
+    AddLabelControl("Build date/time (UTC)", wProductInfoGroup, CSS_STYLE_LABEL, wBuildDateTime);
+    AddLabelControl("Commit hash", wProductInfoGroup, CSS_STYLE_LABEL, wCommitHash);
+    AddLabelControl("Branch", wProductInfoGroup, CSS_STYLE_LABEL, wBranch);
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
