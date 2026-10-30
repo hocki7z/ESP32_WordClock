@@ -18,8 +18,8 @@ namespace ProductInfo
         uint8_t formatVersion;             // Binary record layout version.
         tSoftwareVersion softwareVersion; // Major, minor, and build version bytes.
         char buildDateTimeUtc[25];         // NUL-terminated UTC ISO-8601 build timestamp.
-        char commitHashShort[9];           // NUL-terminated first 8 hexadecimal commit-hash characters.
         char branchShort[81];              // NUL-terminated branch name, limited to 20 UTF-8 characters.
+        char commitHashShort[9];           // NUL-terminated first 8 hexadecimal commit-hash characters.
         uint8_t crc32[4];                  // CRC-32 of all preceding fields, stored little-endian.
     };
 

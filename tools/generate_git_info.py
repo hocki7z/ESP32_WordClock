@@ -174,8 +174,8 @@ def _generate_flash_record(project_dir):
         + bytes((2,))                       # 8: record format version
         + bytes(version)                    # 9..11: software version
         + build_time_bytes                  # 12..36: NUL-terminated UTC ISO-8601 date/time
-        + commit_hash_short                 # 37..45: NUL-terminated short commit hash
-        + branch_short                      # 46..126: UTF-8 branch, max 20 chars, NUL-terminated
+        + branch_short                      # 37..117: UTF-8 branch, max 20 chars, NUL-terminated
+        + commit_hash_short                 # 118..126: NUL-terminated short commit hash
     )
     record += zlib.crc32(record).to_bytes(4, "little")  # 127..130: CRC-32
     if len(record) != 131:
