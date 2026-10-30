@@ -258,7 +258,7 @@ const char kOtaCustomJs[] = R"js((() => {
                     throw new Error('The selected firmware version is invalid (255.255.255).');
                 }
 
-                const currentResponse = await fetch('/update/version', { cache: 'no-store' });
+                const currentResponse = await fetch('/firmware-version', { cache: 'no-store' });
                 if (!currentResponse.ok) throw new Error('Could not read the installed firmware version.');
                 const currentInfo = await currentResponse.json();
                 const currentVersion = currentInfo.version;
@@ -365,7 +365,7 @@ void RegisterOtaRoutes()
         apRequest->send(200, "text/html; charset=utf-8", kOtaPage);
     });
 
-    wpServer->on("/update/version", HTTP_GET, [](AsyncWebServerRequest* apRequest)
+    wpServer->on("/firmware-version", HTTP_GET, [](AsyncWebServerRequest* apRequest)
     {
         ProductInfoNS::Record wRecord{};
         ProductInfoNS::tSoftwareVersion wVersion{0xFF, 0xFF, 0xFF};
