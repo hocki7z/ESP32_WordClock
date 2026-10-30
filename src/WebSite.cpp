@@ -5,6 +5,8 @@
  *      Author: hocki
  */
 #include <ESPUI.h>
+#include <esp_ota_ops.h>
+#include <esp_system.h>
 
 #include "Logger.h"
 #include "Configuration.h"
@@ -44,6 +46,214 @@
 /* Default control colors */
 #define TAB_CONTROL_COLOR               Control::Color::Wetasphalt
 #define GROUP_CONTROL_COLOR             Control::Color::Wetasphalt
+
+namespace
+{
+constexpr char kOtaPage[] = R"html(<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wordclock firmware update</title><style>
+body{font:16px system-ui,sans-serif;max-width:640px;margin:3rem auto;padding:0 1rem;background:#111827;color:#f3f4f6}
+main{background:#1f2937;padding:2rem;border-radius:16px}h1{margin-top:0}input,button{font:inherit;margin:.5rem 0;padding:.7rem;width:100%;box-sizing:border-box}
+button{background:#2563eb;color:white;border:0;border-radius:8px;cursor:pointer}button:disabled{opacity:.5}
+progress{width:100%;height:1.2rem}#status{min-height:1.5rem;white-space:pre-wrap}
+</style></head><body><main><h1>Firmware update</h1>
+<p>Select the <strong>firmware_productinfo_ota.bin</strong> file produced by the PlatformIO build.</p>
+<form id="form"><label>Update token (shown in the device serial log after boot)
+<input id="token" type="password" autocomplete="off" required></label>
+<label>Firmware image (.bin)<input id="firmware" type="file" accept=".bin,application/octet-stream" required></label>
+<button id="submit" type="submit">Upload and install</button></form>
+<progress id="progress" value="0" max="100" hidden></progress><p id="status" role="status"></p>
+<script>
+const form=document.getElementById('form'),button=document.getElementById('submit'),progress=document.getElementById('progress'),status=document.getElementById('status');
+form.addEventListener('submit',event=>{event.preventDefault();const file=document.getElementById('firmware').files[0],token=document.getElementById('token').value;
+if(!file||!file.name.toLowerCase().endsWith('.bin')){status.textContent='Select a .bin application image.';return;}
+button.disabled=true;progress.hidden=false;progress.value=0;status.textContent='Uploading…';const data=new FormData();data.append('firmware',file,file.name);
+const xhr=new XMLHttpRequest();xhr.open('POST','/update?token='+encodeURIComponent(token));xhr.upload.onprogress=e=>{if(e.lengthComputable){progress.value=Math.round(e.loaded*100/e.total);status.textContent='Uploading '+progress.value+'%';}};
+xhr.onload=()=>{status.textContent=xhr.responseText||('Update failed ('+xhr.status+').');if(xhr.status!==200)button.disabled=false;};xhr.onerror=()=>{status.textContent='Connection lost. The device may be restarting; wait and reconnect.';button.disabled=false;};xhr.send(data);});
+</script></main></body></html>)html";
+
+enum class OtaUploadStatus : uint8_t
+{
+    Idle,
+    Receiving,
+    Failed,
+    ReadyToBoot,
+};
+
+AsyncWebServer* gOtaServer = nullptr;
+AsyncWebServerRequest* gOtaRequest = nullptr;
+esp_ota_handle_t gOtaHandle = 0;
+bool gOtaHandleValid = false;
+const esp_partition_t* gpOtaPartition = nullptr;
+size_t gOtaBytesReceived = 0;
+OtaUploadStatus gOtaStatus = OtaUploadStatus::Idle;
+esp_err_t gOtaError = ESP_OK;
+String gOtaToken;
+bool gOtaTokenConsumed = false;
+
+bool IsOtaTokenValid(AsyncWebServerRequest* apRequest)
+{
+    if (gOtaTokenConsumed || gOtaToken.isEmpty() || !apRequest->hasParam("token"))
+    {
+        return false;
+    }
+    return apRequest->getParam("token")->value() == gOtaToken;
+}
+
+void AbortOtaUpload()
+{
+    if (gOtaHandleValid)
+    {
+        esp_ota_abort(gOtaHandle);
+        gOtaHandle = 0;
+        gOtaHandleValid = false;
+    }
+}
+
+void RestartAfterOta(void*)
+{
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    ESP.restart();
+    vTaskDelete(nullptr);
+}
+
+void RegisterOtaRoutes()
+{
+    AsyncWebServer* const wpServer = ESPUI.WebServer();
+    if (wpServer == nullptr || wpServer == gOtaServer)
+    {
+        return;
+    }
+
+    if (gOtaToken.isEmpty())
+    {
+        char wToken[17]{};
+        snprintf(wToken, sizeof(wToken), "%08lX%08lX",
+            static_cast<unsigned long>(esp_random()),
+            static_cast<unsigned long>(esp_random()));
+        gOtaToken = wToken;
+        Serial.printf("OTA update token (valid until successful upload/reboot): %s\n", wToken);
+    }
+
+    wpServer->on("/update", HTTP_GET, [](AsyncWebServerRequest* apRequest)
+    {
+        apRequest->send(200, "text/html; charset=utf-8", kOtaPage);
+    });
+
+    wpServer->on("/update", HTTP_POST,
+        [](AsyncWebServerRequest* apRequest)
+        {
+            if (gOtaRequest != apRequest)
+            {
+                const bool wAuthorized = IsOtaTokenValid(apRequest);
+                apRequest->send(wAuthorized ? 400 : 401, "text/plain",
+                    wAuthorized ? "No firmware image was received." : "Invalid or expired OTA token.");
+                return;
+            }
+
+            const OtaUploadStatus wStatus = gOtaStatus;
+            const esp_err_t wError = gOtaError;
+            gOtaRequest = nullptr;
+            gOtaStatus = OtaUploadStatus::Idle;
+            gpOtaPartition = nullptr;
+            gOtaBytesReceived = 0;
+
+            if (wStatus == OtaUploadStatus::ReadyToBoot)
+            {
+                gOtaTokenConsumed = true;
+                apRequest->send(200, "text/plain", "Firmware accepted. The device is restarting now.");
+                xTaskCreate(RestartAfterOta, "ota_restart", 2048, nullptr, 1, nullptr);
+                return;
+            }
+
+            apRequest->send(400, "text/plain",
+                String("Firmware update failed (ESP error ") + String(static_cast<int>(wError)) + ").");
+        },
+        [](AsyncWebServerRequest* apRequest, const String& arFilename, size_t aIndex,
+            uint8_t* apData, size_t aLength, bool aFinal)
+        {
+            if (aIndex == 0)
+            {
+                if (!IsOtaTokenValid(apRequest) ||
+                    (gOtaRequest != nullptr && gOtaRequest != apRequest))
+                {
+                    return;
+                }
+
+                gOtaRequest = apRequest;
+                gOtaStatus = OtaUploadStatus::Failed;
+                gOtaError = ESP_FAIL;
+
+                String wLowerFilename = arFilename;
+                wLowerFilename.toLowerCase();
+                if (!wLowerFilename.endsWith(".bin"))
+                {
+                    return;
+                }
+
+                gpOtaPartition = esp_ota_get_next_update_partition(nullptr);
+                if (gpOtaPartition == nullptr)
+                {
+                    gOtaError = ESP_ERR_NOT_FOUND;
+                    return;
+                }
+
+                gOtaError = esp_ota_begin(gpOtaPartition, OTA_SIZE_UNKNOWN, &gOtaHandle);
+                if (gOtaError != ESP_OK)
+                {
+                    gOtaHandle = 0;
+                    gOtaHandleValid = false;
+                    return;
+                }
+
+                gOtaHandleValid = true;
+                gOtaBytesReceived = 0;
+                gOtaStatus = OtaUploadStatus::Receiving;
+            }
+
+            if (gOtaRequest != apRequest || gOtaStatus != OtaUploadStatus::Receiving)
+            {
+                return;
+            }
+
+            if (aLength > gpOtaPartition->size - gOtaBytesReceived)
+            {
+                AbortOtaUpload();
+                gOtaStatus = OtaUploadStatus::Failed;
+                gOtaError = ESP_ERR_INVALID_SIZE;
+                return;
+            }
+
+            gOtaError = esp_ota_write(gOtaHandle, apData, aLength);
+            if (gOtaError != ESP_OK)
+            {
+                AbortOtaUpload();
+                gOtaStatus = OtaUploadStatus::Failed;
+                return;
+            }
+            gOtaBytesReceived += aLength;
+
+            if (aFinal)
+            {
+                gOtaError = esp_ota_end(gOtaHandle);
+                gOtaHandle = 0;
+                gOtaHandleValid = false;
+                if (gOtaError != ESP_OK)
+                {
+                    gOtaStatus = OtaUploadStatus::Failed;
+                    return;
+                }
+
+                gOtaError = esp_ota_set_boot_partition(gpOtaPartition);
+                gOtaStatus = (gOtaError == ESP_OK)
+                    ? OtaUploadStatus::ReadyToBoot
+                    : OtaUploadStatus::Failed;
+            }
+        });
+
+    gOtaServer = wpServer;
+}
+}
 
 /**
  * Initialize the private static pointer
@@ -304,6 +514,11 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     AddLabelControl("Build date/time (UTC)", wProductInfoGroup, CSS_STYLE_LABEL, wBuildDateTime);
     AddLabelControl("Commit hash", wProductInfoGroup, CSS_STYLE_LABEL, wCommitHash);
     AddLabelControl("Branch", wProductInfoGroup, CSS_STYLE_LABEL, wBranch);
+
+    const Control::ControlId_t wFirmwareUpdateGroup =
+        AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    AddLabelControl("Open /update in your browser to select and install firmware_productinfo_ota.bin.",
+        wFirmwareUpdateGroup, CSS_STYLE_LABEL);
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -324,6 +539,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
             /* Start WEB UI */
             ESPUI.begin("Wordclock");
+            RegisterOtaRoutes();
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
@@ -338,6 +554,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
             /* Start WEB UI */
             ESPUI.begin("Wordclock");
+            RegisterOtaRoutes();
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
