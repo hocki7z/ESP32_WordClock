@@ -1,4 +1,4 @@
-"""Package the application and generated ProductInfo partition for updates."""
+"""Generate full-flash and application-plus-ProductInfo images."""
 
 from pathlib import Path
 import json
@@ -11,20 +11,54 @@ except NameError:
     env = None
 
 
+FLASH_SIZE = 0x400000
+BOOTLOADER_OFFSET = 0x1000
+PARTITION_TABLE_OFFSET = 0x8000
 APP_OFFSET = 0x10000
 PRODUCTINFO_OFFSET = 0x3FF000
 
 
-def _make_update_package(target, source, env):
-    """Bundle only the app and ProductInfo partition images with their offsets."""
+def _read_image(path, label):
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError("Required {} image not found: {}".format(label, path))
+    return path.read_bytes()
+
+
+def _place_image(image, path, offset, label):
+    data = _read_image(path, label)
+    if offset + len(data) > len(image):
+        raise ValueError("{} image exceeds the 4 MiB flash layout".format(label))
+    image[offset:offset + len(data)] = data
+
+
+def _make_images(target, source, env):
+    """Create full-flash and app+ProductInfo raw images after firmware.bin builds."""
 
     build_dir = Path(env.subst("$BUILD_DIR"))
     app_image = Path(str(target[0]))
     productinfo_image = build_dir / "productinfo.bin"
-    for label, image_path in (("application", app_image), ("product information", productinfo_image)):
-        if not image_path.is_file():
-            raise FileNotFoundError("Required {} image not found: {}".format(label, image_path))
 
+    # Full device image: bootloader, partition table, app and ProductInfo.
+    full_image = bytearray(b"\xFF" * FLASH_SIZE)
+    _place_image(full_image, build_dir / "bootloader.bin", BOOTLOADER_OFFSET, "bootloader")
+    _place_image(full_image, build_dir / "partitions.bin", PARTITION_TABLE_OFFSET, "partition table")
+    _place_image(full_image, app_image, APP_OFFSET, "application")
+    _place_image(full_image, productinfo_image, PRODUCTINFO_OFFSET, "product information")
+    full_path = build_dir / "firmware_full.bin"
+    full_path.write_bytes(full_image)
+    print("Product info: generated full-flash image {}".format(full_path))
+
+    # App update image: same flash-address layout, but only app/ProductInfo bytes
+    # are populated. Holes are 0xFF; this must not be blindly flashed as a full chip image.
+    update_image = bytearray(b"\xFF" * (PRODUCTINFO_OFFSET + productinfo_image.stat().st_size))
+    _place_image(update_image, app_image, APP_OFFSET, "application")
+    _place_image(update_image, productinfo_image, PRODUCTINFO_OFFSET, "product information")
+    update_path = build_dir / "firmware_productinfo_update.bin"
+    update_path.write_bytes(update_image)
+    print("Product info: generated app+ProductInfo update image {}".format(update_path))
+
+    # Also provide a self-describing package with individual files/offsets for OTA or tooling.
     manifest = {
         "format": "esp32-offset-update-v1",
         "description": "Application and ProductInfo images only; bootloader and partition table are not included.",
@@ -33,13 +67,12 @@ def _make_update_package(target, source, env):
             {"file": "productinfo.bin", "flash_offset": PRODUCTINFO_OFFSET},
         ],
     }
-    output = build_dir / "firmware_productinfo_update.zip"
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as package:
+    package_path = build_dir / "firmware_productinfo_update.zip"
+    with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as package:
         package.write(app_image, arcname="firmware.bin")
         package.write(productinfo_image, arcname="productinfo.bin")
         package.writestr("manifest.json", json.dumps(manifest, indent=2) + "\n")
-
-    print("Product info: packaged application and ProductInfo only in {}".format(output))
+    print("Product info: generated update package {}".format(package_path))
 
 
 def _upload_productinfo(target, source, env):
@@ -74,7 +107,7 @@ def _upload_productinfo(target, source, env):
 
 
 if env is not None:
-    env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _make_update_package)
+    env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _make_images)
     env.AddCustomTarget(
         name="upload_productinfo",
         dependencies="$BUILD_DIR/productinfo.bin",
