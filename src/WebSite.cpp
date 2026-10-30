@@ -58,19 +58,102 @@ button{background:#2563eb;color:white;border:0;border-radius:8px;cursor:pointer}
 progress{width:100%;height:1.2rem}#status{min-height:1.5rem;white-space:pre-wrap}
 </style></head><body><main><h1>Firmware update</h1>
 <p>Select the <strong>firmware_productinfo_ota.bin</strong> file produced by the PlatformIO build.</p>
-<form id="form"><label>Update token (shown in the device serial log after boot)
-<input id="token" type="password" autocomplete="off" required></label>
-<label>Firmware image (.bin)<input id="firmware" type="file" accept=".bin,application/octet-stream" required></label>
+<form id="form"><label>Firmware image (.bin)<input id="firmware" type="file" accept=".bin,application/octet-stream" required></label>
 <button id="submit" type="submit">Upload and install</button></form>
 <progress id="progress" value="0" max="100" hidden></progress><p id="status" role="status"></p>
 <script>
 const form=document.getElementById('form'),button=document.getElementById('submit'),progress=document.getElementById('progress'),status=document.getElementById('status');
-form.addEventListener('submit',event=>{event.preventDefault();const file=document.getElementById('firmware').files[0],token=document.getElementById('token').value;
+form.addEventListener('submit',event=>{event.preventDefault();const file=document.getElementById('firmware').files[0];
 if(!file||!file.name.toLowerCase().endsWith('.bin')){status.textContent='Select a .bin application image.';return;}
 button.disabled=true;progress.hidden=false;progress.value=0;status.textContent='Uploading…';const data=new FormData();data.append('firmware',file,file.name);
-const xhr=new XMLHttpRequest();xhr.open('POST','/update?token='+encodeURIComponent(token));xhr.upload.onprogress=e=>{if(e.lengthComputable){progress.value=Math.round(e.loaded*100/e.total);status.textContent='Uploading '+progress.value+'%';}};
+const xhr=new XMLHttpRequest();xhr.open('POST','/update');xhr.upload.onprogress=e=>{if(e.lengthComputable){progress.value=Math.round(e.loaded*100/e.total);status.textContent='Uploading '+progress.value+'%';}};
 xhr.onload=()=>{status.textContent=xhr.responseText||('Update failed ('+xhr.status+').');if(xhr.status!==200)button.disabled=false;};xhr.onerror=()=>{status.textContent='Connection lost. The device may be restarting; wait and reconnect.';button.disabled=false;};xhr.send(data);});
 </script></main></body></html>)html";
+
+const char kOtaCustomJs[] = R"js((() => {
+    function addFirmwareUploader() {
+        const settings = document.getElementById('settings');
+        if (!settings) return;
+
+        const card = Array.from(settings.children).find(element => {
+            if (!element.classList.contains('card')) return false;
+            const heading = element.querySelector('h5');
+            return heading && heading.textContent.trim() === 'Firmware Update';
+        });
+        if (!card || document.getElementById('wordclock-ota-uploader')) return;
+
+        const panel = document.createElement('div');
+        panel.id = 'wordclock-ota-uploader';
+        panel.style.cssText = 'padding:12px 0;text-align:left';
+
+        const description = document.createElement('p');
+        description.textContent = 'Select firmware_productinfo_ota.bin from your PlatformIO build output.';
+        const picker = document.createElement('input');
+        picker.type = 'file';
+        picker.accept = '.bin,application/octet-stream';
+        picker.style.cssText = 'display:block;width:100%;margin:8px 0';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Upload and install';
+        button.style.cssText = 'width:100%;padding:10px;cursor:pointer';
+
+        const progress = document.createElement('progress');
+        progress.max = 100;
+        progress.value = 0;
+        progress.hidden = true;
+        progress.style.cssText = 'display:block;width:100%;margin:10px 0';
+
+        const status = document.createElement('p');
+        status.setAttribute('role', 'status');
+        status.textContent = 'Choose a .bin image to begin.';
+
+        button.addEventListener('click', () => {
+            const file = picker.files && picker.files[0];
+            if (!file || !file.name.toLowerCase().endsWith('.bin')) {
+                status.textContent = 'Select a .bin application image.';
+                return;
+            }
+
+            button.disabled = true;
+            picker.disabled = true;
+            progress.hidden = false;
+            progress.value = 0;
+            status.textContent = 'Uploading…';
+
+            const form = new FormData();
+            form.append('firmware', file, file.name);
+            const request = new XMLHttpRequest();
+            request.open('POST', '/update');
+            request.upload.onprogress = event => {
+                if (event.lengthComputable) {
+                    progress.value = Math.round(event.loaded * 100 / event.total);
+                    status.textContent = 'Uploading ' + progress.value + '%';
+                }
+            };
+            request.onload = () => {
+                status.textContent = request.responseText || ('Update failed (' + request.status + ').');
+                if (request.status !== 200) {
+                    button.disabled = false;
+                    picker.disabled = false;
+                }
+            };
+            request.onerror = () => {
+                status.textContent = 'Connection lost. The device may be restarting; wait and reconnect.';
+                button.disabled = false;
+                picker.disabled = false;
+            };
+            request.send(form);
+        });
+
+        panel.append(description, picker, button, progress, status);
+        card.appendChild(panel);
+    }
+
+    const observer = new MutationObserver(addFirmwareUploader);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    addFirmwareUploader();
+})();)js";
 
 enum class OtaUploadStatus : uint8_t
 {
@@ -88,17 +171,6 @@ const esp_partition_t* gpOtaPartition = nullptr;
 size_t gOtaBytesReceived = 0;
 OtaUploadStatus gOtaStatus = OtaUploadStatus::Idle;
 esp_err_t gOtaError = ESP_OK;
-String gOtaToken;
-bool gOtaTokenConsumed = false;
-
-bool IsOtaTokenValid(AsyncWebServerRequest* apRequest)
-{
-    if (gOtaTokenConsumed || gOtaToken.isEmpty() || !apRequest->hasParam("token"))
-    {
-        return false;
-    }
-    return apRequest->getParam("token")->value() == gOtaToken;
-}
 
 void AbortOtaUpload()
 {
@@ -125,16 +197,6 @@ void RegisterOtaRoutes()
         return;
     }
 
-    if (gOtaToken.isEmpty())
-    {
-        char wToken[17]{};
-        snprintf(wToken, sizeof(wToken), "%08lX%08lX",
-            static_cast<unsigned long>(esp_random()),
-            static_cast<unsigned long>(esp_random()));
-        gOtaToken = wToken;
-        Serial.printf("OTA update token (valid until successful upload/reboot): %s\n", wToken);
-    }
-
     wpServer->on("/update", HTTP_GET, [](AsyncWebServerRequest* apRequest)
     {
         apRequest->send(200, "text/html; charset=utf-8", kOtaPage);
@@ -145,9 +207,7 @@ void RegisterOtaRoutes()
         {
             if (gOtaRequest != apRequest)
             {
-                const bool wAuthorized = IsOtaTokenValid(apRequest);
-                apRequest->send(wAuthorized ? 400 : 401, "text/plain",
-                    wAuthorized ? "No firmware image was received." : "Invalid or expired OTA token.");
+                apRequest->send(400, "text/plain", "No firmware image was received or another upload is active.");
                 return;
             }
 
@@ -160,7 +220,6 @@ void RegisterOtaRoutes()
 
             if (wStatus == OtaUploadStatus::ReadyToBoot)
             {
-                gOtaTokenConsumed = true;
                 apRequest->send(200, "text/plain", "Firmware accepted. The device is restarting now.");
                 xTaskCreate(RestartAfterOta, "ota_restart", 2048, nullptr, 1, nullptr);
                 return;
@@ -174,8 +233,7 @@ void RegisterOtaRoutes()
         {
             if (aIndex == 0)
             {
-                if (!IsOtaTokenValid(apRequest) ||
-                    (gOtaRequest != nullptr && gOtaRequest != apRequest))
+                if (gOtaRequest != nullptr && gOtaRequest != apRequest)
                 {
                     return;
                 }
@@ -517,8 +575,6 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     const Control::ControlId_t wFirmwareUpdateGroup =
         AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
-    AddLabelControl("Open /update in your browser to select and install firmware_productinfo_ota.bin.",
-        wFirmwareUpdateGroup, CSS_STYLE_LABEL);
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -538,6 +594,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             UpdateWiFiSettingsControls();
 
             /* Start WEB UI */
+            ESPUI.setCustomJS(kOtaCustomJs);
             ESPUI.begin("Wordclock");
             RegisterOtaRoutes();
             break;
@@ -553,6 +610,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             UpdateWiFiSettingsControls();
 
             /* Start WEB UI */
+            ESPUI.setCustomJS(kOtaCustomJs);
             ESPUI.begin("Wordclock");
             RegisterOtaRoutes();
             break;
