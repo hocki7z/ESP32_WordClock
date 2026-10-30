@@ -8,6 +8,10 @@
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+
 #include "Logger.h"
 #include "Configuration.h"
 #include "DateTime.h"
@@ -51,24 +55,116 @@ namespace
 {
 constexpr char kOtaPage[] = R"html(<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Wordclock firmware update</title><style>
-body{font:16px system-ui,sans-serif;max-width:640px;margin:3rem auto;padding:0 1rem;background:#111827;color:#f3f4f6}
-main{background:#1f2937;padding:2rem;border-radius:16px}h1{margin-top:0}input,button{font:inherit;margin:.5rem 0;padding:.7rem;width:100%;box-sizing:border-box}
-button{background:#2563eb;color:white;border:0;border-radius:8px;cursor:pointer}button:disabled{opacity:.5}
-progress{width:100%;height:1.2rem}#status{min-height:1.5rem;white-space:pre-wrap}
-</style></head><body><main><h1>Firmware update</h1>
-<p>Select the <strong>firmware_productinfo_ota.bin</strong> file produced by the PlatformIO build.</p>
-<form id="form"><label>Firmware image (.bin)<input id="firmware" type="file" accept=".bin,application/octet-stream" required></label>
-<button id="submit" type="submit">Upload and install</button></form>
-<progress id="progress" value="0" max="100" hidden></progress><p id="status" role="status"></p>
-<script>
-const form=document.getElementById('form'),button=document.getElementById('submit'),progress=document.getElementById('progress'),status=document.getElementById('status');
-form.addEventListener('submit',event=>{event.preventDefault();const file=document.getElementById('firmware').files[0];
-if(!file||!file.name.toLowerCase().endsWith('.bin')){status.textContent='Select a .bin application image.';return;}
-button.disabled=true;progress.hidden=false;progress.value=0;status.textContent='Uploading…';const data=new FormData();data.append('firmware',file,file.name);
-const xhr=new XMLHttpRequest();xhr.open('POST','/update');xhr.upload.onprogress=e=>{if(e.lengthComputable){progress.value=Math.round(e.loaded*100/e.total);status.textContent='Uploading '+progress.value+'%';}};
-xhr.onload=()=>{status.textContent=xhr.responseText||('Update failed ('+xhr.status+').');if(xhr.status!==200)button.disabled=false;};xhr.onerror=()=>{status.textContent='Connection lost. The device may be restarting; wait and reconnect.';button.disabled=false;};xhr.send(data);});
-</script></main></body></html>)html";
+<meta http-equiv="refresh" content="0;url=/#settings"><title>Firmware update</title></head>
+<body><p>Opening the Settings firmware uploader… <a href="/#settings">Continue</a></p></body></html>)html";
+
+constexpr uint8_t kProductInfoMagic[8] = {'W', 'C', 'P', 'R', 'O', 'D', 'I', 'N'};
+constexpr uint8_t kProductInfoFormatVersion = 2;
+
+uint32_t CalculateProductInfoCrc32(const uint8_t* apData, size_t aLength)
+{
+    uint32_t wCrc = 0xFFFFFFFFU;
+    for (size_t wIndex = 0; wIndex < aLength; ++wIndex)
+    {
+        wCrc ^= apData[wIndex];
+        for (uint8_t wBit = 0; wBit < 8; ++wBit)
+        {
+            wCrc = (wCrc >> 1) ^ ((wCrc & 1U) ? 0xEDB88320U : 0U);
+        }
+    }
+    return ~wCrc;
+}
+
+bool IsInvalidSoftwareVersion(const ProductInfoNS::tSoftwareVersion& arVersion)
+{
+    return arVersion.mMajor == 0xFF && arVersion.mMinor == 0xFF && arVersion.mBuild == 0xFF;
+}
+
+int CompareSoftwareVersions(const ProductInfoNS::tSoftwareVersion& arLeft,
+    const ProductInfoNS::tSoftwareVersion& arRight)
+{
+    const uint8_t wLeft[] = {arLeft.mMajor, arLeft.mMinor, arLeft.mBuild};
+    const uint8_t wRight[] = {arRight.mMajor, arRight.mMinor, arRight.mBuild};
+    for (size_t wIndex = 0; wIndex < 3; ++wIndex)
+    {
+        if (wLeft[wIndex] != wRight[wIndex])
+        {
+            return (wLeft[wIndex] > wRight[wIndex]) ? 1 : -1;
+        }
+    }
+    return 0;
+}
+
+bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImageSize,
+    ProductInfoNS::Record& arRecord)
+{
+    constexpr size_t kReadChunkSize = 1024;
+    constexpr size_t kMagicSize = sizeof(kProductInfoMagic);
+    uint8_t wBuffer[kReadChunkSize]{};
+
+    for (size_t wOffset = 0; wOffset < aImageSize;)
+    {
+        const size_t wReadSize = (aImageSize - wOffset < sizeof(wBuffer))
+            ? aImageSize - wOffset
+            : sizeof(wBuffer);
+        if (esp_partition_read(apPartition, wOffset, wBuffer, wReadSize) != ESP_OK)
+        {
+            return false;
+        }
+
+        for (size_t wIndex = 0; wIndex + kMagicSize <= wReadSize; ++wIndex)
+        {
+            if (memcmp(wBuffer + wIndex, kProductInfoMagic, kMagicSize) != 0)
+            {
+                continue;
+            }
+
+            const size_t wRecordOffset = wOffset + wIndex;
+            if (wRecordOffset + sizeof(arRecord) > aImageSize ||
+                esp_partition_read(apPartition, wRecordOffset, &arRecord, sizeof(arRecord)) != ESP_OK)
+            {
+                continue;
+            }
+
+            const uint32_t wCalculatedCrc = CalculateProductInfoCrc32(
+                reinterpret_cast<const uint8_t*>(&arRecord), offsetof(ProductInfoNS::Record, crc32));
+            const uint32_t wStoredCrc = static_cast<uint32_t>(arRecord.crc32[0]) |
+                (static_cast<uint32_t>(arRecord.crc32[1]) << 8) |
+                (static_cast<uint32_t>(arRecord.crc32[2]) << 16) |
+                (static_cast<uint32_t>(arRecord.crc32[3]) << 24);
+            if (arRecord.formatVersion == kProductInfoFormatVersion && wCalculatedCrc == wStoredCrc)
+            {
+                return true;
+            }
+        }
+
+        if (wReadSize <= kMagicSize - 1)
+        {
+            break;
+        }
+        wOffset += (wReadSize == sizeof(wBuffer)) ? wReadSize - (kMagicSize - 1) : wReadSize;
+    }
+    return false;
+}
+
+bool IsNewVersionAllowed(const ProductInfoNS::tSoftwareVersion& arNewVersion,
+    ProductInfoNS::tSoftwareVersion& arCurrentVersion)
+{
+    if (IsInvalidSoftwareVersion(arNewVersion))
+    {
+        return false;
+    }
+
+    ProductInfoNS::Record wCurrentRecord{};
+    if (!ConfigNS::GetProductInfo(wCurrentRecord) || IsInvalidSoftwareVersion(wCurrentRecord.softwareVersion))
+    {
+        arCurrentVersion = {0xFF, 0xFF, 0xFF};
+        return true;
+    }
+
+    arCurrentVersion = wCurrentRecord.softwareVersion;
+    return CompareSoftwareVersions(arNewVersion, arCurrentVersion) > 0;
+}
 
 const char kOtaCustomJs[] = R"js((() => {
     function addFirmwareUploader() {
@@ -108,7 +204,44 @@ const char kOtaCustomJs[] = R"js((() => {
         status.setAttribute('role', 'status');
         status.textContent = 'Choose a .bin image to begin.';
 
-        button.addEventListener('click', () => {
+        const formatVersion = version => version.join('.');
+        const isInvalidVersion = version => version.every(part => part === 255);
+        const compareVersions = (left, right) => {
+            for (let index = 0; index < 3; index++) {
+                if (left[index] !== right[index]) return left[index] > right[index] ? 1 : -1;
+            }
+            return 0;
+        };
+        const crc32 = (bytes, length) => {
+            let crc = 0xFFFFFFFF;
+            for (let index = 0; index < length; index++) {
+                crc ^= bytes[index];
+                for (let bit = 0; bit < 8; bit++) {
+                    crc = (crc >>> 1) ^ ((crc & 1) ? 0xEDB88320 : 0);
+                }
+            }
+            return (crc ^ 0xFFFFFFFF) >>> 0;
+        };
+        const findFirmwareVersion = async file => {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            const magic = [0x57, 0x43, 0x50, 0x52, 0x4F, 0x44, 0x49, 0x4E];
+            for (let start = 0; start + 131 <= bytes.length; start++) {
+                let matches = true;
+                for (let index = 0; index < magic.length; index++) {
+                    if (bytes[start + index] !== magic[index]) { matches = false; break; }
+                }
+                if (!matches || bytes[start + 8] !== 2) continue;
+
+                const expected = (bytes[start + 127] | (bytes[start + 128] << 8) |
+                    (bytes[start + 129] << 16) | (bytes[start + 130] << 24)) >>> 0;
+                if (crc32(bytes.subarray(start, start + 127), 127) === expected) {
+                    return [bytes[start + 9], bytes[start + 10], bytes[start + 11]];
+                }
+            }
+            throw new Error('No valid embedded ProductInfo/version record found in this .bin file.');
+        };
+
+        button.addEventListener('click', async () => {
             const file = picker.files && picker.files[0];
             if (!file || !file.name.toLowerCase().endsWith('.bin')) {
                 status.textContent = 'Select a .bin application image.';
@@ -117,9 +250,38 @@ const char kOtaCustomJs[] = R"js((() => {
 
             button.disabled = true;
             picker.disabled = true;
+            status.textContent = 'Checking firmware versions…';
+
+            try {
+                const newVersion = await findFirmwareVersion(file);
+                if (isInvalidVersion(newVersion)) {
+                    throw new Error('The selected firmware version is invalid (255.255.255).');
+                }
+
+                const currentResponse = await fetch('/update/version', { cache: 'no-store' });
+                if (!currentResponse.ok) throw new Error('Could not read the installed firmware version.');
+                const currentInfo = await currentResponse.json();
+                const currentVersion = currentInfo.version;
+                const recovery = !currentInfo.valid || isInvalidVersion(currentVersion);
+                if (!recovery && compareVersions(newVersion, currentVersion) <= 0) {
+                    throw new Error('Update refused: new version ' + formatVersion(newVersion) +
+                        ' must be newer than installed version ' + formatVersion(currentVersion) + '.');
+                }
+
+                status.textContent = recovery
+                    ? 'Recovery update allowed: installed version is invalid. New version ' +
+                        formatVersion(newVersion) + '. Uploading…'
+                    : 'Version check passed: ' + formatVersion(currentVersion) +
+                        ' → ' + formatVersion(newVersion) + '. Uploading…';
+            } catch (error) {
+                status.textContent = error.message || 'Firmware version check failed.';
+                button.disabled = false;
+                picker.disabled = false;
+                return;
+            }
+
             progress.hidden = false;
             progress.value = 0;
-            status.textContent = 'Uploading…';
 
             const form = new FormData();
             form.append('firmware', file, file.name);
@@ -171,6 +333,7 @@ const esp_partition_t* gpOtaPartition = nullptr;
 size_t gOtaBytesReceived = 0;
 OtaUploadStatus gOtaStatus = OtaUploadStatus::Idle;
 esp_err_t gOtaError = ESP_OK;
+String gOtaFailureReason;
 
 void AbortOtaUpload()
 {
@@ -202,6 +365,26 @@ void RegisterOtaRoutes()
         apRequest->send(200, "text/html; charset=utf-8", kOtaPage);
     });
 
+    wpServer->on("/update/version", HTTP_GET, [](AsyncWebServerRequest* apRequest)
+    {
+        ProductInfoNS::Record wRecord{};
+        ProductInfoNS::tSoftwareVersion wVersion{0xFF, 0xFF, 0xFF};
+        bool wValid = false;
+        if (ConfigNS::GetProductInfo(wRecord) && !IsInvalidSoftwareVersion(wRecord.softwareVersion))
+        {
+            wVersion = wRecord.softwareVersion;
+            wValid = true;
+        }
+
+        char wJson[96]{};
+        snprintf(wJson, sizeof(wJson), "{\"valid\":%s,\"version\":[%u,%u,%u]}",
+            wValid ? "true" : "false",
+            static_cast<unsigned>(wVersion.mMajor),
+            static_cast<unsigned>(wVersion.mMinor),
+            static_cast<unsigned>(wVersion.mBuild));
+        apRequest->send(200, "application/json", wJson);
+    });
+
     wpServer->on("/update", HTTP_POST,
         [](AsyncWebServerRequest* apRequest)
         {
@@ -213,10 +396,12 @@ void RegisterOtaRoutes()
 
             const OtaUploadStatus wStatus = gOtaStatus;
             const esp_err_t wError = gOtaError;
+            const String wFailureReason = gOtaFailureReason;
             gOtaRequest = nullptr;
             gOtaStatus = OtaUploadStatus::Idle;
             gpOtaPartition = nullptr;
             gOtaBytesReceived = 0;
+            gOtaFailureReason = "";
 
             if (wStatus == OtaUploadStatus::ReadyToBoot)
             {
@@ -226,7 +411,9 @@ void RegisterOtaRoutes()
             }
 
             apRequest->send(400, "text/plain",
-                String("Firmware update failed (ESP error ") + String(static_cast<int>(wError)) + ").");
+                wFailureReason.isEmpty()
+                    ? String("Firmware update failed (ESP error ") + String(static_cast<int>(wError)) + ")."
+                    : wFailureReason);
         },
         [](AsyncWebServerRequest* apRequest, const String& arFilename, size_t aIndex,
             uint8_t* apData, size_t aLength, bool aFinal)
@@ -241,6 +428,7 @@ void RegisterOtaRoutes()
                 gOtaRequest = apRequest;
                 gOtaStatus = OtaUploadStatus::Failed;
                 gOtaError = ESP_FAIL;
+                gOtaFailureReason = "Invalid firmware upload.";
 
                 String wLowerFilename = arFilename;
                 wLowerFilename.toLowerCase();
@@ -298,6 +486,42 @@ void RegisterOtaRoutes()
                 gOtaHandleValid = false;
                 if (gOtaError != ESP_OK)
                 {
+                    gOtaFailureReason = "The uploaded file is not a valid ESP32 application image.";
+                    gOtaStatus = OtaUploadStatus::Failed;
+                    return;
+                }
+
+                ProductInfoNS::Record wNewRecord{};
+                if (!FindProductInfoInOtaImage(gpOtaPartition, gOtaBytesReceived, wNewRecord))
+                {
+                    gOtaError = ESP_ERR_INVALID_CRC;
+                    gOtaFailureReason = "No valid embedded ProductInfo record was found in the firmware image.";
+                    gOtaStatus = OtaUploadStatus::Failed;
+                    return;
+                }
+
+                ProductInfoNS::tSoftwareVersion wCurrentVersion{};
+                if (IsInvalidSoftwareVersion(wNewRecord.softwareVersion))
+                {
+                    gOtaError = ESP_FAIL;
+                    gOtaFailureReason = "Update refused: the selected firmware version is invalid (255.255.255).";
+                    gOtaStatus = OtaUploadStatus::Failed;
+                    return;
+                }
+
+                if (!IsNewVersionAllowed(wNewRecord.softwareVersion, wCurrentVersion))
+                {
+                    char wMessage[128]{};
+                    snprintf(wMessage, sizeof(wMessage),
+                        "Update refused: firmware version %u.%u.%u is not newer than installed version %u.%u.%u.",
+                        static_cast<unsigned>(wNewRecord.softwareVersion.mMajor),
+                        static_cast<unsigned>(wNewRecord.softwareVersion.mMinor),
+                        static_cast<unsigned>(wNewRecord.softwareVersion.mBuild),
+                        static_cast<unsigned>(wCurrentVersion.mMajor),
+                        static_cast<unsigned>(wCurrentVersion.mMinor),
+                        static_cast<unsigned>(wCurrentVersion.mBuild));
+                    gOtaFailureReason = wMessage;
+                    gOtaError = ESP_FAIL;
                     gOtaStatus = OtaUploadStatus::Failed;
                     return;
                 }
