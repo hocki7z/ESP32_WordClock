@@ -9,10 +9,10 @@
 namespace
 {
 constexpr uint8_t kMagic[8] = {'W', 'C', 'P', 'R', 'O', 'D', 'I', 'N'};
-constexpr uint8_t kRecordFormatVersion = 1;
+constexpr uint8_t kRecordFormatVersion = 2;
 constexpr uint8_t kProductInfoPartitionSubtype = 0x40;
-static_assert(sizeof(ProductInfo::Record) == 44, "Unexpected product info record layout");
-static_assert(offsetof(ProductInfo::Record, crc32) == 40, "Unexpected product info CRC offset");
+static_assert(sizeof(ProductInfo::Record) == 131, "Unexpected product info record layout");
+static_assert(offsetof(ProductInfo::Record, crc32) == 127, "Unexpected product info CRC offset");
 
 uint32_t CalculateCrc32(const uint8_t* apData, const size_t aLength)
 {

@@ -1,4 +1,4 @@
-"""Generate src/AutoGitInfo.h immediately before a PlatformIO build."""
+"""Generate AutoGitInfo.h immediately before a PlatformIO build."""
 
 from datetime import datetime, timezone
 import argparse
@@ -23,7 +23,7 @@ _UNKNOWN_VERSION_STR    = "255.255.255"
 _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 
 # Constants for header generation.
-_GENERATED_HEADER       = "AutoGitInfo.h"     # Path("src") / "AutoGitInfo.h"
+_GENERATED_HEADER       = "AutoGitInfo.h"     # Generated in the project root.
 _DEFINE_VALUE_COLUMN    = 49    # Column at which to align the value of each ``#define`` in the generated header.
 _PRODUCTINFO_PARTITION_SIZE = 0x1000
 
@@ -143,7 +143,7 @@ def _working_tree_modified(project_dir):
         "--untracked-files=no",     # intentionally excludes new/untracked files.
         "--",
         ".",
-        ":(exclude)src/AutoGitInfo.h",
+        ":(exclude)AutoGitInfo.h",
     )
 
     return bool(status)
@@ -152,29 +152,34 @@ def _working_tree_modified(project_dir):
 def _generate_flash_record(project_dir):
     """Generate the fixed-layout metadata partition image during the build."""
 
+    build_time_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    build_time_bytes = build_time_utc.encode("ascii")
+
     try:
         _, version = _closest_tag(project_dir)
-        commit_hash = bytes.fromhex(_git(project_dir, "rev-parse", "HEAD"))
-        commit_count = int(_git(project_dir, "rev-list", "--count", "HEAD"))
-        modified = _working_tree_modified(project_dir)
+        commit_hash = _git(project_dir, "rev-parse", "HEAD")
+        commit_hash_short = commit_hash[:8].encode("ascii")
+        branch_short = (_git(project_dir, "branch", "--show-current") or "HEAD")[:20].encode("utf-8")
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print("Git info: unable to build flash record: {}; using fallback metadata".format(error))
         version = _UNKNOWN_VERSION
-        commit_hash = bytes(20)
-        commit_count = 0
-        modified = False
+        commit_hash_short = b""
+        branch_short = b""
 
+    build_time_bytes = build_time_bytes[:24].ljust(25, b"\0")
+    commit_hash_short = commit_hash_short[:8].ljust(9, b"\0")
+    branch_short = branch_short[:80].ljust(81, b"\0")
     record = (
         b"WCPRODIN"                         # 0..7: record magic
-        + bytes((1,))                       # 8: record format version
+        + bytes((2,))                       # 8: record format version
         + bytes(version)                    # 9..11: software version
-        + commit_hash                       # 12..31: full SHA-1 commit hash
-        + commit_count.to_bytes(4, "little")# 32..35: reachable commit count
-        + bytes((int(modified), 0, 0, 0))   # 36..39: dirty flag and reserved bytes
+        + build_time_bytes                  # 12..36: NUL-terminated UTC ISO-8601 date/time
+        + commit_hash_short                 # 37..45: NUL-terminated short commit hash
+        + branch_short                      # 46..126: UTF-8 branch, max 20 chars, NUL-terminated
     )
-    record += zlib.crc32(record).to_bytes(4, "little")  # 40..43: CRC-32
-    if len(record) != 44:
-        raise ValueError("Git metadata record must be exactly 44 bytes")
+    record += zlib.crc32(record).to_bytes(4, "little")  # 127..130: CRC-32
+    if len(record) != 131:
+        raise ValueError("Product info record must be exactly 131 bytes")
 
     image = bytearray(b"\xFF" * _PRODUCTINFO_PARTITION_SIZE)
     image[:len(record)] = record
@@ -202,7 +207,6 @@ def _make_header(project_dir):
     commit_count = int(_git(project_dir, "rev-list", "--count", "HEAD"))
     branch = _git(project_dir, "branch", "--show-current") or "HEAD"
     full_hash = _git(project_dir, "rev-parse", "HEAD")
-    commit_hash_bytes = bytes.fromhex(full_hash)
 
     # Keep this mapping and ``comments`` in sync; insertion order controls header layout.
     values = {
@@ -214,9 +218,9 @@ def _make_header(project_dir):
         "AUTO_GIT_INFO_COMMITS_NUMBER": str(commit_count),
         "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "1" if modified else "0",
         "AUTO_GIT_INFO_GIT_BRANCH": _c_string(branch),
-        "AUTO_GIT_INFO_COMMIT_FULL_HASH": _c_string(full_hash),
-        "AUTO_GIT_INFO_COMMIT_SHORT_HASH": _c_string(full_hash[:8]),
-        "AUTO_GIT_INFO_COMMIT_HASH_BYTES": ",".join("0x{:02X}".format(part) for part in commit_hash_bytes),
+        "AUTO_GIT_INFO_GIT_BRANCH_SHORT": _c_string(branch[:20]),
+        "AUTO_GIT_INFO_COMMIT_HASH": _c_string(full_hash),
+        "AUTO_GIT_INFO_COMMIT_HASH_SHORT": _c_string(full_hash[:8]),
         "AUTO_GIT_INFO_COMMIT_TAG": _c_string(tag),
         "AUTO_GIT_INFO_SW_VERSION": ",".join("0x{:02X}".format(part) for part in software_version),
         "AUTO_GIT_INFO_SW_VERSION_MAJOR": "0x{:02X}".format(software_version[0]),
@@ -231,9 +235,9 @@ def _make_header(project_dir):
         "AUTO_GIT_INFO_COMMITS_NUMBER": "Number of commits reachable from HEAD",
         "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "1 if the working tree has changes, otherwise 0",
         "AUTO_GIT_INFO_GIT_BRANCH": "Current Git branch",
-        "AUTO_GIT_INFO_COMMIT_FULL_HASH": "Full Git hash",
-        "AUTO_GIT_INFO_COMMIT_SHORT_HASH": "Short Git hash",
-        "AUTO_GIT_INFO_COMMIT_HASH_BYTES": "Full Git hash as 20 binary bytes",
+        "AUTO_GIT_INFO_GIT_BRANCH_SHORT": "Current Git branch, limited to 20 characters",
+        "AUTO_GIT_INFO_COMMIT_HASH": "Full commit hash",
+        "AUTO_GIT_INFO_COMMIT_HASH_SHORT": "Short commit hash, limited to 8 hexadecimal characters",
         "AUTO_GIT_INFO_COMMIT_TAG": "Nearest reachable XX.YY.ZZ tag, or 255.255.255 if no valid tag",
         "AUTO_GIT_INFO_SW_VERSION": "Software version",
         "AUTO_GIT_INFO_SW_VERSION_MAJOR": "Software version major byte",
@@ -277,7 +281,7 @@ def _generate_git_info(project_dir):
 
         # Keep the header usable by firmware builds even outside a Git checkout.
         fallback = {
-            "AUTO_GIT_INFO_GIT_VERSION": '"n/a"',
+            "AUTO_GIT_INFO_GIT_VERSION": '""',
             "AUTO_GIT_INFO_GEN_DATE": _c_string(
                 "{}.{}.{}, {}".format(now_local.day, now_local.month, now_local.year, now_local.strftime("%H:%M:%S"))
             ),
@@ -286,10 +290,10 @@ def _generate_git_info(project_dir):
             ),
             "AUTO_GIT_INFO_COMMITS_NUMBER": "0",
             "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "0",
-            "AUTO_GIT_INFO_GIT_BRANCH": '"n/a"',
-            "AUTO_GIT_INFO_COMMIT_FULL_HASH": '"n/a"',
-            "AUTO_GIT_INFO_COMMIT_SHORT_HASH": '"n/a"',
-            "AUTO_GIT_INFO_COMMIT_HASH_BYTES": ",".join("0x00" for _ in range(20)),
+            "AUTO_GIT_INFO_GIT_BRANCH": '""',
+            "AUTO_GIT_INFO_GIT_BRANCH_SHORT": '""',
+            "AUTO_GIT_INFO_COMMIT_HASH": '""',
+            "AUTO_GIT_INFO_COMMIT_HASH_SHORT": '""',
             "AUTO_GIT_INFO_COMMIT_TAG": '"255.255.255"',
             "AUTO_GIT_INFO_SW_VERSION": "0xFF,0xFF,0xFF",
             "AUTO_GIT_INFO_SW_VERSION_MAJOR": "0xFF",
@@ -325,7 +329,7 @@ def main(argv=None, project_dir=None):
 
     if project_dir is None:
         # Standalone invocation: default to the project containing this script.
-        parser = argparse.ArgumentParser(description="Generate src/AutoGitInfo.h from Git metadata.")
+        parser = argparse.ArgumentParser(description="Generate AutoGitInfo.h from Git metadata.")
         parser.add_argument(
             "--project-dir",
             default=Path(__file__).resolve().parents[1],
