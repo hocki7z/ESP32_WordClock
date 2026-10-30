@@ -5,6 +5,7 @@ import json
 import shutil
 import subprocess
 import zipfile
+import zlib
 
 try:
     Import("env")  # type: ignore[name-defined]  # Provided by PlatformIO/SCons.
@@ -33,12 +34,31 @@ def _place_image(image, path, offset, label):
     image[offset:offset + len(data)] = data
 
 
+def _productinfo_version(path):
+    """Return the validated three-byte software version from ProductInfo image."""
+
+    data = _read_image(path, "product information")
+    record_size = 131
+    if len(data) < record_size or data[:8] != b"WCPRODIN" or data[8] != 2:
+        raise ValueError("ProductInfo image has an unsupported or invalid record")
+
+    record = data[:record_size]
+    stored_crc = int.from_bytes(record[127:131], "little")
+    if zlib.crc32(record[:127]) != stored_crc:
+        raise ValueError("ProductInfo image CRC validation failed")
+
+    return tuple(record[9:12])
+
+
 def _make_images(target, source, env):
     """Create full-flash and app+ProductInfo raw images after firmware.bin builds."""
 
     build_dir = Path(env.subst("$BUILD_DIR"))
+    project_name = Path(env.subst("$PROJECT_DIR")).name
     app_image = Path(str(target[0]))
     productinfo_image = build_dir / "productinfo.bin"
+    version = _productinfo_version(productinfo_image)
+    version_text = "_".join(str(component) for component in version)
 
     # Full device image: bootloader, partition table, app and ProductInfo.
     full_image = bytearray(b"\xFF" * FLASH_SIZE)
@@ -49,6 +69,12 @@ def _make_images(target, source, env):
     full_path = build_dir / "firmware_full.bin"
     full_path.write_bytes(full_image)
     print("Product info: generated full-flash image {}".format(full_path))
+
+    versioned_full_path = build_dir / "{}_{}.bin".format(project_name, version_text)
+    for stale_path in build_dir.glob("{}_*.bin".format(project_name)):
+        stale_path.unlink()
+    shutil.copyfile(full_path, versioned_full_path)
+    print("Product info: generated versioned full-flash image {}".format(versioned_full_path))
 
     # App update image: same flash-address layout, but only app/ProductInfo bytes
     # are populated. Holes are 0xFF; this must not be blindly flashed as a full chip image.
@@ -61,7 +87,10 @@ def _make_images(target, source, env):
 
     # The application now embeds ProductInfo and synchronizes its partition on boot,
     # making this ordinary app image a single-file OTA payload.
-    ota_path = build_dir / "firmware_productinfo_ota.bin"
+    ota_path = build_dir / "{}_ota_{}.bin".format(project_name, version_text)
+    for stale_path in build_dir.glob("{}_ota_*.bin".format(project_name)):
+        stale_path.unlink()
+    (build_dir / "firmware_productinfo_ota.bin").unlink(missing_ok=True)
     shutil.copyfile(app_image, ota_path)
     print("Product info: generated single-file OTA image {}".format(ota_path))
 

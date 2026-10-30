@@ -183,7 +183,7 @@ const char kOtaCustomJs[] = R"js((() => {
         panel.style.cssText = 'padding:12px 0;text-align:left';
 
         const description = document.createElement('p');
-        description.textContent = 'Select firmware_productinfo_ota.bin from your PlatformIO build output.';
+        description.textContent = 'Select the versioned <project>_ota_<major>_<minor>_<build>.bin file from your PlatformIO build output.';
         const picker = document.createElement('input');
         picker.type = 'file';
         picker.accept = '.bin,application/octet-stream';
