@@ -1,4 +1,4 @@
-"""Create a full-size flash image with the generated Git metadata partition."""
+"""Create a full-size flash image with the generated product information partition."""
 
 from pathlib import Path
 import subprocess
@@ -13,7 +13,7 @@ FLASH_SIZE = 0x400000
 BOOTLOADER_OFFSET = 0x1000
 PARTITION_TABLE_OFFSET = 0x8000
 APP_OFFSET = 0x10000
-GITINFO_OFFSET = 0x3FF000
+PRODUCTINFO_OFFSET = 0x3FF000
 
 
 def _copy_image(image, source, offset, label):
@@ -35,18 +35,18 @@ def _make_full_flash_image(target, source, build_env):
     _copy_image(image, build_dir / "bootloader.bin", BOOTLOADER_OFFSET, "bootloader")
     _copy_image(image, build_dir / "partitions.bin", PARTITION_TABLE_OFFSET, "partition table")
     _copy_image(image, app_image, APP_OFFSET, "application")
-    _copy_image(image, build_dir / "gitinfo.bin", GITINFO_OFFSET, "Git metadata")
+    _copy_image(image, build_dir / "productinfo.bin", PRODUCTINFO_OFFSET, "product information")
 
     output = build_dir / "firmware_full.bin"
     output.write_bytes(image)
-    print("Git info: assembled {} with metadata at flash address 0x{:06X}".format(
-        output, GITINFO_OFFSET))
+    print("Product info: assembled {} with record at flash address 0x{:06X}".format(
+        output, PRODUCTINFO_OFFSET))
 
 
-def _upload_gitinfo(source, target, build_env):
-    """Program only the metadata sector, leaving NVS and filesystem untouched."""
+def _upload_productinfo(source, target, build_env):
+    """Program only the product information sector, preserving NVS/filesystem data."""
 
-    metadata_image = Path(str(source[0]))
+    productinfo_image = Path(str(source[0]))
     command = [
         build_env.subst("$PYTHONEXE"),
         build_env.subst("$UPLOADER"),
@@ -68,19 +68,19 @@ def _upload_gitinfo(source, target, build_env):
         "--flash_mode", flash_mode if flash_mode != "$FLASH_MODE" else "qio",
         "--flash_freq", flash_freq if flash_freq != "$FLASH_FREQ" else "40m",
         "--flash_size", flash_size if flash_size != "$FLASH_SIZE" else "4MB",
-        hex(GITINFO_OFFSET), str(metadata_image),
+        hex(PRODUCTINFO_OFFSET), str(productinfo_image),
     ))
-    print("Git info: writing only flash sector at 0x{:06X}".format(GITINFO_OFFSET))
+    print("Product info: writing only flash sector at 0x{:06X}".format(PRODUCTINFO_OFFSET))
     return subprocess.call(command)
 
 
 if env is not None:
     env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _make_full_flash_image)
     env.AddCustomTarget(
-        name="upload_gitinfo",
-        dependencies="$BUILD_DIR/gitinfo.bin",
-        actions=_upload_gitinfo,
-        title="Upload Git metadata",
-        description="Write only the fixed Git metadata flash sector",
+        name="upload_productinfo",
+        dependencies="$BUILD_DIR/productinfo.bin",
+        actions=_upload_productinfo,
+        title="Upload product information",
+        description="Write only the fixed product information flash sector",
         always_build=True,
     )

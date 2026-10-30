@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace GitBuildInfo
+namespace ProductInfo
 {
     /** Fixed-format record stored at flash offset 0x3FF000. */
     struct __attribute__((packed)) Record
@@ -18,9 +18,9 @@ namespace GitBuildInfo
     };
 
     /**
-     * @brief Read and validate Git/version metadata from the read-only gitinfo partition.
+     * @brief Read and validate product/build information from the read-only partition.
      *
-     * The partition starts at flash address 0x3FF000 in gitinfo_4mb.csv.
+     * The partition starts at flash address 0x3FF000 in productinfo_4mb.csv.
      *
      * @param[out] arRecord Receives the record after successful validation.
      * @return true if a valid record was read.

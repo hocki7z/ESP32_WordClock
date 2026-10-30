@@ -1,4 +1,4 @@
-#include "GitBuildInfo.h"
+#include "ProductInfo.h"
 
 #include <esp_partition.h>
 
@@ -8,11 +8,11 @@
 
 namespace
 {
-constexpr uint8_t kMagic[8] = {'W', 'C', 'G', 'I', 'T', 'I', 'N', 'F'};
+constexpr uint8_t kMagic[8] = {'W', 'C', 'P', 'R', 'O', 'D', 'I', 'N'};
 constexpr uint8_t kRecordFormatVersion = 1;
-constexpr uint8_t kGitInfoPartitionSubtype = 0x40;
-static_assert(sizeof(GitBuildInfo::Record) == 44, "Unexpected Git info record layout");
-static_assert(offsetof(GitBuildInfo::Record, crc32) == 40, "Unexpected Git info CRC offset");
+constexpr uint8_t kProductInfoPartitionSubtype = 0x40;
+static_assert(sizeof(ProductInfo::Record) == 44, "Unexpected product info record layout");
+static_assert(offsetof(ProductInfo::Record, crc32) == 40, "Unexpected product info CRC offset");
 
 uint32_t CalculateCrc32(const uint8_t* apData, const size_t aLength)
 {
@@ -27,17 +27,16 @@ uint32_t CalculateCrc32(const uint8_t* apData, const size_t aLength)
     }
     return ~wCrc;
 }
-
 }
 
-namespace GitBuildInfo
+namespace ProductInfo
 {
 bool ReadFlashPartition(Record& arRecord)
 {
     const esp_partition_t* const wpPartition = esp_partition_find_first(
         ESP_PARTITION_TYPE_DATA,
-        static_cast<esp_partition_subtype_t>(kGitInfoPartitionSubtype),
-        "gitinfo");
+        static_cast<esp_partition_subtype_t>(kProductInfoPartitionSubtype),
+        "productinfo");
     if (wpPartition == nullptr || wpPartition->size < sizeof(Record))
     {
         return false;

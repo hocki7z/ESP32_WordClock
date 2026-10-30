@@ -25,7 +25,7 @@ _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 # Constants for header generation.
 _GENERATED_HEADER       = "AutoGitInfo.h"     # Path("src") / "AutoGitInfo.h"
 _DEFINE_VALUE_COLUMN    = 49    # Column at which to align the value of each ``#define`` in the generated header.
-_GITINFO_PARTITION_SIZE = 0x1000
+_PRODUCTINFO_PARTITION_SIZE = 0x1000
 
 
 def _format_define(name, value):
@@ -165,7 +165,7 @@ def _generate_flash_record(project_dir):
         modified = False
 
     record = (
-        b"WCGITINF"                         # 0..7: record magic
+        b"WCPRODIN"                         # 0..7: record magic
         + bytes((1,))                       # 8: record format version
         + bytes(version)                    # 9..11: software version
         + commit_hash                       # 12..31: full SHA-1 commit hash
@@ -176,13 +176,13 @@ def _generate_flash_record(project_dir):
     if len(record) != 44:
         raise ValueError("Git metadata record must be exactly 44 bytes")
 
-    image = bytearray(b"\xFF" * _GITINFO_PARTITION_SIZE)
+    image = bytearray(b"\xFF" * _PRODUCTINFO_PARTITION_SIZE)
     image[:len(record)] = record
     build_dir = Path(_PLATFORMIO_ENV.subst("$BUILD_DIR"))
-    image_path = build_dir / "gitinfo.bin"
+    image_path = build_dir / "productinfo.bin"
     image_path.parent.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(image)
-    print("Git info: generated {} (record at partition offset 0x0)".format(image_path))
+    print("Product info: generated {} (record at partition offset 0x0)".format(image_path))
 
 
 def _make_header(project_dir):
