@@ -27,8 +27,8 @@ def _copy_image(image, source, offset, label):
     image[offset:offset + len(data)] = data
 
 
-def _make_full_flash_image(target, source, build_env):
-    build_dir = Path(build_env.subst("$BUILD_DIR"))
+def _make_full_flash_image(target, source, env):
+    build_dir = Path(env.subst("$BUILD_DIR"))
     app_image = Path(str(target[0]))
     image = bytearray(b"\xFF" * FLASH_SIZE)
 
@@ -43,26 +43,26 @@ def _make_full_flash_image(target, source, build_env):
         output, PRODUCTINFO_OFFSET))
 
 
-def _upload_productinfo(source, target, build_env):
+def _upload_productinfo(target, source, env):
     """Program only the product information sector, preserving NVS/filesystem data."""
 
     productinfo_image = Path(str(source[0]))
     command = [
-        build_env.subst("$PYTHONEXE"),
-        build_env.subst("$UPLOADER"),
+        env.subst("$PYTHONEXE"),
+        env.subst("$UPLOADER"),
         "--chip", "esp32",
     ]
-    port = build_env.subst("$UPLOAD_PORT")
+    port = env.subst("$UPLOAD_PORT")
     if port and port != "$UPLOAD_PORT":
         command.extend(("--port", port))
 
-    baud = build_env.subst("$UPLOAD_SPEED")
+    baud = env.subst("$UPLOAD_SPEED")
     if baud and baud != "$UPLOAD_SPEED":
         command.extend(("--baud", baud))
 
-    flash_mode = build_env.subst("$FLASH_MODE")
-    flash_freq = build_env.subst("$FLASH_FREQ")
-    flash_size = build_env.subst("$FLASH_SIZE")
+    flash_mode = env.subst("$FLASH_MODE")
+    flash_freq = env.subst("$FLASH_FREQ")
+    flash_size = env.subst("$FLASH_SIZE")
     command.extend((
         "--before", "default_reset", "--after", "hard_reset", "write_flash", "-z",
         "--flash_mode", flash_mode if flash_mode != "$FLASH_MODE" else "qio",
