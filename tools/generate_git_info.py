@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import argparse
 import re
 import subprocess
+import zlib
 from pathlib import Path
 
 # PlatformIO pre-script support: import the build environment if available.
@@ -24,6 +25,7 @@ _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 # Constants for header generation.
 _GENERATED_HEADER       = "AutoGitInfo.h"     # Path("src") / "AutoGitInfo.h"
 _DEFINE_VALUE_COLUMN    = 49    # Column at which to align the value of each ``#define`` in the generated header.
+_GITINFO_PARTITION_SIZE = 0x1000
 
 
 def _format_define(name, value):
@@ -147,6 +149,42 @@ def _working_tree_modified(project_dir):
     return bool(status)
 
 
+def _generate_flash_record(project_dir):
+    """Generate the fixed-layout metadata partition image during the build."""
+
+    try:
+        _, version = _closest_tag(project_dir)
+        commit_hash = bytes.fromhex(_git(project_dir, "rev-parse", "HEAD"))
+        commit_count = int(_git(project_dir, "rev-list", "--count", "HEAD"))
+        modified = _working_tree_modified(project_dir)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        print("Git info: unable to build flash record: {}; using fallback metadata".format(error))
+        version = _UNKNOWN_VERSION
+        commit_hash = bytes(20)
+        commit_count = 0
+        modified = False
+
+    record = (
+        b"WCGITINF"                         # 0..7: record magic
+        + bytes((1,))                       # 8: record format version
+        + bytes(version)                    # 9..11: software version
+        + commit_hash                       # 12..31: full SHA-1 commit hash
+        + commit_count.to_bytes(4, "little")# 32..35: reachable commit count
+        + bytes((int(modified), 0, 0, 0))   # 36..39: dirty flag and reserved bytes
+    )
+    record += zlib.crc32(record).to_bytes(4, "little")  # 40..43: CRC-32
+    if len(record) != 44:
+        raise ValueError("Git metadata record must be exactly 44 bytes")
+
+    image = bytearray(b"\xFF" * _GITINFO_PARTITION_SIZE)
+    image[:len(record)] = record
+    build_dir = Path(_PLATFORMIO_ENV.subst("$BUILD_DIR"))
+    image_path = build_dir / "gitinfo.bin"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(image)
+    print("Git info: generated {} (record at partition offset 0x0)".format(image_path))
+
+
 def _make_header(project_dir):
     """Collect Git/build metadata and render it as a C header string."""
 
@@ -268,6 +306,9 @@ def _generate_git_info(project_dir):
     header_path.parent.mkdir(parents=True, exist_ok=True)
     header_path.write_text(content, encoding="utf-8", newline="\n")
     print("Git info: generated {}".format(header_path))
+
+    if _PLATFORMIO_ENV is not None:
+        _generate_flash_record(project_dir)
 
     pass    # end of _generate_git_info
 
