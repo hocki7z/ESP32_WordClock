@@ -18,7 +18,7 @@ except NameError:
 # Regex pattern for tags that look like semantic version numbers, e.g. 1.2.3.
 _VERSION_PATTERN        = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
 
-# Sentinel version bytes for when no valid tag is reachable from HEAD.
+# Sentinel version bytes for when no suitable semantic-version tag exists.
 _UNKNOWN_VERSION_STR    = "255.255.255"
 _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 
@@ -100,37 +100,22 @@ def _version_tags(project_dir):
     return candidates
 
 
-def _closest_tag(project_dir):
-    """Return the nearest valid version tag that is an ancestor of ``HEAD``.
+def _highest_version_tag(project_dir):
+    """Return the tag with the highest suitable semantic version.
 
-    The commit distance selects the nearest tag. If none is reachable, use the
+    All Git tags are considered, regardless of whether they are ancestors of
+    ``HEAD``. Components above one byte and tags not formatted as
+    ``MAJOR.MINOR.PATCH`` are excluded by :func:`_version_tags`. When multiple
+    tags have the same version, the lexicographically greatest tag name wins
+    to keep selection deterministic. If no suitable tag exists, use the
     documented sentinel tag and all-0xFF version bytes.
     """
 
-    nearest = None
-
-    # Iterate over all valid version tags and find the nearest ancestor of HEAD.
-    for tag, version in _version_tags(project_dir):
-        # Ignore tags on other lines of development that are not ancestors of HEAD.
-        ancestor = subprocess.run(
-            ["git", "-C", str(project_dir), "merge-base", "--is-ancestor", tag, "HEAD"],
-            capture_output=True,
-        )
-        if ancestor.returncode != 0:
-            continue
-
-        distance = int(_git(project_dir, "rev-list", "--count", "{}..HEAD".format(tag)))
-        candidate = (distance, tag, version)
-        if nearest is None or candidate < nearest:
-            nearest = candidate
-
-    # If no valid tag is reachable from HEAD, return the sentinel tag and version.
-    if nearest is None:
+    candidates = _version_tags(project_dir)
+    if not candidates:
         return _UNKNOWN_VERSION_STR, _UNKNOWN_VERSION
 
-    _, tag, version = nearest
-
-    return tag, version
+    return max(candidates, key=lambda candidate: (candidate[1], candidate[0]))
 
 
 def _working_tree_modified(project_dir):
@@ -154,7 +139,7 @@ def _collect_build_info(project_dir):
 
     now_local = datetime.now().astimezone()
     now_utc = now_local.astimezone(timezone.utc)
-    tag, software_version = _closest_tag(project_dir)
+    tag, software_version = _highest_version_tag(project_dir)
     full_hash = _git(project_dir, "rev-parse", "HEAD")
 
     return {
