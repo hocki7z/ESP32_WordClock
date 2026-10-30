@@ -2,6 +2,7 @@
 
 #include "Logger.h"
 #include "Settings.hpp"
+#include "GitBuildInfo.h"
 
 #include "Configuration.h"
 
@@ -110,6 +111,9 @@ void setup()
     /* Start the serial communication */
     Serial.begin(115200);
     Serial.setDebugOutput(true);
+
+    /* Synchronize build metadata into the dedicated flash partition. */
+    GitBuildInfo::UpdateFlashPartition();
 
     /* LOG */
     LOG(LOG_INFO, "Welcome to WordClock");

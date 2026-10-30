@@ -164,6 +164,7 @@ def _make_header(project_dir):
     commit_count = int(_git(project_dir, "rev-list", "--count", "HEAD"))
     branch = _git(project_dir, "branch", "--show-current") or "HEAD"
     full_hash = _git(project_dir, "rev-parse", "HEAD")
+    commit_hash_bytes = bytes.fromhex(full_hash)
 
     # Keep this mapping and ``comments`` in sync; insertion order controls header layout.
     values = {
@@ -177,6 +178,7 @@ def _make_header(project_dir):
         "AUTO_GIT_INFO_GIT_BRANCH": _c_string(branch),
         "AUTO_GIT_INFO_COMMIT_FULL_HASH": _c_string(full_hash),
         "AUTO_GIT_INFO_COMMIT_SHORT_HASH": _c_string(full_hash[:8]),
+        "AUTO_GIT_INFO_COMMIT_HASH_BYTES": ",".join("0x{:02X}".format(part) for part in commit_hash_bytes),
         "AUTO_GIT_INFO_COMMIT_TAG": _c_string(tag),
         "AUTO_GIT_INFO_SW_VERSION": ",".join("0x{:02X}".format(part) for part in software_version),
         "AUTO_GIT_INFO_SW_VERSION_MAJOR": "0x{:02X}".format(software_version[0]),
@@ -193,6 +195,7 @@ def _make_header(project_dir):
         "AUTO_GIT_INFO_GIT_BRANCH": "Current Git branch",
         "AUTO_GIT_INFO_COMMIT_FULL_HASH": "Full Git hash",
         "AUTO_GIT_INFO_COMMIT_SHORT_HASH": "Short Git hash",
+        "AUTO_GIT_INFO_COMMIT_HASH_BYTES": "Full Git hash as 20 binary bytes",
         "AUTO_GIT_INFO_COMMIT_TAG": "Nearest reachable XX.YY.ZZ tag, or 255.255.255 if no valid tag",
         "AUTO_GIT_INFO_SW_VERSION": "Software version",
         "AUTO_GIT_INFO_SW_VERSION_MAJOR": "Software version major byte",
@@ -248,6 +251,7 @@ def _generate_git_info(project_dir):
             "AUTO_GIT_INFO_GIT_BRANCH": '"n/a"',
             "AUTO_GIT_INFO_COMMIT_FULL_HASH": '"n/a"',
             "AUTO_GIT_INFO_COMMIT_SHORT_HASH": '"n/a"',
+            "AUTO_GIT_INFO_COMMIT_HASH_BYTES": ",".join("0x00" for _ in range(20)),
             "AUTO_GIT_INFO_COMMIT_TAG": '"255.255.255"',
             "AUTO_GIT_INFO_SW_VERSION": "0xFF,0xFF,0xFF",
             "AUTO_GIT_INFO_SW_VERSION_MAJOR": "0xFF",
