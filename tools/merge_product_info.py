@@ -1,7 +1,9 @@
-"""Create a full-size flash image with the generated product information partition."""
+"""Package the application and generated ProductInfo partition for updates."""
 
 from pathlib import Path
+import json
 import subprocess
+import zipfile
 
 try:
     Import("env")  # type: ignore[name-defined]  # Provided by PlatformIO/SCons.
@@ -9,38 +11,35 @@ except NameError:
     env = None
 
 
-FLASH_SIZE = 0x400000
-BOOTLOADER_OFFSET = 0x1000
-PARTITION_TABLE_OFFSET = 0x8000
 APP_OFFSET = 0x10000
 PRODUCTINFO_OFFSET = 0x3FF000
 
 
-def _copy_image(image, source, offset, label):
-    source = Path(source)
-    if not source.is_file():
-        raise FileNotFoundError("Required {} image not found: {}".format(label, source))
+def _make_update_package(target, source, env):
+    """Bundle only the app and ProductInfo partition images with their offsets."""
 
-    data = source.read_bytes()
-    if offset + len(data) > len(image):
-        raise ValueError("{} image exceeds the 4 MiB flash layout".format(label))
-    image[offset:offset + len(data)] = data
-
-
-def _make_full_flash_image(target, source, env):
     build_dir = Path(env.subst("$BUILD_DIR"))
     app_image = Path(str(target[0]))
-    image = bytearray(b"\xFF" * FLASH_SIZE)
+    productinfo_image = build_dir / "productinfo.bin"
+    for label, image_path in (("application", app_image), ("product information", productinfo_image)):
+        if not image_path.is_file():
+            raise FileNotFoundError("Required {} image not found: {}".format(label, image_path))
 
-    _copy_image(image, build_dir / "bootloader.bin", BOOTLOADER_OFFSET, "bootloader")
-    _copy_image(image, build_dir / "partitions.bin", PARTITION_TABLE_OFFSET, "partition table")
-    _copy_image(image, app_image, APP_OFFSET, "application")
-    _copy_image(image, build_dir / "productinfo.bin", PRODUCTINFO_OFFSET, "product information")
+    manifest = {
+        "format": "esp32-offset-update-v1",
+        "description": "Application and ProductInfo images only; bootloader and partition table are not included.",
+        "images": [
+            {"file": "firmware.bin", "flash_offset": APP_OFFSET},
+            {"file": "productinfo.bin", "flash_offset": PRODUCTINFO_OFFSET},
+        ],
+    }
+    output = build_dir / "firmware_productinfo_update.zip"
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as package:
+        package.write(app_image, arcname="firmware.bin")
+        package.write(productinfo_image, arcname="productinfo.bin")
+        package.writestr("manifest.json", json.dumps(manifest, indent=2) + "\n")
 
-    output = build_dir / "firmware_full.bin"
-    output.write_bytes(image)
-    print("Product info: assembled {} with record at flash address 0x{:06X}".format(
-        output, PRODUCTINFO_OFFSET))
+    print("Product info: packaged application and ProductInfo only in {}".format(output))
 
 
 def _upload_productinfo(target, source, env):
@@ -75,7 +74,7 @@ def _upload_productinfo(target, source, env):
 
 
 if env is not None:
-    env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _make_full_flash_image)
+    env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _make_update_package)
     env.AddCustomTarget(
         name="upload_productinfo",
         dependencies="$BUILD_DIR/productinfo.bin",
