@@ -149,22 +149,56 @@ def _working_tree_modified(project_dir):
     return bool(status)
 
 
-def _generate_flash_record(project_dir):
-    """Generate the fixed-layout metadata partition image during the build."""
+def _collect_build_info(project_dir):
+    """Collect one consistent snapshot of Git metadata and build timestamps."""
 
-    build_time_utc = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    build_time_bytes = build_time_utc.encode("ascii")
+    now_local = datetime.now().astimezone()
+    now_utc = now_local.astimezone(timezone.utc)
+    tag, software_version = _closest_tag(project_dir)
+    full_hash = _git(project_dir, "rev-parse", "HEAD")
 
-    try:
-        _, version = _closest_tag(project_dir)
-        commit_hash = _git(project_dir, "rev-parse", "HEAD")
-        commit_hash_short = commit_hash[:8].encode("ascii")
-        branch_short = (_git(project_dir, "branch", "--show-current") or "HEAD")[:20].encode("utf-8")
-    except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        print("Git info: unable to build flash record: {}; using fallback metadata".format(error))
-        version = _UNKNOWN_VERSION
-        commit_hash_short = b""
-        branch_short = b""
+    return {
+        "git_version": _git_version(),
+        "generated_local": "{}.{}.{}, {}".format(
+            now_local.day, now_local.month, now_local.year, now_local.strftime("%H:%M:%S")
+        ),
+        "generated_utc": now_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "commit_count": int(_git(project_dir, "rev-list", "--count", "HEAD")),
+        "working_tree_modified": _working_tree_modified(project_dir),
+        "branch": _git(project_dir, "branch", "--show-current") or "HEAD",
+        "full_hash": full_hash,
+        "tag": tag,
+        "software_version": software_version,
+    }
+
+
+def _fallback_build_info():
+    """Return fallback metadata when Git information cannot be collected."""
+
+    now_local = datetime.now().astimezone()
+    now_utc = now_local.astimezone(timezone.utc)
+    return {
+        "git_version": "",
+        "generated_local": "{}.{}.{}, {}".format(
+            now_local.day, now_local.month, now_local.year, now_local.strftime("%H:%M:%S")
+        ),
+        "generated_utc": now_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "commit_count": 0,
+        "working_tree_modified": False,
+        "branch": "",
+        "full_hash": "",
+        "tag": _UNKNOWN_VERSION_STR,
+        "software_version": _UNKNOWN_VERSION,
+    }
+
+
+def _generate_flash_record(build_info):
+    """Generate the fixed-layout partition image from the shared metadata snapshot."""
+
+    version = build_info["software_version"]
+    build_time_bytes = build_info["generated_utc"].encode("ascii")
+    commit_hash_short = build_info["full_hash"][:8].encode("ascii")
+    branch_short = build_info["branch"][:20].encode("utf-8")
 
     build_time_bytes = build_time_bytes[:24].ljust(25, b"\0")
     commit_hash_short = commit_hash_short[:8].ljust(9, b"\0")
@@ -190,38 +224,25 @@ def _generate_flash_record(project_dir):
     print("Product info: generated {} (record at partition offset 0x0)".format(image_path))
 
 
-def _make_header(project_dir):
-    """Collect Git/build metadata and render it as a C header string."""
+def _make_header(build_info):
+    """Render AutoGitInfo.h from a previously collected metadata snapshot."""
 
-    # Compute the current date/time once so all generated fields are consistent.
-    now_local = datetime.now().astimezone()
-    now_utc   = datetime.now(timezone.utc)
-
-    # Compute values once so generated fields all describe the same build state.
-    modified = _working_tree_modified(project_dir)
-    tag, tag_version = _closest_tag(project_dir)
-    software_version = tag_version
-
-    # Compute the Git version string once so it is consistent across all generated fields.
-    git_version = _git_version()
-    commit_count = int(_git(project_dir, "rev-list", "--count", "HEAD"))
-    branch = _git(project_dir, "branch", "--show-current") or "HEAD"
-    full_hash = _git(project_dir, "rev-parse", "HEAD")
+    software_version = build_info["software_version"]
+    branch = build_info["branch"]
+    full_hash = build_info["full_hash"]
 
     # Keep this mapping and ``comments`` in sync; insertion order controls header layout.
     values = {
-        "AUTO_GIT_INFO_GIT_VERSION": _c_string(git_version),
-        "AUTO_GIT_INFO_GEN_DATE": _c_string(
-            "{}.{}.{}, {}".format(now_local.day, now_local.month, now_local.year, now_local.strftime("%H:%M:%S"))
-        ),
-        "AUTO_GIT_INFO_GEN_DATE_ISO_8601": _c_string(now_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")),
-        "AUTO_GIT_INFO_COMMITS_NUMBER": str(commit_count),
-        "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "1" if modified else "0",
+        "AUTO_GIT_INFO_GIT_VERSION": _c_string(build_info["git_version"]),
+        "AUTO_GIT_INFO_GEN_DATE": _c_string(build_info["generated_local"]),
+        "AUTO_GIT_INFO_GEN_DATE_ISO_8601": _c_string(build_info["generated_utc"]),
+        "AUTO_GIT_INFO_COMMITS_NUMBER": str(build_info["commit_count"]),
+        "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "1" if build_info["working_tree_modified"] else "0",
         "AUTO_GIT_INFO_GIT_BRANCH": _c_string(branch),
         "AUTO_GIT_INFO_GIT_BRANCH_SHORT": _c_string(branch[:20]),
         "AUTO_GIT_INFO_COMMIT_HASH": _c_string(full_hash),
         "AUTO_GIT_INFO_COMMIT_HASH_SHORT": _c_string(full_hash[:8]),
-        "AUTO_GIT_INFO_COMMIT_TAG": _c_string(tag),
+        "AUTO_GIT_INFO_COMMIT_TAG": _c_string(build_info["tag"]),
         "AUTO_GIT_INFO_SW_VERSION": ",".join("0x{:02X}".format(part) for part in software_version),
         "AUTO_GIT_INFO_SW_VERSION_MAJOR": "0x{:02X}".format(software_version[0]),
         "AUTO_GIT_INFO_SW_VERSION_MINOR": "0x{:02X}".format(software_version[1]),
@@ -265,46 +286,15 @@ def _generate_git_info(project_dir):
     header_path = project_dir / _GENERATED_HEADER
 
     try:
-        content = _make_header(project_dir)
+        build_info = _collect_build_info(project_dir)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        # If Git is unavailable or the project is not a Git repository, generate a fallback header.
-
-        # The error may have a "stderr" attribute (from subprocess.CalledProcessError)
-        # or not (from OSError/ValueError).
+        # If Git is unavailable, use one fallback snapshot for both outputs.
         detail = getattr(error, "stderr", None)
         detail = detail.strip() if detail else str(error)
-        print("Git info: unable to read Git metadata: {}; generating fallback header".format(detail))
+        print("Git info: unable to read Git metadata: {}; using fallback metadata".format(detail))
+        build_info = _fallback_build_info()
 
-        # Compute the current date/time once so all generated fields are consistent.
-        now_local = datetime.now().astimezone()
-        now_utc   = datetime.now(timezone.utc)
-
-        # Keep the header usable by firmware builds even outside a Git checkout.
-        fallback = {
-            "AUTO_GIT_INFO_GIT_VERSION": '""',
-            "AUTO_GIT_INFO_GEN_DATE": _c_string(
-                "{}.{}.{}, {}".format(now_local.day, now_local.month, now_local.year, now_local.strftime("%H:%M:%S"))
-            ),
-            "AUTO_GIT_INFO_GEN_DATE_ISO_8601": _c_string(
-                now_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-            ),
-            "AUTO_GIT_INFO_COMMITS_NUMBER": "0",
-            "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "0",
-            "AUTO_GIT_INFO_GIT_BRANCH": '""',
-            "AUTO_GIT_INFO_GIT_BRANCH_SHORT": '""',
-            "AUTO_GIT_INFO_COMMIT_HASH": '""',
-            "AUTO_GIT_INFO_COMMIT_HASH_SHORT": '""',
-            "AUTO_GIT_INFO_COMMIT_TAG": '"255.255.255"',
-            "AUTO_GIT_INFO_SW_VERSION": "0xFF,0xFF,0xFF",
-            "AUTO_GIT_INFO_SW_VERSION_MAJOR": "0xFF",
-            "AUTO_GIT_INFO_SW_VERSION_MINOR": "0xFF",
-            "AUTO_GIT_INFO_SW_VERSION_BUILD": "0xFF",
-        }
-
-        # Generate a simple header with the fallback values, without comments.
-        lines = ["/* Auto-generated by tools/generate_git_info.py; Git metadata unavailable. */", "#pragma once", ""]
-        lines.extend(_format_define(name, value) for name, value in fallback.items())
-        content = "\n".join(lines) + "\n"
+    content = _make_header(build_info)
 
     # Write the generated header to disk, creating the parent directory if necessary.
     header_path.parent.mkdir(parents=True, exist_ok=True)
@@ -312,7 +302,7 @@ def _generate_git_info(project_dir):
     print("Git info: generated {}".format(header_path))
 
     if _PLATFORMIO_ENV is not None:
-        _generate_flash_record(project_dir)
+        _generate_flash_record(build_info)
 
     pass    # end of _generate_git_info
 
