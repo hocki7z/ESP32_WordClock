@@ -17,7 +17,25 @@
         const picker = document.createElement('input');
         picker.type = 'file';
         picker.accept = '.bin,application/octet-stream';
-        picker.style.cssText = 'display:block;width:100%;margin:8px 0';
+        picker.hidden = true;
+
+        const fileField = document.createElement('div');
+        fileField.style.cssText = 'display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;color:black;background-color:#fff;width:100%;height:32px;margin:0 0 8px;padding:3px;gap:8px;box-sizing:border-box;border:1px solid #808080;border-radius:4px';
+        const chooseFileButton = document.createElement('button');
+        chooseFileButton.type = 'button';
+        chooseFileButton.textContent = 'Choose firmware file';
+        chooseFileButton.style.cssText = 'flex:0 0 auto;width:auto;height:24px;min-height:0;margin:0;padding:2px 8px;font-size:.85em;line-height:1.2;box-sizing:border-box;cursor:pointer';
+        chooseFileButton.addEventListener('click', () => picker.click());
+
+        const filename = document.createElement('span');
+        filename.textContent = 'No file selected';
+        filename.style.cssText = 'flex:0 1 auto;min-width:0;text-align:center;overflow-wrap:anywhere;font-weight:300;font-size:.9em';
+        picker.addEventListener('change', () => {
+            filename.textContent = picker.files && picker.files[0]
+                ? picker.files[0].name
+                : 'No file selected';
+        });
+        fileField.append(chooseFileButton, filename);
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -43,6 +61,7 @@
 
             button.disabled = true;
             picker.disabled = true;
+            chooseFileButton.disabled = true;
             status.textContent = 'Starting firmware upload…';
             progress.hidden = false;
             progress.value = 0;
@@ -62,17 +81,19 @@
                 if (request.status !== 200) {
                     button.disabled = false;
                     picker.disabled = false;
+                    chooseFileButton.disabled = false;
                 }
             };
             request.onerror = () => {
                 status.textContent = 'Connection lost. The device may be restarting; wait and reconnect.';
                 button.disabled = false;
                 picker.disabled = false;
+                chooseFileButton.disabled = false;
             };
             request.send(form);
         });
 
-        panel.append(picker, button, progress, status);
+        panel.append(fileField, picker, button, progress, status);
         card.appendChild(panel);
     }
 
