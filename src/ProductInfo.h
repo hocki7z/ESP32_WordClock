@@ -61,7 +61,7 @@ namespace ProductInfoNS
     /**
      * @brief Read and validate product/build information from the read-only partition.
      *
-     * The partition starts at flash address 0x3FF000 in productinfo_4mb.csv.
+    * The partition starts at flash address 0x3FF000 in min_spiffs_custom.csv.
       * Date/time uses a NUL-terminated UTC ISO-8601 timestamp. The commit hash (8 hex chars)
       * and branch (up to 20 UTF-8 characters) are NUL-terminated strings.
      *
