@@ -1,4 +1,4 @@
-"""Generate AutoGitInfo.h immediately before a PlatformIO build."""
+"""Generate AutoGitInfo.h in the PlatformIO build directory before compiling."""
 
 from datetime import datetime, timezone
 import argparse
@@ -23,7 +23,7 @@ _UNKNOWN_VERSION_STR    = "255.255.255"
 _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 
 # Constants for header generation.
-_GENERATED_HEADER       = "AutoGitInfo.h"     # Generated in the project root.
+_GENERATED_HEADER       = "AutoGitInfo.h"     # Generated in the active build directory.
 _DEFINE_VALUE_COLUMN    = 49    # Column at which to align the value of each ``#define`` in the generated header.
 _PRODUCTINFO_PARTITION_SIZE = 0x1000
 
@@ -119,7 +119,7 @@ def _highest_version_tag(project_dir):
 
 
 def _working_tree_modified(project_dir):
-    """Report changes to tracked files, excluding the generated header itself."""
+    """Report whether tracked project files have uncommitted changes."""
 
     status = _git(
         project_dir,
@@ -128,7 +128,6 @@ def _working_tree_modified(project_dir):
         "--untracked-files=no",     # intentionally excludes new/untracked files.
         "--",
         ".",
-        ":(exclude)AutoGitInfo.h",
     )
 
     return bool(status)
@@ -277,16 +276,18 @@ def _make_header(build_info):
     return "\n".join(lines)
 
 
-def _generate_git_info(project_dir):
+def _generate_git_info(project_dir, build_dir, build_env=None):
     """Generate the metadata header, using explicit defaults if Git fails.
 
     Args:
         project_dir: Root directory of the PlatformIO project/repository.
+        build_dir: Output directory for the generated header.
+        build_env: Optional PlatformIO environment used to update the include path.
     """
 
     # Resolve the project directory and determine the output header path.
     project_dir = Path(project_dir).resolve()
-    header_path = project_dir / _GENERATED_HEADER
+    header_path = Path(build_dir).resolve() / _GENERATED_HEADER
 
     try:
         build_info = _collect_build_info(project_dir)
@@ -304,6 +305,10 @@ def _generate_git_info(project_dir):
     header_path.write_text(content, encoding="utf-8", newline="\n")
     print("Git info: generated {}".format(header_path))
 
+    if build_env is not None:
+        # Allow application sources to include the generated build-specific metadata.
+        build_env.Append(CPPPATH=[str(header_path.parent)])
+
     if _PLATFORMIO_ENV is not None:
         _generate_flash_record(build_info)
         # PlatformIO's ESP32 uploader appends these images to its normal
@@ -315,15 +320,17 @@ def _generate_git_info(project_dir):
     pass    # end of _generate_git_info
 
 
-def main(argv=None, project_dir=None):
+def main(argv=None, project_dir=None, build_dir=None):
     """Run generation either as a PlatformIO pre-script or as a CLI command.
 
-    PlatformIO supplies ``project_dir`` from its build environment. For a
-    standalone run, parse the optional project-root argument from ``argv``.
+    PlatformIO supplies project/build directories from its build environment.
+    A normal Python invocation can override them with command-line arguments.
     """
 
     if project_dir is None and _PLATFORMIO_ENV is not None:
         project_dir = _PLATFORMIO_ENV.subst("$PROJECT_DIR")
+    if build_dir is None and _PLATFORMIO_ENV is not None:
+        build_dir = _PLATFORMIO_ENV.subst("$BUILD_DIR")
 
     if project_dir is None:
         # Standalone invocation: default to the project containing this script.
@@ -334,17 +341,31 @@ def main(argv=None, project_dir=None):
             type=Path,
             help="PlatformIO project root (defaults to the parent of this script's tools directory)",
         )
+        parser.add_argument(
+            "--build-dir",
+            default=build_dir,
+            type=Path,
+            help="Header output directory (defaults to .pio/build/git-info-standalone under the project root)",
+        )
         arguments = parser.parse_args(argv)
         project_dir = arguments.project_dir
+        build_dir = arguments.build_dir
 
-    # Generate the header file in the specified project directory.
-    _generate_git_info(project_dir)
+    project_dir = Path(project_dir).resolve()
+    if build_dir is None:
+        build_dir = project_dir / ".pio" / "build" / "git-info-standalone"
+
+    # Generate the header file in the specified build directory.
+    _generate_git_info(project_dir, build_dir, _PLATFORMIO_ENV)
 
     pass    # end of main
 
 
 # PlatformIO loads this file as a pre-script; normal Python runs use the CLI.
 if _PLATFORMIO_ENV is not None:
-    main(project_dir=_PLATFORMIO_ENV.subst("$PROJECT_DIR"))
+    main(
+        project_dir=_PLATFORMIO_ENV.subst("$PROJECT_DIR"),
+        build_dir=_PLATFORMIO_ENV.subst("$BUILD_DIR"),
+    )
 elif __name__ == "__main__":
     main()
