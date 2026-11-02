@@ -23,11 +23,11 @@
         picker.hidden = true;
 
         const fileField = document.createElement('div');
-        fileField.style.cssText = 'display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;color:black;background-color:#fff;width:calc(100% - 8px);min-height:44px;margin:0 0 8px 8px;padding:6px;gap:8px;box-sizing:border-box;border:1px solid #808080;border-radius:4px';
+        fileField.style.cssText = 'display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;color:black;background-color:#fff;width:100%;height:32px;margin:0 0 8px;padding:3px;gap:8px;box-sizing:border-box;border:1px solid #808080;border-radius:4px';
         const chooseFileButton = document.createElement('button');
         chooseFileButton.type = 'button';
         chooseFileButton.textContent = 'Choose firmware file';
-        chooseFileButton.style.cssText = 'flex:0 0 auto;margin:0;cursor:pointer';
+        chooseFileButton.style.cssText = 'flex:0 0 auto;width:auto;height:24px;min-height:0;margin:0;padding:2px 8px;font-size:.85em;line-height:1.2;box-sizing:border-box;cursor:pointer';
         chooseFileButton.addEventListener('click', () => picker.click());
 
         const filename = document.createElement('span');
