@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
 #include "ProductInfo.h"
 #include "OTAUpdateCustomJs.h"
@@ -70,6 +71,24 @@ void RegisterRoutes(AsyncWebServer* apServer)
     apServer->on("/update", HTTP_GET, [](AsyncWebServerRequest* apRequest)
     {
         apRequest->send(200, "text/html; charset=utf-8", kOtaPage);
+    });
+
+    apServer->on("/firmware-version", HTTP_GET, [](AsyncWebServerRequest* apRequest)
+    {
+        ProductInfoNS::Record wRecord{};
+        const bool wValid = ProductInfoNS::ReadFlashPartition(wRecord) &&
+            !ProductInfoNS::IsInvalidSoftwareVersion(wRecord.softwareVersion);
+        const ProductInfoNS::tSoftwareVersion wVersion = wValid
+            ? wRecord.softwareVersion
+            : ProductInfoNS::tSoftwareVersion{0xFF, 0xFF, 0xFF};
+
+        char wJson[64]{};
+        snprintf(wJson, sizeof(wJson), "{\"valid\":%s,\"version\":\"%u.%u.%u\"}",
+            wValid ? "true" : "false",
+            static_cast<unsigned>(wVersion.mMajor),
+            static_cast<unsigned>(wVersion.mMinor),
+            static_cast<unsigned>(wVersion.mBuild));
+        apRequest->send(200, "application/json", wJson);
     });
 
     apServer->on("/update", HTTP_POST,
