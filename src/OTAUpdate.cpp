@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "Configuration.h"
 #include "ProductInfo.h"
 
 namespace
@@ -55,44 +54,7 @@ const char kOtaCustomJs[] = R"js((() => {
         status.setAttribute('role', 'status');
         status.textContent = 'Choose a .bin image to begin.';
 
-        const formatVersion = version => version.join('.');
-        const isInvalidVersion = version => version.every(part => part === 255);
-        const compareVersions = (left, right) => {
-            for (let index = 0; index < 3; index++) {
-                if (left[index] !== right[index]) return left[index] > right[index] ? 1 : -1;
-            }
-            return 0;
-        };
-        const crc32 = (bytes, length) => {
-            let crc = 0xFFFFFFFF;
-            for (let index = 0; index < length; index++) {
-                crc ^= bytes[index];
-                for (let bit = 0; bit < 8; bit++) {
-                    crc = (crc >>> 1) ^ ((crc & 1) ? 0xEDB88320 : 0);
-                }
-            }
-            return (crc ^ 0xFFFFFFFF) >>> 0;
-        };
-        const findFirmwareVersion = async file => {
-            const bytes = new Uint8Array(await file.arrayBuffer());
-            const magic = [0x57, 0x43, 0x50, 0x52, 0x4F, 0x44, 0x49, 0x4E];
-            for (let start = 0; start + 131 <= bytes.length; start++) {
-                let matches = true;
-                for (let index = 0; index < magic.length; index++) {
-                    if (bytes[start + index] !== magic[index]) { matches = false; break; }
-                }
-                if (!matches || bytes[start + 8] !== 2) continue;
-
-                const expected = (bytes[start + 127] | (bytes[start + 128] << 8) |
-                    (bytes[start + 129] << 16) | (bytes[start + 130] << 24)) >>> 0;
-                if (crc32(bytes.subarray(start, start + 127), 127) === expected) {
-                    return [bytes[start + 9], bytes[start + 10], bytes[start + 11]];
-                }
-            }
-            throw new Error('No valid embedded ProductInfo/version record found in this .bin file.');
-        };
-
-        button.addEventListener('click', async () => {
+        button.addEventListener('click', () => {
             const file = picker.files && picker.files[0];
             if (!file || !file.name.toLowerCase().endsWith('.bin')) {
                 status.textContent = 'Select a .bin application image.';
@@ -101,36 +63,7 @@ const char kOtaCustomJs[] = R"js((() => {
 
             button.disabled = true;
             picker.disabled = true;
-            status.textContent = 'Checking firmware versions…';
-
-            try {
-                const newVersion = await findFirmwareVersion(file);
-                if (isInvalidVersion(newVersion)) {
-                    throw new Error('The selected firmware version is invalid (255.255.255).');
-                }
-
-                const currentResponse = await fetch('/firmware-version', { cache: 'no-store' });
-                if (!currentResponse.ok) throw new Error('Could not read the installed firmware version.');
-                const currentInfo = await currentResponse.json();
-                const currentVersion = currentInfo.version;
-                const recovery = !currentInfo.valid || isInvalidVersion(currentVersion);
-                if (!recovery && compareVersions(newVersion, currentVersion) <= 0) {
-                    throw new Error('Update refused: new version ' + formatVersion(newVersion) +
-                        ' must be newer than installed version ' + formatVersion(currentVersion) + '.');
-                }
-
-                status.textContent = recovery
-                    ? 'Recovery update allowed: installed version is invalid. New version ' +
-                        formatVersion(newVersion) + '. Uploading…'
-                    : 'Version check passed: ' + formatVersion(currentVersion) +
-                        ' → ' + formatVersion(newVersion) + '. Uploading…';
-            } catch (error) {
-                status.textContent = error.message || 'Firmware version check failed.';
-                button.disabled = false;
-                picker.disabled = false;
-                return;
-            }
-
+            status.textContent = 'Starting firmware upload…';
             progress.hidden = false;
             progress.value = 0;
 
@@ -221,26 +154,6 @@ void RegisterRoutes(AsyncWebServer* apServer)
     apServer->on("/update", HTTP_GET, [](AsyncWebServerRequest* apRequest)
     {
         apRequest->send(200, "text/html; charset=utf-8", kOtaPage);
-    });
-
-    apServer->on("/firmware-version", HTTP_GET, [](AsyncWebServerRequest* apRequest)
-    {
-        ProductInfoNS::Record wRecord{};
-        ProductInfoNS::tSoftwareVersion wVersion{0xFF, 0xFF, 0xFF};
-        bool wValid = false;
-        if (ConfigNS::GetProductInfo(wRecord) && !ProductInfoNS::IsInvalidSoftwareVersion(wRecord.softwareVersion))
-        {
-            wVersion = wRecord.softwareVersion;
-            wValid = true;
-        }
-
-        char wJson[96]{};
-        snprintf(wJson, sizeof(wJson), "{\"valid\":%s,\"version\":[%u,%u,%u]}",
-            wValid ? "true" : "false",
-            static_cast<unsigned>(wVersion.mMajor),
-            static_cast<unsigned>(wVersion.mMinor),
-            static_cast<unsigned>(wVersion.mBuild));
-        apRequest->send(200, "application/json", wJson);
     });
 
     apServer->on("/update", HTTP_POST,
