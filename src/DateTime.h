@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 
+#include <cstdio>       // for snprintf
 #include <cstring>      // for strncpy, strstr
 #include <cstdlib>      // for atoi
 
@@ -155,6 +156,69 @@ namespace DateTimeNS
         aYear -= aMonth < 3;
 
         return  (aYear + aYear / 4 - aYear / 100 + aYear / 400 + t[aMonth - 1] + aDay) % 7;
+    }
+
+    /**
+    * @brief Format an ISO-8601 UTC timestamp as ``DD.MM.YYYY HH:MM:SS``.
+     *
+    * The input is expected to start with ``YYYY-MM-DDTHH:MM:SS``; any
+    * fractional seconds or UTC suffix are ignored. Returns false if either
+    * the timestamp or destination buffer is invalid.
+     */
+    inline bool FormatIso8601Utc(const char* apTimestamp, char* apOutput, const size_t aOutputSize)
+    {
+        constexpr size_t kRequiredOutputSize = 20; // 19 visible characters plus NUL.
+        if (apTimestamp == nullptr || apOutput == nullptr || aOutputSize < kRequiredOutputSize ||
+            strlen(apTimestamp) < 19 || apTimestamp[4] != '-' || apTimestamp[7] != '-' ||
+            apTimestamp[10] != 'T' || apTimestamp[13] != ':' || apTimestamp[16] != ':')
+        {
+            return false;
+        }
+
+        const auto readDigits = [apTimestamp](const size_t aStart, const size_t aCount, unsigned& arValue)
+        {
+            arValue = 0;
+            for (size_t index = 0; index < aCount; ++index)
+            {
+                const char wDigit = apTimestamp[aStart + index];
+                if (wDigit < '0' || wDigit > '9')
+                {
+                    return false;
+                }
+                arValue = arValue * 10 + static_cast<unsigned>(wDigit - '0');
+            }
+            return true;
+        };
+
+        unsigned wYear = 0;
+        unsigned wMonth = 0;
+        unsigned wDay = 0;
+        unsigned wHour = 0;
+        unsigned wMinute = 0;
+        unsigned wSecond = 0;
+        if (!readDigits(0, 4, wYear) || !readDigits(5, 2, wMonth) ||
+            !readDigits(8, 2, wDay) || !readDigits(11, 2, wHour) ||
+            !readDigits(14, 2, wMinute) || !readDigits(17, 2, wSecond) ||
+            wMonth < 1 || wMonth > 12 || wHour > 23 || wMinute > 59 || wSecond > 59)
+        {
+            return false;
+        }
+
+        constexpr uint8_t kDaysPerMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+        unsigned wMaxDay = kDaysPerMonth[wMonth - 1];
+        const bool wIsLeapYear = (wYear % 4 == 0) && ((wYear % 100 != 0) || (wYear % 400 == 0));
+        if (wMonth == 2 && wIsLeapYear)
+        {
+            ++wMaxDay;
+        }
+        if (wDay < 1 || wDay > wMaxDay)
+        {
+            return false;
+        }
+
+        const int wLength = snprintf(apOutput, aOutputSize, "%02u.%02u.%04u %02u:%02u:%02u",
+            wDay, wMonth, wYear, wHour, wMinute, wSecond);
+        return wLength >= 0 && static_cast<size_t>(wLength) < aOutputSize;
     }
 
     /**

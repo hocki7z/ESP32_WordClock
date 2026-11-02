@@ -11,6 +11,7 @@
 #include "Application.h"
 #include "SSIDList.h"
 #include "Settings.hpp"
+#include "ProductInfo.h"
 
 #include "DisplayLayout.h"
 
@@ -21,6 +22,9 @@ using namespace ApplicationNS;
 
 namespace ConfigNS
 {
+    /** Return the compile-time ProductInfo record for display in the Web UI. */
+    const ProductInfoNS::Record& GetProductInfo();
+
     /**
      * Task configurations
      */

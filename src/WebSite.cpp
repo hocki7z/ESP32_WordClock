@@ -6,6 +6,8 @@
  */
 #include <ESPUI.h>
 
+#include <array>
+
 #include "Logger.h"
 #include "Configuration.h"
 #include "DateTime.h"
@@ -37,6 +39,10 @@
 #define CSS_STYLE_SWITCH                "margin-bottom: 10px; align-items: center; text-align: right; vertical-align: middle;" // float: right; margin: 0 8px 10px 0;
 #define CSS_STYLE_SWITCH_LABEL          "background-color: unset; font-weight: normal; width: calc(100% - 68px); text-align: left; padding: 0; vertical-align: middle;"
 #define CSS_STYLE_BUTTON                "width: 100%" //; font-size:1.6rem;min-height:4rem;padding:1rem;margin:3px;border:2px solid #404040;border-radius:5px;"
+#define CSS_STYLE_TABEL                 "width:100%;border-collapse:collapse;text-align:left;white-space:normal;"
+#define CSS_STYLE_TABEL_NAME_CELL       "width:38%;padding:5px 8px 5px 0;vertical-align:top;"
+#define CSS_STYLE_TABEL_VALUE_CELL      "padding:5px 0;overflow-wrap:anywhere;word-break:break-word;vertical-align:top;"
+#define CSS_STYLE_TABEL_ROW_BORDER      "border-bottom:1px solid #808080;"
 
 /* Delay for web UI updates in milliseconds */
 #define WEB_UI_UPDATE_DELAY             100     // It seems that a small delay is enough to avoid issues with the web UI updates, especially when updating control states
@@ -44,6 +50,7 @@
 /* Default control colors */
 #define TAB_CONTROL_COLOR               Control::Color::Wetasphalt
 #define GROUP_CONTROL_COLOR             Control::Color::Wetasphalt
+
 
 /**
  * Initialize the private static pointer
@@ -257,6 +264,17 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
         ControlHandler::WifiScanButton);
     mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiForgetButton);
+
+
+    /**
+     * Tab Settings / Group Product Information
+     */
+    mWebUIControlID.mProductInfoGroup = AddGroupHelper("Product Information", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mProductInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for product information, will be updated in UpdateProductInfo()
+    
+    /* Update the product information displayed on the web UI */
+    UpdateProductInfo();
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -1115,6 +1133,64 @@ String WebSite::BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const
     return wSvg;
 }
 
+/**
+ * Builds an HTML table from the given names and values.
+ *
+ * @param arNames  An array of names for the table rows.
+ * @param arValues An array of values corresponding to the names.
+ * @return A string containing the HTML representation of the table.
+ */
+template <size_t N>
+String WebSite::BuildHtmlTable(const std::array<const char*, N>& arNames,
+    const std::array<const char*, N>& arValues) const
+{
+    /* Initialize the HTML table string */
+    String wHtml = "<table style='" CSS_STYLE_TABEL "'>";
+
+    /* Build the table rows */
+    for (size_t wI = 0; wI < N; wI++)
+    {
+        /* Determine if a bottom border should be applied to the row */
+        const char* wpBottomBorder = (wI + 1 < N) ? CSS_STYLE_TABEL_ROW_BORDER : "";
+
+        /* Build the HTML for the current row */
+        wHtml += "<tr><td style='" CSS_STYLE_TABEL_NAME_CELL;
+        wHtml += wpBottomBorder;
+        wHtml += "'>";
+        wHtml += EscapeHtml(arNames[wI]);
+        wHtml += "</td><td style='" CSS_STYLE_TABEL_VALUE_CELL;
+        wHtml += wpBottomBorder;
+        wHtml += "'>";
+        wHtml += EscapeHtml(arValues[wI]);
+        wHtml += "</td></tr>";
+    }
+
+    /* Close the HTML table */
+    wHtml += "</table>";
+
+    return wHtml;
+}
+
+/**
+ * Escapes special HTML characters in the given text.
+ *
+ * @param apText The text to escape.
+ * @return A string with special HTML characters replaced by their corresponding HTML entities.
+ */
+String WebSite::EscapeHtml(const char* apText) const
+{
+    String wEscaped = apText;
+
+    /* Replace special characters with their HTML entity equivalents */
+    wEscaped.replace("&",  "&amp;");
+    wEscaped.replace("<",  "&lt;");
+    wEscaped.replace(">",  "&gt;");
+    wEscaped.replace("\"", "&quot;");
+    wEscaped.replace("'",  "&#39;");
+
+    return wEscaped;
+}
+
 void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)
 {
     DisplayScene wSceneSnapshot;
@@ -1227,6 +1303,69 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     {
         ESPUI.jsonReload();
     }
+}
+
+/**
+ * @brief Update the product information displayed on the web UI.
+ *
+ * @details
+ * This function retrieves product information such as software version, build date/time,
+ * branch, and commit hash from the configuration and updates the corresponding controls
+ * on the web UI. If any of the information is unavailable, default values are used.
+ */
+void WebSite::UpdateProductInfo(void)
+{
+    /* Default values */
+    String wSoftwareVersion = "Unknown";
+    String wBuildDateTime   = "Unavailable";
+    String wCommitHash      = "Unavailable";
+    String wBranch          = "Unavailable";
+
+    /* Add product information controls (e.g., software version, build date/time, branch, commit hash) */
+    const ProductInfoNS::Record& wProductInfo = ConfigNS::GetProductInfo();
+
+    if (wProductInfo.mSoftwareVersion.IsValid())
+    {
+        char wVersionText[12] = {0};
+        snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
+            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
+            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
+            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+
+        wSoftwareVersion = wVersionText;
+    }
+
+    if (wProductInfo.mBuildDateTimeUtc[0] != '\0')
+    {
+        char wBuildDateTimeUtc[32]{};
+        if (!DateTimeNS::FormatIso8601Utc(wProductInfo.mBuildDateTimeUtc,
+                wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc)))
+        {
+            snprintf(wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc), "%s", wProductInfo.mBuildDateTimeUtc);
+        }
+        wBuildDateTime = wBuildDateTimeUtc;
+    }
+
+    if (wProductInfo.mCommitHashShort[0] != '\0')
+    {
+        wCommitHash = wProductInfo.mCommitHashShort;
+    }
+    if (wProductInfo.mBranchShort[0] != '\0')
+    {
+        wBranch = wProductInfo.mBranchShort;
+    }
+
+    const std::array<const char*, 4> wProductInfoNames = {
+        "Software version", "Build date/time", "Branch", "Commit hash"
+    };
+
+    const std::array<const char*, 4> wProductInfoValues = {
+        wSoftwareVersion.c_str(), wBuildDateTime.c_str(), wBranch.c_str(), wCommitHash.c_str()
+    };
+
+    /* Update the product information label on the web UI with the constructed HTML table */
+    ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
+        BuildHtmlTable(wProductInfoNames, wProductInfoValues));
 }
 
 void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)

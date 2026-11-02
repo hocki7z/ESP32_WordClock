@@ -141,6 +141,9 @@ private:
         Control::ControlId_t mWifiScanButton;
         Control::ControlId_t mWifiConnectButton;
         Control::ControlId_t mWifiForgetButton;
+        //
+        Control::ControlId_t mProductInfoGroup;
+        Control::ControlId_t mProductInfoLabel;
     };
 
     /** @brief "This" pointer for created WebSite instance */
@@ -206,8 +209,16 @@ private:
 
     String BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene = nullptr) const;
 
+    template <size_t N>
+    String BuildHtmlTable(const std::array<const char*, N>& arNames,
+        const std::array<const char*, N>& arValues) const;
+
+    String EscapeHtml(const char* apText) const;
+
     void UpdateDisplayPreview(const MessageNS::Message& arMessage);
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
+
+    void UpdateProductInfo(void);
 
     static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);
 };

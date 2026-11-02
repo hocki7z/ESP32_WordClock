@@ -6,6 +6,11 @@
  */
 #include "Configuration.h"
 
+const ProductInfoNS::Record& ConfigNS::GetProductInfo()
+{
+	return ProductInfoNS::GetRecord();
+}
+
 /** @brief Shared list instance of discovered WiFi SSIDs */
 SSIDList mSSIDList;
 
