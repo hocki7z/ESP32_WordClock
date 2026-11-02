@@ -20,7 +20,25 @@
         const picker = document.createElement('input');
         picker.type = 'file';
         picker.accept = '.bin,application/octet-stream';
-        picker.style.cssText = 'display:block;color:black;width:calc(100% - 8px);min-height:32px;margin:0 0 8px 8px;padding:3px;box-sizing:border-box';
+        picker.hidden = true;
+
+        const fileField = document.createElement('div');
+        fileField.style.cssText = 'display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;color:black;background-color:#fff;width:calc(100% - 8px);min-height:44px;margin:0 0 8px 8px;padding:6px;gap:8px;box-sizing:border-box;border:1px solid #808080;border-radius:4px';
+        const chooseFileButton = document.createElement('button');
+        chooseFileButton.type = 'button';
+        chooseFileButton.textContent = 'Choose firmware file';
+        chooseFileButton.style.cssText = 'flex:0 0 auto;margin:0;cursor:pointer';
+        chooseFileButton.addEventListener('click', () => picker.click());
+
+        const filename = document.createElement('span');
+        filename.textContent = 'No file selected';
+        filename.style.cssText = 'flex:0 1 auto;min-width:0;text-align:center;overflow-wrap:anywhere;font-weight:300;font-size:.9em';
+        picker.addEventListener('change', () => {
+            filename.textContent = picker.files && picker.files[0]
+                ? picker.files[0].name
+                : 'No file selected';
+        });
+        fileField.append(chooseFileButton, filename);
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -140,6 +158,7 @@
         const uploadFirmware = file => {
             button.disabled = true;
             picker.disabled = true;
+            chooseFileButton.disabled = true;
             checkButton.disabled = true;
             installButton.disabled = true;
             status.textContent = 'Starting firmware upload…';
@@ -165,6 +184,7 @@
                 if (request.status !== 200) {
                     button.disabled = false;
                     picker.disabled = false;
+                    chooseFileButton.disabled = false;
                     checkButton.disabled = false;
                     installButton.disabled = !availableFirmware;
                 }
@@ -173,6 +193,7 @@
                 status.textContent = 'Connection lost. The device may be restarting; wait and reconnect.';
                 button.disabled = false;
                 picker.disabled = false;
+                chooseFileButton.disabled = false;
                 checkButton.disabled = false;
                 installButton.disabled = !availableFirmware;
             };
@@ -237,7 +258,7 @@
             uploadFirmware(file);
         });
 
-        panel.append(description, picker, button, progress, status,
+        panel.append(description, fileField, picker, button, progress, status,
             document.createElement('hr'), onlineStatus, checkButton, installButton, scheduleLabel, schedule);
         card.appendChild(panel);
     }
