@@ -4,15 +4,15 @@
  *  Created on: 25.09.2025
  *      Author: hocki
  */
-#include <ESPUI.h>
-
 #include <array>
+#include <ESPUI.h>
 
 #include "Logger.h"
 #include "Configuration.h"
 #include "DateTime.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
+#include "OTAUpdate.h"
 #include "Settings.hpp"
 
 #include "WebSite.h"
@@ -50,7 +50,6 @@
 /* Default control colors */
 #define TAB_CONTROL_COLOR               Control::Color::Wetasphalt
 #define GROUP_CONTROL_COLOR             Control::Color::Wetasphalt
-
 
 /**
  * Initialize the private static pointer
@@ -272,9 +271,16 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mProductInfoGroup = AddGroupHelper("Product Information", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
     mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mProductInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
         "");    // Placeholder for product information, will be updated in UpdateProductInfo()
-    
+
     /* Update the product information displayed on the web UI */
     UpdateProductInfo();
+
+
+    /**
+     * Tab Settings / Firmware Update Group
+     */
+    mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -294,7 +300,9 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             UpdateWiFiSettingsControls();
 
             /* Start WEB UI */
+            ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
+            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
@@ -308,7 +316,9 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             UpdateWiFiSettingsControls();
 
             /* Start WEB UI */
+            ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
+            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:

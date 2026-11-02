@@ -144,6 +144,8 @@ private:
         //
         Control::ControlId_t mProductInfoGroup;
         Control::ControlId_t mProductInfoLabel;
+        //
+        Control::ControlId_t mFirmwareUpdateGroup;
     };
 
     /** @brief "This" pointer for created WebSite instance */
