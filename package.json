@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Build-time minification for ESP32 WordClock browser assets",
+  "devDependencies": {
+    "terser": "5.39.0"
+  }
+}
