@@ -12,50 +12,53 @@
 
         const panel = document.createElement('div');
         panel.id = 'wordclock-ota-uploader';
-        panel.style.cssText = 'padding:12px 0;text-align:left';
+        panel.style.cssText = 'background-color:unset;width:100%;text-align:left;padding:8px 0;box-sizing:border-box';
 
         const description = document.createElement('p');
         description.textContent = 'Select the versioned <project>_ota_<major>_<minor>_<build>.bin file from your PlatformIO build output.';
+        description.style.cssText = 'background-color:unset;text-align:left;padding:0;margin:0 0 8px;top:0;font-weight:300;font-size:.9em;width:100%;box-sizing:border-box';
         const picker = document.createElement('input');
         picker.type = 'file';
         picker.accept = '.bin,application/octet-stream';
-        picker.style.cssText = 'display:block;width:100%;margin:8px 0';
+        picker.style.cssText = 'display:block;color:black;width:calc(100% - 8px);min-height:32px;margin:0 0 8px 8px;padding:3px;box-sizing:border-box';
 
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Upload and install';
-        button.style.cssText = 'width:100%;padding:10px;cursor:pointer';
+        button.style.cssText = 'width:100%;margin:3px 0;box-sizing:border-box;cursor:pointer';
 
         const progress = document.createElement('progress');
         progress.max = 100;
         progress.value = 0;
         progress.hidden = true;
-        progress.style.cssText = 'display:block;width:100%;margin:10px 0';
+        progress.style.cssText = 'display:block;width:calc(100% - 8px);height:18px;margin:8px 0 8px 8px;box-sizing:border-box';
 
         const status = document.createElement('p');
         status.setAttribute('role', 'status');
         status.textContent = 'Choose a .bin image to begin.';
+        status.style.cssText = 'background-color:unset;text-align:left;padding:0;margin:0 0 8px 8px;top:0;font-weight:300;font-size:.9em;width:calc(100% - 8px);box-sizing:border-box';
 
         const onlineStatus = document.createElement('p');
         onlineStatus.setAttribute('role', 'status');
         onlineStatus.textContent = 'Online update status: not checked.';
+        onlineStatus.style.cssText = status.style.cssText;
 
         const checkButton = document.createElement('button');
         checkButton.type = 'button';
         checkButton.textContent = 'Check for update';
-        checkButton.style.cssText = 'width:100%;padding:10px;margin:6px 0;cursor:pointer';
+        checkButton.style.cssText = button.style.cssText;
 
         const installButton = document.createElement('button');
         installButton.type = 'button';
         installButton.textContent = 'Start update now';
         installButton.disabled = true;
-        installButton.style.cssText = 'width:100%;padding:10px;margin:6px 0;cursor:pointer';
+        installButton.style.cssText = button.style.cssText;
 
         const scheduleLabel = document.createElement('label');
         scheduleLabel.textContent = 'Automatic update checks (web UI must remain open)';
-        scheduleLabel.style.cssText = 'display:block;margin-top:12px';
+        scheduleLabel.style.cssText = 'display:block;background-color:unset;text-align:left;padding:0;margin:10px 0 4px 8px;font-weight:300;font-size:.9em;box-sizing:border-box';
         const schedule = document.createElement('select');
-        schedule.style.cssText = 'display:block;width:100%;margin:6px 0';
+        schedule.style.cssText = 'display:block;color:black;height:30px;margin:0 0 8px 8px;width:calc(100% - 8px);box-sizing:border-box';
         [
             ['off', 'Not automatic'],
             ['after5', '5 minutes after web UI starts'],
