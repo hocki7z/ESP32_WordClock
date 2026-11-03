@@ -5,3 +5,4 @@ node_modules/
 .vscode/launch.json
 .vscode/ipch
 /credentials.h
+/tools/__pycache__

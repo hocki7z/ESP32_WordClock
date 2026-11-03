@@ -20,6 +20,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 import zipfile
 import zlib
 
@@ -27,6 +28,15 @@ try:
     Import("env")  # type: ignore[name-defined]  # Provided by PlatformIO/SCons.
 except NameError:
     env = None
+
+# SCons does not add the extra-script directory to Python's import path.
+# Standalone execution already includes it.
+if env is not None:
+    tools_dir = str(Path(env.subst("$PROJECT_DIR")) / "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+
+import productinfo_format
 
 # ESP32 4 MiB flash layout used by the WordClock custom partition table.
 # Offsets are absolute flash addresses; PRODUCTINFO_OFFSET reserves the final
@@ -83,11 +93,11 @@ def _place_image(image, path, offset, label):
 
 
 def _productinfo_version(path):
-    """Validate the ProductInfo v2 record and return its version tuple.
+    """Validate the ProductInfo v3 record and return its version tuple.
 
-    The record is 131 bytes: magic and format version at offsets 0-8, the
-    three-byte version at offsets 9-11, and a little-endian CRC-32 at offsets
-    127-130. The remaining fields are covered by the CRC.
+    The record is 139 bytes: identifier and format version at offsets 0-16,
+    the three-byte version at offsets 17-19, and a little-endian CRC-32 at
+    offsets 135-138. The preceding fields are covered by the CRC.
 
     Args:
         path: Path to the generated ProductInfo partition image.
@@ -102,16 +112,21 @@ def _productinfo_version(path):
     """
 
     data = _read_image(path, "product information")
-    record_size = 131
-    if len(data) < record_size or data[:8] != b"WCPRODIN" or data[8] != 2:
+    # SCons does not define __file__; use its project directory during builds.
+    # Direct CLI execution supplies __file__ normally.
+    project_dir = (Path(env.subst("$PROJECT_DIR")) if env is not None
+                   else Path(__file__).resolve().parents[1])
+    magic, format_version = productinfo_format.load_format(project_dir)
+    record_size = 139
+    if len(data) < record_size or data[:16] != magic or data[16] != format_version:
         raise ValueError("ProductInfo image has an unsupported or invalid record")
 
     record = data[:record_size]
-    stored_crc = int.from_bytes(record[127:131], "little")
-    if zlib.crc32(record[:127]) != stored_crc:
+    stored_crc = int.from_bytes(record[135:139], "little")
+    if zlib.crc32(record[:135]) != stored_crc:
         raise ValueError("ProductInfo image CRC validation failed")
 
-    return tuple(record[9:12])
+    return tuple(record[17:20])
 
 
 def _make_images(target, source, env):

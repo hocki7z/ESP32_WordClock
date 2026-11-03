@@ -16,9 +16,9 @@
 namespace ProductInfoNS
 {
 /* Constants for validating the ProductInfo record */
-constexpr uint8_t mcProductInfoMagicSize = 8;
-constexpr uint8_t mcProductInfoMagic[mcProductInfoMagicSize] = {'W', 'C', 'P', 'R', 'O', 'D', 'I', 'N'};
-constexpr uint8_t mcProductInfoFormatVersion = 2;
+constexpr uint8_t mcProductInfoMagicSize = PRODUCTINFO_MAGIC_SIZE;
+constexpr const uint8_t mcProductInfoMagic[] = {PRODUCTINFO_MAGIC_BYTES};
+constexpr uint8_t mcProductInfoFormatVersion = PRODUCTINFO_FORMAT_VERSION;
 
 /* Chunk size for reading from the OTA image in bytes */
 constexpr uint16_t mcReadChunkSize = 1024;
@@ -31,9 +31,9 @@ constexpr tSoftwareVersion mcInvalidSoftwareVersion{0xFF, 0xFF, 0xFF};
 
 
 /* Static assertions to ensure the Record structure has the expected layout and size */
-static_assert(sizeof(ProductInfoNS::Record) == 131, "Unexpected product info record layout");
-/* The CRC-32 field is expected to be at offset 127 in the Record structure */
-static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 127, "Unexpected product info CRC offset");
+static_assert(sizeof(ProductInfoNS::Record) == 139, "Unexpected product info record layout");
+/* The CRC-32 field is expected to be at offset 135 in the Record structure */
+static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 135, "Unexpected product info CRC offset");
 /* The embedded product info in the firmware image must contain exactly one record */
 static_assert(sizeof(ProductInfoNS::FirmwareImage::mcData) == sizeof(ProductInfoNS::Record),
     "Embedded product info must contain exactly one record");
@@ -69,7 +69,7 @@ bool ReadFlashPartition(Record& arRecord)
         if (esp_partition_read(wpPartition, 0, &wRecord, sizeof(wRecord)) == ESP_OK)
         {
             /* Validate the magic bytes and format version of the record */
-            if ((memcmp(wRecord.mMagic, mcProductInfoMagic, sizeof(mcProductInfoMagic)) == 0) &&
+            if ((memcmp(wRecord.mMagic, mcProductInfoMagic, mcProductInfoMagicSize) == 0) &&
                 (wRecord.mFormatVersion == mcProductInfoFormatVersion))
             {
                 /* Calculate the CRC-32 of the record (excluding the CRC field itself) */
@@ -187,7 +187,7 @@ bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImage
     /* Buffer for reading chunks from the OTA image */
     uint8_t wBuffer[mcReadChunkSize]{};
 
-    for (size_t wOffset = 0; wOffset < aImageSize;)
+    for (size_t wOffset = 0; !wFound && wOffset < aImageSize;)
     {
         /* Determine the size of the next chunk to read */
         const size_t wReadSize = (aImageSize - wOffset < mcReadChunkSize)

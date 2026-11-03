@@ -8,6 +8,21 @@
 
 #include <Arduino.h>
 
+/**
+ * Important:
+ *   - This public record identifier provides neither encryption nor firmware authentication.
+ *   - This definition is the single source of truth for the application and Python build tools.
+ *   - Keep the identifier stable across releases. Devices expecting the previous identifier
+ *     will reject OTA images containing a different one.
+ */
+
+/* The identifier is a 128-bit (16-byte) value, represented as 16 comma-separated hexadecimal bytes. */
+#define PRODUCTINFO_MAGIC_BYTES     0x59U, 0x7AU, 0x96U, 0x32U, 0x9FU, 0xA4U, 0x0DU, 0xEEU, 0xE9U, 0x8DU, 0x23U, 0x37U, 0x52U, 0x91U, 0xEBU, 0xF2U
+#define PRODUCTINFO_MAGIC_SIZE      16
+
+/* The format version is a single byte (0-255) that indicates the layout of the ProductInfo record. */
+#define PRODUCTINFO_FORMAT_VERSION  3
+
 namespace ProductInfoNS
 {
     /** @brief Software version structure */
@@ -40,8 +55,8 @@ namespace ProductInfoNS
          */
         bool operator==(const tSoftwareVersion& other) const
         {
-            return (mMajor == other.mMajor) && 
-                   (mMinor == other.mMinor) && 
+            return (mMajor == other.mMajor) &&
+                   (mMinor == other.mMinor) &&
                    (mBuild == other.mBuild);
         }
 
@@ -84,13 +99,13 @@ namespace ProductInfoNS
     /** @brief Product information record structure */
     struct __attribute__((packed)) Record
     {
-        uint8_t mMagic[8];                  // Record identifier bytes: "WCPRODIN".
-        uint8_t mFormatVersion;             // Binary record layout version.
-        tSoftwareVersion mSoftwareVersion;  // Software version of the firmware.
-        char mBuildDateTimeUtc[25];         // NUL-terminated UTC ISO-8601 build timestamp.
-        char mBranchShort[81];              // NUL-terminated branch name, limited to 20 UTF-8 characters.
-        char mCommitHashShort[9];           // NUL-terminated first 8 hexadecimal commit-hash characters.
-        uint8_t mCrc32[4];                  // CRC-32 of all preceding fields, stored little-endian.
+        uint8_t mMagic[PRODUCTINFO_MAGIC_SIZE];     // Record identifier bytes.
+        uint8_t mFormatVersion;                     // Binary record layout version.
+        tSoftwareVersion mSoftwareVersion;          // Software version of the firmware.
+        char mBuildDateTimeUtc[25];                 // NUL-terminated UTC ISO-8601 build timestamp.
+        char mBranchShort[81];                      // NUL-terminated branch name, limited to 20 UTF-8 characters.
+        char mCommitHashShort[9];                   // NUL-terminated first 8 hexadecimal commit-hash characters.
+        uint8_t mCrc32[4];                          // CRC-32 of all preceding fields, stored little-endian.
     };
 
     bool ReadFlashPartition(Record& arRecord);

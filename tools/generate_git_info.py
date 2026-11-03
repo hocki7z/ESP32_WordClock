@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import argparse
 import re
 import subprocess
+import sys
 import zlib
 from pathlib import Path
 
@@ -20,6 +21,15 @@ try:
 except NameError:
     # Running as a normal Python script rather than a PlatformIO pre-script.
     _PLATFORMIO_ENV = None
+
+# SCons does not add the extra-script directory to Python's import path.
+# Standalone execution already includes it.
+if _PLATFORMIO_ENV is not None:
+    tools_dir = str(Path(_PLATFORMIO_ENV.subst("$PROJECT_DIR")) / "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+
+import productinfo_format
 
 # Regex pattern for tags that look like semantic version numbers, e.g. 1.2.3.
 _VERSION_PATTERN        = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
@@ -188,6 +198,8 @@ def _fallback_build_info():
 def _generate_flash_record(build_info):
     """Generate the fixed-layout partition image from the shared metadata snapshot."""
 
+    project_dir = Path(_PLATFORMIO_ENV.subst("$PROJECT_DIR"))
+    magic, format_version = productinfo_format.load_format(project_dir)
     version = build_info["software_version"]
     build_time_bytes = build_info["generated_utc"].encode("ascii")
     commit_hash_short = build_info["full_hash"][:8].encode("ascii")
@@ -197,16 +209,16 @@ def _generate_flash_record(build_info):
     commit_hash_short = commit_hash_short[:8].ljust(9, b"\0")
     branch_short = branch_short[:80].ljust(81, b"\0")
     record = (
-        b"WCPRODIN"                         # 0..7: record magic
-        + bytes((2,))                       # 8: record format version
-        + bytes(version)                    # 9..11: software version
-        + build_time_bytes                  # 12..36: NUL-terminated UTC ISO-8601 date/time
-        + branch_short                      # 37..117: UTF-8 branch, max 20 chars, NUL-terminated
-        + commit_hash_short                 # 118..126: NUL-terminated short commit hash
+        magic                               # 0..15: shared record identifier
+        + bytes((format_version,))          # 16: record format version
+        + bytes(version)                    # 17..19: software version
+        + build_time_bytes                  # 20..44: NUL-terminated UTC ISO-8601 date/time
+        + branch_short                      # 45..125: UTF-8 branch, max 20 chars, NUL-terminated
+        + commit_hash_short                 # 126..134: NUL-terminated short commit hash
     )
-    record += zlib.crc32(record).to_bytes(4, "little")  # 127..130: CRC-32
-    if len(record) != 131:
-        raise ValueError("Product info record must be exactly 131 bytes")
+    record += zlib.crc32(record).to_bytes(4, "little")  # 135..138: CRC-32
+    if len(record) != 139:
+        raise ValueError("Product info record must be exactly 139 bytes")
 
     image = bytearray(b"\xFF" * _PRODUCTINFO_PARTITION_SIZE)
     image[:len(record)] = record
