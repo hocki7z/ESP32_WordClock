@@ -1,13 +1,12 @@
 """Create firmware packages that include the fixed ProductInfo flash sector.
 
 This file is loaded by PlatformIO as a SCons post-build script. On every
-build, after the application binary is ready, it creates a complete 4 MiB flash image, an
-offset-addressed app-plus-ProductInfo image, a single-file OTA app image, and
+build, after the application binary is ready, it creates a complete 4 MiB
+flash image, a single-file OTA app image, and
 a ZIP package with the component images and their flash offsets.
 
-The generated raw offset images contain 0xFF in unpopulated address ranges;
-they must be flashed using the intended offsets and must not be mistaken for
-a generic application-only OTA image.
+The full-flash image contains 0xFF in unpopulated address ranges and is
+intended for flashing at address zero, not for application-only OTA updates.
 
 It can also be run directly after a PlatformIO build. The standalone command
 uses ``--project-dir`` to locate the project and can take ``--build-dir`` and
@@ -148,18 +147,16 @@ def _generate_images(build_dir, project_name, app_image):
         app_image: Path to the application binary to package.
 
     Outputs in the PlatformIO build directory:
-      * ``firmware_full.bin`` and a project/version-named copy: complete 4 MiB
-        flash image with bootloader, partition table, application, and ProductInfo.
-      * ``firmware_productinfo_update.bin``: offset-addressed application and
-        ProductInfo data only, padded with 0xFF between their flash addresses.
-      * A project/version-named ``*_ota_*.bin``: application image for ordinary
+            * A project/version-named complete 4 MiB flash image with bootloader,
+                partition table, application, and ProductInfo. The intermediate
+                ``firmware_full.bin`` is renamed to the versioned output.
+            * A project/version-named ``*_OTA_*.bin``: application image for ordinary
         application OTA; ProductInfo is synchronized by firmware at boot.
-      * ``firmware_productinfo_update.zip``: component binaries and a manifest
+            * ``<project>_Update_<version>.zip``: component binaries and a manifest
         describing their flash offsets.
 
-    The offset-addressed update image is not a full-flash image and should not
-    be blindly uploaded as one. Use the ZIP manifest or the matching upload
-    method to preserve the intended flash addresses.
+        The full-flash image is intended for flashing at address zero, not OTA.
+        Use the ZIP manifest to preserve the component images' flash addresses.
     """
 
     build_dir = Path(build_dir)
@@ -183,24 +180,15 @@ def _generate_images(build_dir, project_name, app_image):
     # Remove old version-tagged project binaries before writing this build's copy.
     for stale_path in build_dir.glob("{}_*.bin".format(project_name)):
         stale_path.unlink()
-    shutil.copyfile(full_path, versioned_full_path)
+    full_path.replace(versioned_full_path)
     print("Product info: generated versioned full-flash image {}".format(versioned_full_path))
-
-    # Keep absolute flash offsets for the application and ProductInfo data. The
-    # gap remains 0xFF; this is an offset update artifact, not a full-chip image.
-    update_image = bytearray(b"\xFF" * (PRODUCTINFO_OFFSET + productinfo_image.stat().st_size))
-    _place_image(update_image, app_image, APP_OFFSET, "application")
-    _place_image(update_image, productinfo_image, PRODUCTINFO_OFFSET, "product information")
-    update_path = build_dir / "firmware_productinfo_update.bin"
-    update_path.write_bytes(update_image)
-    print("Product info: generated app+ProductInfo update image {}".format(update_path))
 
     # The app embeds its ProductInfo record and restores the partition at boot,
     # so the application binary alone is sufficient for ordinary app OTA.
-    ota_path = build_dir / "{}_ota_{}.bin".format(project_name, version_text)
-    for stale_path in build_dir.glob("{}_ota_*.bin".format(project_name)):
+    ota_path = build_dir / "{}_OTA_{}.bin".format(project_name, version_text)
+    for stale_path in build_dir.glob("{}_OTA_*.bin".format(project_name)):
         stale_path.unlink()
-    (build_dir / "firmware_productinfo_ota.bin").unlink(missing_ok=True)
+    (build_dir / "firmware_productinfo_OTA.bin").unlink(missing_ok=True)
     shutil.copyfile(app_image, ota_path)
     print("Product info: generated single-file OTA image {}".format(ota_path))
 
@@ -214,7 +202,11 @@ def _generate_images(build_dir, project_name, app_image):
             {"file": "productinfo.bin", "flash_offset": PRODUCTINFO_OFFSET},
         ],
     }
-    package_path = build_dir / "firmware_productinfo_update.zip"
+    package_path = build_dir / "{}_Update_{}.zip".format(project_name, version_text)
+    # Keep only this build's update package and remove the old fixed-name ZIP.
+    for stale_path in build_dir.glob("{}_Update_*.zip".format(project_name)):
+        stale_path.unlink()
+    (build_dir / "firmware_productinfo_update.zip").unlink(missing_ok=True)
     with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as package:
         package.write(app_image, arcname="firmware.bin")
         package.write(productinfo_image, arcname="productinfo.bin")
