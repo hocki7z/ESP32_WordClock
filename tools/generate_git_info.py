@@ -265,23 +265,23 @@ def _generate_flash_record(build_info):
     image_path.write_bytes(image)
     print("Product info: generated {} (record at partition offset 0x0)".format(image_path))
 
-    # Embed the same partition image in the application so a single app OTA
-    # image can restore ProductInfo on the first boot after the update.
+    # Embed only the record in the application. The remaining partition bytes
+    # are erased to 0xFF when the record is synchronized on first boot.
     header_lines = [
         "/* Auto-generated from productinfo.bin; do not edit. */",
         "#pragma once",
         "#include <cstdint>",
         "namespace ProductInfoNS { namespace FirmwareImage {",
-        "alignas(4) static constexpr uint8_t kData[] = {",
+        "alignas(4) static constexpr uint8_t mcData[] = {",
     ]
-    for offset in range(0, len(image), 16):
-        chunk = image[offset:offset + 16]
+    for offset in range(0, len(record), 16):
+        chunk = record[offset:offset + 16]
         header_lines.append("    " + ", ".join("0x{:02X}".format(value) for value in chunk) + ",")
     header_lines.extend(("};", "} } // namespace ProductInfoNS::FirmwareImage", ""))
     image_header_path = build_dir / "ProductInfoImage.h"
     image_header_path.write_text("\n".join(header_lines), encoding="ascii", newline="\n")
     _PLATFORMIO_ENV.Append(CPPPATH=[str(build_dir)])
-    print("Product info: embedded partition image generated {}".format(image_header_path))
+    print("Product info: embedded {}-byte record generated {}".format(len(record), image_header_path))
 
     pass    # end of _generate_flash_record
 
