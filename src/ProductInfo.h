@@ -28,7 +28,56 @@ namespace ProductInfoNS
          */
         bool IsValid(void) const
         {
-            return (mMajor != 0xFF) || (mMinor != 0xFF) || (mBuild != 0xFF);
+            return (mMajor != 0xFF) ||
+                   (mMinor != 0xFF) ||
+                   (mBuild != 0xFF);
+        }
+
+        /** @brief Equality operator overload
+         *
+         * @param other The other software version to compare with
+         * @return true if the software versions are equal, false otherwise
+         */
+        bool operator==(const tSoftwareVersion& other) const
+        {
+            return (mMajor == other.mMajor) && 
+                   (mMinor == other.mMinor) && 
+                   (mBuild == other.mBuild);
+        }
+
+        /** @brief Inequality operator overload
+         *
+         * @param other The other software version to compare with
+         * @return true if the software versions are not equal, false otherwise
+         */
+        bool operator!=(const tSoftwareVersion& other) const
+        {
+            return !(*this == other);
+        }
+
+        /** @brief Less-than operator overload
+         *
+         * @param other The other software version to compare with
+         * @return true if this software version is less than the other, false otherwise
+         */
+        bool operator<(const tSoftwareVersion& other) const
+        {
+            if (mMajor != other.mMajor)
+                return mMajor < other.mMajor;
+            if (mMinor != other.mMinor)
+                return mMinor < other.mMinor;
+            return mBuild < other.mBuild;
+        }
+
+        /** @brief Greater-than operator overload
+         *
+         * @param other The other software version to compare with
+         * @return true if this software version is greater than the other, false otherwise
+         */
+        bool operator>(const tSoftwareVersion& other) const
+        {
+            // Check if != and not <
+            return *this != other && !(*this < other);
         }
     };
 
@@ -45,6 +94,10 @@ namespace ProductInfoNS
     };
 
     bool ReadFlashPartition(Record& arRecord);
+    bool SyncFlashPartitionWithFirmware(void);
+
+    bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImageSize, Record& arRecord);
+    bool IsNewVersionAllowed(const tSoftwareVersion& arNewVersion, tSoftwareVersion& arCurrentVersion);
 
     uint32_t CalculateCrc32(const uint8_t* apData, const size_t aLength);
 

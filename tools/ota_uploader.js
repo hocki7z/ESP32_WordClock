@@ -77,6 +77,10 @@
                     status.textContent = 'Uploading ' + progress.value + '%';
                 }
             };
+            request.upload.onload = () => {
+                progress.value = 100;
+                status.textContent = 'Upload complete. Validating firmware…';
+            };
             request.onload = () => {
                 status.textContent = request.responseText || ('Update failed (' + request.status + ').');
                 if (request.status !== 200) {

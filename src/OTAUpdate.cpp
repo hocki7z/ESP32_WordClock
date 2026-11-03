@@ -1,5 +1,9 @@
-#include "OTAUpdate.h"
-
+/*
+ * OTAUpdate.cpp
+ *
+ *  Created on: 02.11.2026
+ *      Author: hocki
+ */
 #include <ESPAsyncWebServer.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
@@ -7,7 +11,10 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "ProductInfo.h"
+#include "OTAUpdate.h"
 #include "OTAUpdateCustomJs.h"
+
 namespace
 {
 enum class OtaUploadStatus : uint8_t
@@ -162,6 +169,42 @@ void RegisterRoutes(AsyncWebServer* apServer)
                 if (mOtaError != ESP_OK)
                 {
                     mOtaFailureReason = "The uploaded file is not a valid ESP32 application image.";
+                    mOtaStatus = OtaUploadStatus::Failed;
+                    return;
+                }
+
+                ProductInfoNS::Record wNewRecord{};
+                if (!ProductInfoNS::FindProductInfoInOtaImage(mpOtaPartition, mOtaBytesReceived, wNewRecord))
+                {
+                    mOtaError = ESP_ERR_INVALID_CRC;
+                    mOtaFailureReason = "No valid embedded ProductInfo record was found in the firmware image.";
+                    mOtaStatus = OtaUploadStatus::Failed;
+                    return;
+                }
+
+                ProductInfoNS::tSoftwareVersion wCurrentVersion{};
+                if (!wNewRecord.mSoftwareVersion.IsValid())
+                {
+                    mOtaError = ESP_FAIL;
+                    mOtaFailureReason = "Update refused: the selected firmware version is invalid (255.255.255).";
+                    mOtaStatus = OtaUploadStatus::Failed;
+                    return;
+                }
+
+                if (!ProductInfoNS::IsNewVersionAllowed(wNewRecord.mSoftwareVersion, wCurrentVersion))
+                {
+                    char wMessage[128]{};
+                    snprintf(wMessage, sizeof(wMessage),
+                        "Update refused: firmware version %u.%u.%u is not newer than installed version %u.%u.%u.",
+                        static_cast<unsigned>(wNewRecord.mSoftwareVersion.mMajor),
+                        static_cast<unsigned>(wNewRecord.mSoftwareVersion.mMinor),
+                        static_cast<unsigned>(wNewRecord.mSoftwareVersion.mBuild),
+                        static_cast<unsigned>(wCurrentVersion.mMajor),
+                        static_cast<unsigned>(wCurrentVersion.mMinor),
+                        static_cast<unsigned>(wCurrentVersion.mBuild));
+
+                    mOtaFailureReason = wMessage;
+                    mOtaError = ESP_FAIL;
                     mOtaStatus = OtaUploadStatus::Failed;
                     return;
                 }

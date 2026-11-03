@@ -4,6 +4,7 @@
 #include "Settings.hpp"
 
 #include "Configuration.h"
+#include "ProductInfo.h"
 
 #include "Application.h"
 #include "Communication.h"
@@ -224,6 +225,12 @@ static void CheckResetReason(void)
 
 static void InitApplication(void)
 {
+    /* Restore build metadata embedded in the application OTA image if needed. */
+    if (!ProductInfoNS::SyncFlashPartitionWithFirmware())
+    {
+        LOG(LOG_ERROR, "ProductInfo: failed to synchronize the flash partition");
+    }
+
     /* Create tasks */
     mpDisplay = new Display(ConfigNS::mDisplayTaskName, ConfigNS::mDisplayTaskPriority,
             ConfigNS::mDisplayTaskStackSize);
@@ -296,24 +303,24 @@ static void RunApplication(void)
     if ((mpDisplay != nullptr) &&
         (mpDisplay->getTaskHandle() != nullptr))
     {
-            xTaskNotifyGive(mpDisplay->getTaskHandle());
+        xTaskNotifyGive(mpDisplay->getTaskHandle());
     }
 
     if ((mpTimeManager != nullptr) &&
         (mpTimeManager->getTaskHandle() != nullptr))
     {
-            xTaskNotifyGive(mpTimeManager->getTaskHandle());
+        xTaskNotifyGive(mpTimeManager->getTaskHandle());
     }
 
     if ((mpWiFiManager != nullptr) &&
         (mpWiFiManager->getTaskHandle() != nullptr))
     {
-            xTaskNotifyGive(mpWiFiManager->getTaskHandle());
+        xTaskNotifyGive(mpWiFiManager->getTaskHandle());
     }
 
     if ((mpWebSite != nullptr) &&
         (mpWebSite->getTaskHandle() != nullptr))
     {
-            xTaskNotifyGive(mpWebSite->getTaskHandle());
+        xTaskNotifyGive(mpWebSite->getTaskHandle());
     }
 }
