@@ -90,7 +90,7 @@ def _place_image(image, path, offset, label):
 
 
 def _productinfo_version(path):
-    """Validate the ProductInfo v3 record and return its version tuple.
+    """Validate the ProductInfo record using the shared format version and return its version tuple.
 
     The record is 139 bytes: identifier and format version at offsets 0-16,
     the three-byte version at offsets 17-19, and a little-endian CRC-32 at

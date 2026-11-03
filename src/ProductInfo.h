@@ -21,7 +21,7 @@
 #define PRODUCTINFO_MAGIC_SIZE      16
 
 /* The format version is a single byte (0-255) that indicates the layout of the ProductInfo record. */
-#define PRODUCTINFO_FORMAT_VERSION  3
+#define PRODUCTINFO_FORMAT_VERSION  1
 
 namespace ProductInfoNS
 {
