@@ -23,7 +23,7 @@
 
 /* CSS styles for the web UI controls */
 #define CSS_STYLE_NONE                  ""
-#define CSS_STYLE_GROUP                 "background-color: unset; width: 100%; text-align: center;"
+#define CSS_STYLE_GROUP                 "display: none;"
 #define CSS_STYLE_SEPARATOR_GAP         "background-color: unset; width: 100%; height: 4px; min-height: 4px; box-sizing: border-box; line-height: 0; padding: 0; margin: 0;"
 #define CSS_STYLE_SEPARATOR_LINE        "background-color: unset; width: 100%; height: 4px; min-height: 4px; box-sizing: border-box; padding: 0; margin: 0; border-top: 1px solid #808080;"
 #define CSS_STYLE_LABEL_DEFAULT         "background-color: unset; text-align: left; padding: 0; margin-bottom: 4px; top: 0; vertical-align: bottom;"
