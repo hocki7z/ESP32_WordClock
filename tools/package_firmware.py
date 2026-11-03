@@ -3,8 +3,7 @@
 This file is loaded by PlatformIO as a SCons post-build script. On every
 build, after the application binary is ready, it creates a complete 4 MiB flash image, an
 offset-addressed app-plus-ProductInfo image, a single-file OTA app image, and
-a ZIP package with the component images and their flash offsets. It also adds
-an ``upload_productinfo`` target that programs only the ProductInfo sector.
+a ZIP package with the component images and their flash offsets.
 
 The generated raw offset images contain 0xFF in unpopulated address ranges;
 they must be flashed using the intended offsets and must not be mistaken for
@@ -19,7 +18,6 @@ from pathlib import Path
 import argparse
 import json
 import shutil
-import subprocess
 import sys
 import zipfile
 import zlib
@@ -282,51 +280,6 @@ def main(argv=None):
     pass    # end of main
 
 
-def _upload_productinfo(target, source, env):
-    """Flash only the ProductInfo partition using the configured esptool.
-
-    The source is the padded partition binary, so this target does not touch
-    the application, NVS, SPIFFS, bootloader, or partition table. Port, baud,
-    and flash settings come from the active PlatformIO environment, with
-    sensible ESP32 defaults if a setting is unavailable.
-
-    Args:
-        target: SCons target list (unused; required by the action interface).
-        source: SCons source list; its first entry is ``productinfo.bin``.
-        env: Active PlatformIO/SCons environment used to resolve tool settings.
-
-    Returns:
-        The esptool process exit code (zero indicates success).
-    """
-
-    productinfo_image = Path(str(source[0]))
-    command = [
-        env.subst("$PYTHONEXE"),
-        env.subst("$UPLOADER"),
-        "--chip", "esp32",
-    ]
-    port = env.subst("$UPLOAD_PORT")
-    if port and port != "$UPLOAD_PORT":
-        command.extend(("--port", port))
-
-    baud = env.subst("$UPLOAD_SPEED")
-    if baud and baud != "$UPLOAD_SPEED":
-        command.extend(("--baud", baud))
-
-    flash_mode = env.subst("$FLASH_MODE")
-    flash_freq = env.subst("$FLASH_FREQ")
-    flash_size = env.subst("$FLASH_SIZE")
-    command.extend((
-        "--before", "default_reset", "--after", "hard_reset", "write_flash", "-z",
-        "--flash_mode", flash_mode if flash_mode != "$FLASH_MODE" else "qio",
-        "--flash_freq", flash_freq if flash_freq != "$FLASH_FREQ" else "40m",
-        "--flash_size", flash_size if flash_size != "$FLASH_SIZE" else "4MB",
-        hex(PRODUCTINFO_OFFSET), str(productinfo_image),
-    ))
-    print("Product info: writing only flash sector at 0x{:06X}".format(PRODUCTINFO_OFFSET))
-    return subprocess.call(command)
-
-
 if env is not None:
     # A binary post-action runs only when SCons rebuilds that binary. Use an
     # always-built alias so incremental builds also refresh the packages,
@@ -345,15 +298,5 @@ if env is not None:
     env.Default(package_images)
     env.Depends("buildprog", package_images)
     env.Depends("upload", package_images)
-    # Expose an explicit PlatformIO target for updating metadata without
-    # reflashing firmware or disturbing user settings and filesystem contents.
-    env.AddCustomTarget(
-        name="upload_productinfo",
-        dependencies="$BUILD_DIR/productinfo.bin",
-        actions=_upload_productinfo,
-        title="Upload product information",
-        description="Write only the fixed product information flash sector",
-        always_build=True,
-    )
 elif __name__ == "__main__":
     main()
