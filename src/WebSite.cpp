@@ -1325,45 +1325,54 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
  */
 void WebSite::UpdateProductInfo(void)
 {
+    ProductInfoNS::Record wProductInfo{};
+
     /* Default values */
     String wSoftwareVersion = "Unknown";
     String wBuildDateTime   = "Unavailable";
     String wCommitHash      = "Unavailable";
     String wBranch          = "Unavailable";
 
-    /* Add product information controls (e.g., software version, build date/time, branch, commit hash) */
-    const ProductInfoNS::Record& wProductInfo = ConfigNS::GetProductInfo();
-
-    if (wProductInfo.mSoftwareVersion.IsValid())
+    /* Retrieve product information from the configuration */
+    if (ConfigNS::GetProductInfo(wProductInfo))
     {
-        char wVersionText[12] = {0};
-        snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
-            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
-            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
-            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
-
-        wSoftwareVersion = wVersionText;
-    }
-
-    if (wProductInfo.mBuildDateTimeUtc[0] != '\0')
-    {
-        char wBuildDateTimeUtc[32]{};
-        if (!DateTimeNS::FormatIso8601Utc(wProductInfo.mBuildDateTimeUtc,
-                wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc)))
+        if (wProductInfo.mSoftwareVersion.IsValid())
         {
-            snprintf(wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc), "%s", wProductInfo.mBuildDateTimeUtc);
+            char wVersionText[12] = {0};
+            snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
+                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
+                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
+                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+
+            wSoftwareVersion = wVersionText;
         }
-        wBuildDateTime = wBuildDateTimeUtc;
+
+        if (wProductInfo.mBuildDateTimeUtc[0] != '\0')
+        {
+            char wBuildDateTimeUtc[32]{};
+            if (!DateTimeNS::FormatIso8601Utc(wProductInfo.mBuildDateTimeUtc,
+                    wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc)))
+            {
+                snprintf(wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc), "%s", wProductInfo.mBuildDateTimeUtc);
+            }
+            wBuildDateTime = wBuildDateTimeUtc;
+        }
+
+        if (wProductInfo.mCommitHashShort[0] != '\0')
+        {
+            wCommitHash = wProductInfo.mCommitHashShort;
+        }
+        if (wProductInfo.mBranchShort[0] != '\0')
+        {
+            wBranch = wProductInfo.mBranchShort;
+        }
     }
 
-    if (wProductInfo.mCommitHashShort[0] != '\0')
-    {
-        wCommitHash = wProductInfo.mCommitHashShort;
-    }
-    if (wProductInfo.mBranchShort[0] != '\0')
-    {
-        wBranch = wProductInfo.mBranchShort;
-    }
+
+    /*
+     * Add product information
+     * (e.g., software version, build date/time, branch, commit hash)
+     */
 
     const std::array<const char*, 4> wProductInfoNames = {
         "Software version", "Build date/time", "Branch", "Commit hash"

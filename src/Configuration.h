@@ -22,9 +22,6 @@ using namespace ApplicationNS;
 
 namespace ConfigNS
 {
-    /** Return the compile-time ProductInfo record for display in the Web UI. */
-    const ProductInfoNS::Record& GetProductInfo();
-
     /**
      * Task configurations
      */
@@ -211,5 +208,8 @@ namespace ConfigNS
         /* WAT  */  "WAT-1",
         /* WET  */  "WET0WEST,M3.5.0/1,M10.5.0",
     };
+
+
+    bool GetProductInfo(ProductInfoNS::Record& arRecord);
 
 }   /* end of namespace ConfigNS */

@@ -1,0 +1,25 @@
+# Custom 4 MiB ESP32 layout based on the framework's min_spiffs.csv.
+# Preserves the stock OTA app sizes and 128 KiB SPIFFS partition.
+# The 64 KiB stock coredump partition is shortened to 60 KiB so ProductInfo
+# can occupy the final 4 KiB of flash at the fixed address 0x3FF000.
+#
+# Active layout:
+#   NVS         stores non-volatile settings.
+#   OTA data    selects which application slot to boot.
+#   app0/app1   provide two equal OTA firmware slots.
+#   SPIFFS      preserves the stock min_spiffs.csv size of 128 KiB.
+#   coredump    retains 60 KiB for ESP-IDF crash dumps (enable in sdkconfig).
+#   productinfo fixed-address, 4 KiB read-only build/product metadata partition.
+# Flash address ranges are end-exclusive; the final partition ends at 0x400000.
+#
+# Note: declaring coredump here reserves flash but does not enable core dumps;
+#       ESP-IDF coredump-to-flash support must also be enabled in the build config.
+
+# Name,      Type, SubType, Offset,   Size,     Flags
+nvs,         data, nvs,     0x9000,   0x5000,
+otadata,     data, ota,     0xE000,   0x2000,
+app0,        app,  ota_0,   0x10000,  0x1E0000,
+app1,        app,  ota_1,   0x1F0000, 0x1E0000,
+spiffs,      data, spiffs,  0x3D0000, 0x20000,
+coredump,    data, coredump,0x3F0000, 0x0F000,
+productinfo, data, 0x40,    0x3FF000, 0x1000,

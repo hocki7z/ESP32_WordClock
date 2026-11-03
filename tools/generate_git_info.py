@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import argparse
 import re
 import subprocess
+import zlib
 from pathlib import Path
 
 # PlatformIO pre-script support: import the build environment if available.
@@ -28,6 +29,9 @@ _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 # Constants for header generation.
 _GENERATED_HEADER       = "AutoGitInfo.h"     # Generated in the active build directory.
 _DEFINE_VALUE_COLUMN    = 49    # Column at which to align the value of each ``#define`` in the generated header.
+
+# Constants for flash partition generation.
+_PRODUCTINFO_PARTITION_SIZE = 0x1000
 
 
 def _format_define(name, value):
@@ -230,6 +234,40 @@ def _fallback_build_info():
     }
 
 
+def _generate_flash_record(build_info):
+    """Generate the fixed-layout partition image from the shared metadata snapshot."""
+
+    version = build_info["software_version"]
+    build_time_bytes = build_info["generated_utc"].encode("ascii")
+    commit_hash_short = build_info["full_hash"][:8].encode("ascii")
+    branch_short = build_info["branch"][:20].encode("utf-8")
+
+    build_time_bytes = build_time_bytes[:24].ljust(25, b"\0")
+    commit_hash_short = commit_hash_short[:8].ljust(9, b"\0")
+    branch_short = branch_short[:80].ljust(81, b"\0")
+    record = (
+        b"WCPRODIN"                         # 0..7: record magic
+        + bytes((2,))                       # 8: record format version
+        + bytes(version)                    # 9..11: software version
+        + build_time_bytes                  # 12..36: NUL-terminated UTC ISO-8601 date/time
+        + branch_short                      # 37..117: UTF-8 branch, max 20 chars, NUL-terminated
+        + commit_hash_short                 # 118..126: NUL-terminated short commit hash
+    )
+    record += zlib.crc32(record).to_bytes(4, "little")  # 127..130: CRC-32
+    if len(record) != 131:
+        raise ValueError("Product info record must be exactly 131 bytes")
+
+    image = bytearray(b"\xFF" * _PRODUCTINFO_PARTITION_SIZE)
+    image[:len(record)] = record
+    build_dir = Path(_PLATFORMIO_ENV.subst("$BUILD_DIR"))
+    image_path = build_dir / "productinfo.bin"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(image)
+    print("Product info: generated {} (record at partition offset 0x0)".format(image_path))
+
+    pass    # end of _generate_flash_record
+
+
 def _make_header(build_info):
     """Render AutoGitInfo.h from a previously collected metadata snapshot."""
 
@@ -328,6 +366,14 @@ def _generate_git_info(project_dir, build_dir, build_env=None, tag_strategy="hig
     if build_env is not None:
         # Allow application sources to include the generated build-specific metadata.
         build_env.Append(CPPPATH=[str(header_path.parent)])
+
+    if _PLATFORMIO_ENV is not None:
+        _generate_flash_record(build_info)
+        # PlatformIO's ESP32 uploader appends these images to its normal
+        # esptool write_flash command; this makes regular Upload flash ProductInfo.
+        _PLATFORMIO_ENV.Append(
+            FLASH_EXTRA_IMAGES=[("0x3FF000", "$BUILD_DIR/productinfo.bin")]
+        )
 
     pass    # end of _generate_git_info
 
