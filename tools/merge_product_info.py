@@ -1,7 +1,7 @@
 """Create firmware packages that include the fixed ProductInfo flash sector.
 
-This file is loaded by PlatformIO as a SCons post-build script. After
-``firmware.bin`` is linked, it creates a complete 4 MiB flash image, an
+This file is loaded by PlatformIO as a SCons post-build script. On every
+build, after the application binary is ready, it creates a complete 4 MiB flash image, an
 offset-addressed app-plus-ProductInfo image, a single-file OTA app image, and
 a ZIP package with the component images and their flash offsets. It also adds
 an ``upload_productinfo`` target that programs only the ProductInfo sector.
@@ -115,11 +115,11 @@ def _productinfo_version(path):
 
 
 def _make_images(target, source, env):
-    """Adapt PlatformIO's post-action arguments and generate the image packages."""
+    """Generate packages after the packaging target's build dependencies are ready."""
 
     build_dir = Path(env.subst("$BUILD_DIR"))
     project_name = Path(env.subst("$PROJECT_DIR")).name
-    app_image = Path(str(target[0]))
+    app_image = Path(env.subst("$BUILD_DIR/${PROGNAME}.bin"))
     _generate_images(build_dir, project_name, app_image)
 
     pass    # end of _make_images
@@ -313,8 +313,23 @@ def _upload_productinfo(target, source, env):
 
 
 if env is not None:
-    # Run packaging only after the application binary has been produced.
-    env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _make_images)
+    # A binary post-action runs only when SCons rebuilds that binary. Use an
+    # always-built alias so incremental builds also refresh the packages,
+    # without forcing the application or other input images to rebuild.
+    package_images = env.Alias(
+        "package_productinfo",
+        [
+            "$BUILD_DIR/${PROGNAME}.bin",
+            "$BUILD_DIR/bootloader.bin",
+            "$BUILD_DIR/partitions.bin",
+            "$BUILD_DIR/productinfo.bin",
+        ],
+        _make_images,
+    )
+    env.AlwaysBuild(package_images)
+    env.Default(package_images)
+    env.Depends("buildprog", package_images)
+    env.Depends("upload", package_images)
     # Expose an explicit PlatformIO target for updating metadata without
     # reflashing firmware or disturbing user settings and filesystem contents.
     env.AddCustomTarget(
