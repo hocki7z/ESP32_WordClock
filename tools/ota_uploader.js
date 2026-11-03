@@ -12,7 +12,7 @@
 
         const panel = document.createElement('div');
         panel.id = 'wordclock-ota-uploader';
-        panel.style.cssText = 'padding:12px 0;text-align:left';
+        panel.style.cssText = 'background-color:unset;width:100%;text-align:left;padding:8px 3px;';
 
         const picker = document.createElement('input');
         picker.type = 'file';
@@ -20,16 +20,16 @@
         picker.hidden = true;
 
         const fileField = document.createElement('div');
-        fileField.style.cssText = 'display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;color:black;background-color:#fff;width:100%;height:32px;margin:0 0 8px;padding:3px;gap:8px;box-sizing:border-box;border:1px solid #808080;border-radius:4px';
+        fileField.style.cssText = 'display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;color:black;background: rgba(255, 255, 255, 0.8);box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);width:calc(100% - 4px);height:36px;margin:0 0 8px 2px;padding:6px;gap:8px;box-sizing:border-box;border:1px solid #808080;border-radius:4px';
         const chooseFileButton = document.createElement('button');
         chooseFileButton.type = 'button';
         chooseFileButton.textContent = 'Choose firmware file';
-        chooseFileButton.style.cssText = 'flex:0 0 auto;width:auto;height:24px;min-height:0;margin:0;padding:2px 8px;font-size:.85em;line-height:1.2;box-sizing:border-box;cursor:pointer';
+        chooseFileButton.style.cssText = 'flex:0 0 auto;width:auto;height:28px;min-height:0;margin: 3px 3px;padding:2px 8px;font-size:.85em;line-height:1.2;box-sizing:border-box;cursor:pointer';
         chooseFileButton.addEventListener('click', () => picker.click());
 
         const filename = document.createElement('span');
         filename.textContent = 'No file selected';
-        filename.style.cssText = 'flex:0 1 auto;min-width:0;text-align:center;overflow-wrap:anywhere;font-weight:300;font-size:.9em';
+        filename.style.cssText = 'flex:0 1 auto;min-width:0;text-align:center;overflow-wrap:anywhere;font-weight:300;font-size:1em';
         picker.addEventListener('change', () => {
             filename.textContent = picker.files && picker.files[0]
                 ? picker.files[0].name
@@ -40,17 +40,18 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Upload and install';
-        button.style.cssText = 'width:100%;padding:10px;cursor:pointer';
+        button.style.cssText = 'width:100%;margin:3px 0;box-sizing:border-box;cursor:pointer';
 
         const progress = document.createElement('progress');
         progress.max = 100;
         progress.value = 0;
         progress.hidden = true;
-        progress.style.cssText = 'display:block;width:100%;margin:10px 0';
+        progress.style.cssText = 'display:block;width:calc(100% - 2px);height:18px;margin:8px 0 8px;box-sizing:border-box';
 
         const status = document.createElement('p');
         status.setAttribute('role', 'status');
         status.textContent = 'Choose a .bin image to begin.';
+        status.style.cssText = 'background-color:unset;text-align:left;padding:0;margin:0 0 8px 0px;top:0;font-weight:300;font-size:.9em;width:calc(100% - 4px);box-sizing:border-box';
 
         button.addEventListener('click', () => {
             const file = picker.files && picker.files[0];
