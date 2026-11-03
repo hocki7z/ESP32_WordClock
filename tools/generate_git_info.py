@@ -1,7 +1,9 @@
 """Generate build metadata and AutoGitInfo.h before compiling.
 
-Version tags are selected from reachable semantic-version tags using the
-configured ``highest`` (default) or ``nearest`` strategy.
+Only semantic-version tags pointing directly to HEAD are eligible. Untagged
+commits use 255.255.255. If HEAD has multiple valid tags, ``highest`` selects
+the highest numeric version and ``first`` selects the first valid tag in
+alphabetical tag-name order.
 """
 
 from datetime import datetime, timezone
@@ -87,16 +89,16 @@ def _c_string(value):
 
 
 def _version_tags(project_dir):
-    """List all local tags that follow the supported software-version format.
+    """List valid local software-version tags pointing directly to HEAD.
 
     Tags that do not match ``MAJOR.MINOR.PATCH`` or contain components above
-    255 are ignored. Reachability from ``HEAD`` is checked separately by
-    :func:`_reachable_version_tags`.
+    255 are ignored. Results use alphabetical tag-name order, independent of
+    Git's tag.sort setting. Ancestor tags are never used as a fallback.
     """
 
     candidates = []
 
-    for tag in _git(project_dir, "tag", "--list").splitlines():
+    for tag in _git(project_dir, "tag", "--points-at", "HEAD", "--sort=refname").splitlines():
         match = _VERSION_PATTERN.fullmatch(tag.strip())
         if match is None:
             continue
@@ -106,73 +108,22 @@ def _version_tags(project_dir):
 
     return candidates
 
-def _reachable_version_tags(project_dir):
-    """Return valid ancestor tags as ``(tag, version, commit_distance)`` tuples."""
-
-    candidates = []
-    for tag, version in _version_tags(project_dir):
-        ancestor = subprocess.run(
-            ["git", "-C", str(project_dir), "merge-base", "--is-ancestor", tag, "HEAD"],
-            capture_output=True,
-        )
-        if ancestor.returncode == 1:
-            continue
-        if ancestor.returncode != 0:
-            raise subprocess.CalledProcessError(
-                ancestor.returncode, ancestor.args, ancestor.stdout, ancestor.stderr
-            )
-
-        distance = int(_git(project_dir, "rev-list", "--count", "{}..HEAD".format(tag)))
-        candidates.append((tag, version, distance))
-
-    return candidates
-
-
-def _closest_tag(project_dir):
-    """Return the nearest valid version tag that is an ancestor of ``HEAD``.
-
-    The commit distance selects the nearest tag. If none is reachable, use the
-    documented sentinel tag and all-0xFF version bytes.
-    """
-
-    candidates = _reachable_version_tags(project_dir)
-    if not candidates:
-        return _UNKNOWN_VERSION_STR, _UNKNOWN_VERSION
-
-    # Prefer the nearest tag; at equal distance, prefer the higher version/tag.
-    tag, version, _ = max(candidates, key=lambda candidate: (
-        -candidate[2], candidate[1], candidate[0]
-    ))
-    return tag, version
-
-def _highest_version_tag(project_dir):
-    """Return the highest valid software-version tag reachable from ``HEAD``.
-
-    When the same version appears more than once, prefer the nearest tag, then
-    the lexicographically greatest tag name. If no valid ancestor tag exists,
-    return the documented sentinel tag and all-0xFF version bytes.
-    """
-
-    candidates = _reachable_version_tags(project_dir)
-    if not candidates:
-        return _UNKNOWN_VERSION_STR, _UNKNOWN_VERSION
-
-    tag, version, _ = max(candidates, key=lambda candidate: (
-        candidate[1], -candidate[2], candidate[0]
-    ))
-    return tag, version
-
-
 def _select_version_tag(project_dir, strategy):
-    """Select a version tag using the configured ``highest`` or ``nearest`` strategy."""
+    """Select the highest version or first alphabetically ordered tag on HEAD."""
 
-    if strategy == "highest":
-        return _highest_version_tag(project_dir)
-    if strategy == "nearest":
-        return _closest_tag(project_dir)
-    raise ValueError(
-        "Unsupported version-tag strategy {!r}; expected 'highest' or 'nearest'.".format(strategy)
-    )
+    if strategy not in ("highest", "first"):
+        raise ValueError(
+            "Unsupported version-tag strategy {!r}; expected 'highest' or 'first'.".format(strategy)
+        )
+
+    candidates = _version_tags(project_dir)
+    if not candidates:
+        return _UNKNOWN_VERSION_STR, _UNKNOWN_VERSION
+    if strategy == "first":
+        return candidates[0]
+
+    # Compare versions numerically; break equal-version ties by tag name.
+    return max(candidates, key=lambda candidate: (candidate[1], candidate[0]))
 
 
 def _working_tree_modified(project_dir):
@@ -321,7 +272,7 @@ def _make_header(build_info):
         "AUTO_GIT_INFO_GIT_BRANCH_SHORT": "Current Git branch, limited to 20 characters",
         "AUTO_GIT_INFO_COMMIT_HASH": "Full commit hash",
         "AUTO_GIT_INFO_COMMIT_HASH_SHORT": "Short commit hash, limited to 8 hexadecimal characters",
-        "AUTO_GIT_INFO_COMMIT_TAG": "Selected reachable XX.YY.ZZ tag, or 255.255.255 if none is valid",
+        "AUTO_GIT_INFO_COMMIT_TAG": "Selected XX.YY.ZZ tag on HEAD, or 255.255.255 if HEAD has no valid tag",
         "AUTO_GIT_INFO_SW_VERSION": "Software version",
         "AUTO_GIT_INFO_SW_VERSION_MAJOR": "Software version major byte",
         "AUTO_GIT_INFO_SW_VERSION_MINOR": "Software version minor byte",
@@ -349,7 +300,7 @@ def _generate_git_info(project_dir, build_dir, build_env=None, tag_strategy="hig
         project_dir: Root directory of the PlatformIO project/repository.
         build_dir: Output directory for the generated header.
         build_env: Optional PlatformIO environment used to update the include path.
-        tag_strategy: ``highest`` or ``nearest`` reachable version tag selection.
+        tag_strategy: ``highest`` or ``first``; only tags on HEAD qualify.
 
     Git command failures use explicit fallback metadata. An unsupported tag
     strategy is rejected rather than silently falling back.
@@ -358,9 +309,9 @@ def _generate_git_info(project_dir, build_dir, build_env=None, tag_strategy="hig
     # Resolve the project directory and determine the output header path.
     project_dir = Path(project_dir).resolve()
     header_path = Path(build_dir).resolve() / _GENERATED_HEADER
-    if tag_strategy not in ("highest", "nearest"):
+    if tag_strategy not in ("highest", "first"):
         raise ValueError(
-            "Unsupported version-tag strategy {!r}; expected 'highest' or 'nearest'.".format(
+            "Unsupported version-tag strategy {!r}; expected 'highest' or 'first'.".format(
                 tag_strategy
             )
         )
@@ -428,9 +379,9 @@ def main(argv=None, project_dir=None, build_dir=None, tag_strategy=None):
         )
         parser.add_argument(
             "--tag-strategy",
-            choices=("highest", "nearest"),
+            choices=("highest", "first"),
             default=tag_strategy or "highest",
-            help="Select the highest version tag (default) or nearest reachable tag",
+            help="Select the highest numeric version on HEAD (default) or first valid tag alphabetically",
         )
         arguments = parser.parse_args(argv)
         project_dir = arguments.project_dir
