@@ -42,10 +42,6 @@ _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 _GENERATED_HEADER       = "AutoGitInfo.h"     # Generated in the active build directory.
 _DEFINE_VALUE_COLUMN    = 49    # Column at which to align the value of each ``#define`` in the generated header.
 
-# Constants for flash partition generation.
-_PRODUCTINFO_PARTITION_SIZE = 0x1000
-
-
 def _format_define(name, value):
     """Format one C preprocessor definition with its value at the target column.
 
@@ -195,8 +191,8 @@ def _fallback_build_info():
     }
 
 
-def _generate_flash_record(build_info):
-    """Generate the fixed-layout partition image from the shared metadata snapshot."""
+def _generate_productinfo_record(build_info):
+    """Generate and embed the ProductInfo record from the shared metadata snapshot."""
 
     project_dir = Path(_PLATFORMIO_ENV.subst("$PROJECT_DIR"))
     magic, format_version = productinfo_format.load_format(project_dir)
@@ -220,18 +216,11 @@ def _generate_flash_record(build_info):
     if len(record) != 139:
         raise ValueError("Product info record must be exactly 139 bytes")
 
-    image = bytearray(b"\xFF" * _PRODUCTINFO_PARTITION_SIZE)
-    image[:len(record)] = record
     build_dir = Path(_PLATFORMIO_ENV.subst("$BUILD_DIR"))
-    image_path = build_dir / "productinfo.bin"
-    image_path.parent.mkdir(parents=True, exist_ok=True)
-    image_path.write_bytes(image)
-    print("Product info: generated {} (record at partition offset 0x0)".format(image_path))
 
-    # Embed only the record in the application. The remaining partition bytes
-    # are erased to 0xFF when the record is synchronized on first boot.
+    # Embed the record in the application.
     header_lines = [
-        "/* Auto-generated from productinfo.bin; do not edit. */",
+        "/* Auto-generated product information record; do not edit. */",
         "#pragma once",
         "#include <cstdint>",
         "namespace ProductInfoNS { namespace ProductInfoImage {",
@@ -246,7 +235,7 @@ def _generate_flash_record(build_info):
     _PLATFORMIO_ENV.Append(CPPPATH=[str(build_dir)])
     print("Product info: embedded {}-byte record generated {}".format(len(record), image_header_path))
 
-    pass    # end of _generate_flash_record
+    pass    # end of _generate_productinfo_record
 
 
 def _make_header(build_info):
@@ -349,12 +338,7 @@ def _generate_git_info(project_dir, build_dir, build_env=None, tag_strategy="hig
         build_env.Append(CPPPATH=[str(header_path.parent)])
 
     if _PLATFORMIO_ENV is not None:
-        _generate_flash_record(build_info)
-        # PlatformIO's ESP32 uploader appends these images to its normal
-        # esptool write_flash command; this makes regular Upload flash ProductInfo.
-        _PLATFORMIO_ENV.Append(
-            FLASH_EXTRA_IMAGES=[("0x3FF000", "$BUILD_DIR/productinfo.bin")]
-        )
+        _generate_productinfo_record(build_info)
 
     pass    # end of _generate_git_info
 

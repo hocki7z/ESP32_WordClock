@@ -1,9 +1,9 @@
-"""Create firmware packages that include the fixed ProductInfo flash sector.
+"""Create firmware packages with the ProductInfo record embedded in the application.
 
 This file is loaded by PlatformIO as a SCons post-build script. On every
 build, after the application binary is ready, it creates a complete 4 MiB
-flash image, a single-file OTA app image, and
-a ZIP package with the component images and their flash offsets.
+flash image, a single-file OTA application image, and a ZIP containing the
+application image and an update manifest.
 
 The full-flash image contains 0xFF in unpopulated address ranges and is
 intended for flashing at address zero, not for application-only OTA updates.
@@ -35,14 +35,13 @@ if env is not None:
 
 import productinfo_format
 
-# ESP32 4 MiB flash layout used by the WordClock custom partition table.
-# Offsets are absolute flash addresses; PRODUCTINFO_OFFSET reserves the final
-# 4 KiB sector for the padded ProductInfo partition image.
+# ESP32 4 MiB flash layout used by the WordClock partition table.
+# The bootloader and partition-table offsets follow the ESP32 flash layout;
+# APP_OFFSET matches the app0 start (0x10000) in the selected min_spiffs.csv.
 FLASH_SIZE              = 0x400000      # 4 MiB
 BOOTLOADER_OFFSET       = 0x1000        # Bootloader load address
 PARTITION_TABLE_OFFSET  = 0x8000        # Partition table load address
 APP_OFFSET              = 0x10000       # Application slot start address
-PRODUCTINFO_OFFSET      = 0x3FF000      # Final 4 KiB ProductInfo partition start
 
 
 def _read_image(path, label):
@@ -89,41 +88,47 @@ def _place_image(image, path, offset, label):
     pass    # end of _place_image
 
 
-def _productinfo_version(path):
-    """Validate the ProductInfo record using the shared format version and return its version tuple.
+def _productinfo_version(app_path):
+    """Find and validate the embedded ProductInfo record in an application image.
 
     The record is 139 bytes: identifier and format version at offsets 0-16,
     the three-byte version at offsets 17-19, and a little-endian CRC-32 at
     offsets 135-138. The preceding fields are covered by the CRC.
 
     Args:
-        path: Path to the generated ProductInfo partition image.
+        app_path: Path to the application binary containing the embedded record.
 
     Returns:
         A tuple containing the major, minor, and build version bytes.
 
     Raises:
-        FileNotFoundError: If the ProductInfo image is missing.
-        ValueError: If the record is truncated, has an unsupported signature
-            or format version, or fails CRC validation.
+        FileNotFoundError: If the application image is missing.
+        ValueError: If no embedded record has the expected identifier, format
+            version, and CRC.
     """
 
-    data = _read_image(path, "product information")
+    data = _read_image(app_path, "application")
     # SCons does not define __file__; use its project directory during builds.
     # Direct CLI execution supplies __file__ normally.
     project_dir = (Path(env.subst("$PROJECT_DIR")) if env is not None
                    else Path(__file__).resolve().parents[1])
     magic, format_version = productinfo_format.load_format(project_dir)
     record_size = 139
-    if len(data) < record_size or data[:16] != magic or data[16] != format_version:
-        raise ValueError("ProductInfo image has an unsupported or invalid record")
+    search_offset = 0
+    while True:
+        record_offset = data.find(magic, search_offset)
+        if record_offset < 0:
+            break
+        record_end = record_offset + record_size
+        if record_end <= len(data):
+            record = data[record_offset:record_end]
+            stored_crc = int.from_bytes(record[135:139], "little")
+            if (record[16] == format_version and
+                    zlib.crc32(record[:135]) == stored_crc):
+                return tuple(record[17:20])
+        search_offset = record_offset + 1
 
-    record = data[:record_size]
-    stored_crc = int.from_bytes(record[135:139], "little")
-    if zlib.crc32(record[:135]) != stored_crc:
-        raise ValueError("ProductInfo image CRC validation failed")
-
-    return tuple(record[17:20])
+    raise ValueError("No valid embedded ProductInfo record found in application image")
 
 
 def _make_images(target, source, env):
@@ -141,28 +146,26 @@ def _generate_images(build_dir, project_name, app_image):
     """Generate firmware image variants and a ZIP package from build artifacts.
 
     Args:
-        build_dir: Directory containing ``bootloader.bin``, ``partitions.bin``,
-            and ``productinfo.bin``.
+        build_dir: Directory containing ``bootloader.bin`` and ``partitions.bin``.
         project_name: Name used to prefix versioned image filenames.
         app_image: Path to the application binary to package.
 
-    Outputs in the PlatformIO build directory:
-            * A project/version-named complete 4 MiB flash image with bootloader,
-                partition table, application, and ProductInfo. The intermediate
-                ``firmware_full.bin`` is renamed to the versioned output.
-            * A project/version-named ``*_OTA_*.bin``: application image for ordinary
-        application OTA; ProductInfo is synchronized by firmware at boot.
-            * ``<project>_Update_<version>.zip``: component binaries and a manifest
-        describing their flash offsets.
+        Outputs in the PlatformIO build directory:
+            * A project/version-named complete 4 MiB flash image containing the
+                bootloader, partition table, and application. All unpopulated flash
+                regions remain erased (`0xFF`).
+            * A project/version-named `*_OTA_*.bin` application image for OTA updates.
+            * `<project>_Update_<version>.zip` containing the application image and a
+                manifest with its flash offset.
 
-        The full-flash image is intended for flashing at address zero, not OTA.
-        Use the ZIP manifest to preserve the component images' flash addresses.
+        The full-flash image is intended for flashing at address zero, not OTA. The
+        ZIP contains only the application image. The ProductInfo record is embedded
+        in the application and read directly by the firmware.
     """
 
     build_dir = Path(build_dir)
     app_image = Path(app_image)
-    productinfo_image = build_dir / "productinfo.bin"
-    version = _productinfo_version(productinfo_image)
+    version = _productinfo_version(app_image)
     version_text = "_".join(str(component) for component in version)
 
     # Build a full-chip image from erased-flash bytes, then overlay every image
@@ -171,7 +174,6 @@ def _generate_images(build_dir, project_name, app_image):
     _place_image(full_image, build_dir / "bootloader.bin", BOOTLOADER_OFFSET, "bootloader")
     _place_image(full_image, build_dir / "partitions.bin", PARTITION_TABLE_OFFSET, "partition table")
     _place_image(full_image, app_image, APP_OFFSET, "application")
-    _place_image(full_image, productinfo_image, PRODUCTINFO_OFFSET, "product information")
     full_path = build_dir / "firmware_full.bin"
     full_path.write_bytes(full_image)
     print("Product info: generated full-flash image {}".format(full_path))
@@ -192,14 +194,12 @@ def _generate_images(build_dir, project_name, app_image):
     shutil.copyfile(app_image, ota_path)
     print("Product info: generated single-file OTA image {}".format(ota_path))
 
-    # Package individual binaries with explicit offsets for tools that support
-    # multi-image flash updates. The manifest prevents callers guessing offsets.
+    # Package the application with its embedded ProductInfo record.
     manifest = {
-        "format": "esp32-offset-update-v1",
-        "description": "Application and ProductInfo images only; bootloader and partition table are not included.",
+        "format": "esp32-application-update-v1",
+        "description": "Application image with embedded ProductInfo; bootloader and partition table are not included.",
         "images": [
             {"file": "firmware.bin", "flash_offset": APP_OFFSET},
-            {"file": "productinfo.bin", "flash_offset": PRODUCTINFO_OFFSET},
         ],
     }
     package_path = build_dir / "{}_Update_{}.zip".format(project_name, version_text)
@@ -209,7 +209,6 @@ def _generate_images(build_dir, project_name, app_image):
     (build_dir / "firmware_productinfo_update.zip").unlink(missing_ok=True)
     with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as package:
         package.write(app_image, arcname="firmware.bin")
-        package.write(productinfo_image, arcname="productinfo.bin")
         package.writestr("manifest.json", json.dumps(manifest, indent=2) + "\n")
     print("Product info: generated update package {}".format(package_path))
 
@@ -227,7 +226,7 @@ def main(argv=None):
 
     project_default = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
-        description="Create full-flash, OTA, and ProductInfo update packages from a PlatformIO build."
+        description="Create full-flash and application OTA packages with embedded ProductInfo from a PlatformIO build."
     )
     parser.add_argument(
         "--project-dir",
@@ -251,7 +250,7 @@ def main(argv=None):
     build_dir = arguments.build_dir
     if build_dir is None:
         platformio_build_dir = project_dir / ".pio" / "build"
-        required_artifacts = ("bootloader.bin", "partitions.bin", "productinfo.bin")
+        required_artifacts = ("bootloader.bin", "partitions.bin")
         candidates = [
             candidate
             for candidate in (platformio_build_dir, *platformio_build_dir.glob("*"))
@@ -282,7 +281,6 @@ if env is not None:
             "$BUILD_DIR/${PROGNAME}.bin",
             "$BUILD_DIR/bootloader.bin",
             "$BUILD_DIR/partitions.bin",
-            "$BUILD_DIR/productinfo.bin",
         ],
         _make_images,
     )
