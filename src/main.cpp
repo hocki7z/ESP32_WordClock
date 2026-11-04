@@ -69,30 +69,17 @@ static void RunApplication(void);
     PRIVATE MEMBER VARIABLES
  *****************************************************************************/
 
+
+/** @brief Pointer to the multi reset detector instance */
 static MultiResetDetector* mpMultiResetDetector;
 
-static Display*     mpDisplay;
-static TimeManager* mpTimeManager;
-static WiFiManager* mpWiFiManager;
-static WebSite*     mpWebSite;
-
+/** @brief Pointer to the communication manager instance */
 static CommunicationNS::CommunicationManager* mpCommunicationManager = nullptr;
 
-static ApplicationNS::MessageQueue*     mpDisplayMessageQueue;
-static ApplicationNS::MessageReceiver*  mpDisplayMessageReceiver;
-static ApplicationNS::tTaskObjects      mDisplayTaskObjects;
-
-static ApplicationNS::MessageQueue*     mpTimeManagerMessageQueue;
-static ApplicationNS::MessageReceiver*  mpTimeManagerMessageReceiver;
-static ApplicationNS::tTaskObjects      mTimeManagerTaskObjects;
-
-static ApplicationNS::MessageQueue*     mpWifiManagerMessageQueue;
-static ApplicationNS::MessageReceiver*  mpWifiManagerMessageReceiver;
-static ApplicationNS::tTaskObjects      mWifiManagerTaskObjects;
-
-static ApplicationNS::MessageQueue*     mpWebSiteMessageQueue;
-static ApplicationNS::MessageReceiver*  mpWebSiteMessageReceiver;
-static ApplicationNS::tTaskObjects      mWebSiteTaskObjects;
+/** @brief Number of tasks in the system */
+static constexpr size_t mcNumberOfTasks = 4;
+/** @brief Array of task management structures */
+static ApplicationNS::tTaskManagement mTaskManagement[mcNumberOfTasks];
 
 
 /******************************************************************************
@@ -106,7 +93,11 @@ SettingsNS::Settings Settings;
 /******************************************************************************
     PUBLIC FUNCTION CODE
  *****************************************************************************/
-void setup()
+
+ /**
+  * @brief Arduino setup function
+  */
+void setup(void)
 {
     /* Start the serial communication */
     Serial.begin(115200);
@@ -128,7 +119,10 @@ void setup()
     RunApplication();
 }
 
-void loop()
+/**
+  * @brief Arduino loop function
+  */
+void loop(void)
 {
     /* Call the multi reset detector loop method every so often,
        so that it can recognise when the timeout expires. */
@@ -152,6 +146,14 @@ void loop()
     PRIVATE FUNCTION CODE
  *****************************************************************************/
 
+/**
+ * @brief Detect a multi reset condition
+ * 
+ * @details
+ * This function creates an instance of the MultiResetDetector class and checks
+ * if a multi reset condition has been detected. If a multi reset is detected,
+ * it clears the WiFi settings to force the device to enter WiFi AP mode.
+ */
 static void MultiResetDetection(void)
 {
     /* Create instance of MultiResetDetector */
@@ -172,6 +174,15 @@ static void MultiResetDetection(void)
     }
 }
 
+/**
+ * @brief Check the reason for the last system reset
+ *
+ * @details
+ * This function checks if there is a pending firmware update.
+ * If so, it removes the pending update flag and increments the firmware update reset counter.
+ * If there is no pending firmware update, it retrieves the reason for the last system reset
+ * using `esp_reset_reason()` and updates the corresponding reset counters in the settings.
+ */
 static void CheckResetReason(void)
 {
     if (Settings.GetValue<bool>(ConfigNS::mKeyPendingFirmwareUpdate, false))
@@ -234,6 +245,14 @@ static void CheckResetReason(void)
     }
 }
 
+/**
+ * @brief Initialize the application
+ *
+ * @details
+ * This function initializes the application by synchronizing the flash partition with the firmware,
+ * creating the communication manager, and creating all necessary tasks. It uses a lambda function
+ * to create tasks based on their addresses and initializes their message queues and receivers.
+ */
 static void InitApplication(void)
 {
     /* Restore build metadata embedded in the application OTA image if needed. */
@@ -242,96 +261,124 @@ static void InitApplication(void)
         LOG(LOG_ERROR, "ProductInfo: failed to synchronize the flash partition");
     }
 
-    /* Create tasks */
-    mpDisplay = new Display(ConfigNS::mDisplayTaskName, ConfigNS::mDisplayTaskPriority,
-            ConfigNS::mDisplayTaskStackSize);
-    mpTimeManager = new TimeManager(ConfigNS::mTimeManagerTaskName, ConfigNS::mTimeManagerTaskPriority,
-            ConfigNS::mTimeManagerTaskStackSize);
-    mpWiFiManager = new WiFiManager(ConfigNS::mWifiManagerTaskName, ConfigNS::mWifiManagerTaskPriority,
-            ConfigNS::mWifiManagerTaskStackSize);
-    mpWebSite = new WebSite(ConfigNS::mWebSiteTaskName, ConfigNS::mWebSiteTaskPriority,
-            ConfigNS::mWebSiteTaskStackSize);
-
     /* Create communication manager */
     mpCommunicationManager = new CommunicationNS::CommunicationManager();
 
-    /* Create message queue and receiver for tasks */
-    mpDisplayMessageQueue        = new ApplicationNS::MessageQueue();
-    mpDisplayMessageReceiver     = new ApplicationNS::MessageReceiver();
+    /* Lambda function to create a task based on the given address */
+    auto wCreateTask = [](CommunicationNS::CommunicationManager* apCommunicationManager, tTaskManagement& arTaskManagement,
+        MessageNS::tAddress mAddress, const char* apTaskName, ApplicationNS::tTaskPriority aTaskPriority, uint32_t aTaskStackSize) -> bool
+    {
+        /* Flag indicating whether the task was created successfully */
+        bool wTaskCreated = false;  // default - not created
 
-    mpTimeManagerMessageQueue    = new ApplicationNS::MessageQueue();
-    mpTimeManagerMessageReceiver = new ApplicationNS::MessageReceiver();
+        /* Check given address */
+        switch (mAddress)
+        {
+            case MessageNS::tAddress::DISPLAY_MANAGER:
+                arTaskManagement.mpTask = new Display(apTaskName, aTaskPriority, aTaskStackSize);
+                wTaskCreated = true;
+                break;
 
-    mpWifiManagerMessageQueue    = new ApplicationNS::MessageQueue();
-    mpWifiManagerMessageReceiver = new ApplicationNS::MessageReceiver();
+            case MessageNS::tAddress::TIME_MANAGER:
+                arTaskManagement.mpTask = new TimeManager(apTaskName, aTaskPriority, aTaskStackSize);
+                wTaskCreated = true;
+                break;
 
-    mpWebSiteMessageQueue        = new ApplicationNS::MessageQueue();
-    mpWebSiteMessageReceiver     = new ApplicationNS::MessageReceiver();
+            case MessageNS::tAddress::WIFI_MANAGER:
+                arTaskManagement.mpTask = new WiFiManager(apTaskName, aTaskPriority, aTaskStackSize);
+                wTaskCreated = true;
+                break;
 
-    /* Initialize task objects */
-    mpDisplayMessageReceiver->Init(mpDisplayMessageQueue,
-        mpDisplay->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
-    mpTimeManagerMessageReceiver->Init(mpTimeManagerMessageQueue,
-        mpTimeManager->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
-    mpWifiManagerMessageReceiver->Init(mpWifiManagerMessageQueue,
-        mpWiFiManager->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
-    mpWebSiteMessageReceiver->Init(mpWebSiteMessageQueue,
-        mpWebSite->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
+            case MessageNS::tAddress::WEB_MANAGER:
+                arTaskManagement.mpTask = new WebSite(apTaskName, aTaskPriority, aTaskStackSize);
+                wTaskCreated = true;
+                break;
 
-    mDisplayTaskObjects.mpMessageQueue             = mpDisplayMessageQueue;
-    mDisplayTaskObjects.mpCommunicationManager     = mpCommunicationManager;
+            default:
+                // Unsupported address, nothing to do here
+                break;
+        }
 
-    mTimeManagerTaskObjects.mpMessageQueue         = mpTimeManagerMessageQueue;
-    mTimeManagerTaskObjects.mpCommunicationManager = mpCommunicationManager;
+        /* If the task was created successfully */
+        if (wTaskCreated)
+        {
+            LOG(LOG_DEBUG, "Main::CreateTask() Created task %s, priority %d, stack size %d",
+                    apTaskName, aTaskPriority, aTaskStackSize);
 
-    mWifiManagerTaskObjects.mpMessageQueue         = mpWifiManagerMessageQueue;
-    mWifiManagerTaskObjects.mpCommunicationManager = mpCommunicationManager;
+            /* Set the task address in the task management structure */
+            arTaskManagement.mAddress = mAddress;
 
-    mWebSiteTaskObjects.mpMessageQueue             = mpWebSiteMessageQueue;
-    mWebSiteTaskObjects.mpCommunicationManager     = mpCommunicationManager;
+            /* Create message queue and receiver */
+            arTaskManagement.mpMessageQueue    = new ApplicationNS::MessageQueue();
+            arTaskManagement.mpMessageReceiver = new ApplicationNS::MessageReceiver();
 
-    /* Initialize tasks */
-    mpDisplay->Init(&mDisplayTaskObjects);
-    mpTimeManager->Init(&mTimeManagerTaskObjects);
-    mpWiFiManager->Init(&mWifiManagerTaskObjects);
-    mpWebSite->Init(&mWebSiteTaskObjects);
+            /* Initialize task objects */
+            arTaskManagement.mTaskObjects.mpMessageQueue = arTaskManagement.mpMessageQueue;
+            arTaskManagement.mTaskObjects.mpCommunicationManager = apCommunicationManager;
 
-    /* Register messages receiver an communication manager */
-    mpCommunicationManager->RegisterCallback(
-        MessageNS::tAddress::DISPLAY_MANAGER, mpDisplayMessageReceiver);
-    mpCommunicationManager->RegisterCallback(
-        MessageNS::tAddress::TIME_MANAGER,    mpTimeManagerMessageReceiver);
-    mpCommunicationManager->RegisterCallback(
-        MessageNS::tAddress::WIFI_MANAGER,    mpWifiManagerMessageReceiver);
-    mpCommunicationManager->RegisterCallback(
-        MessageNS::tAddress::WEB_MANAGER,     mpWebSiteMessageReceiver);
+            /* Initialize task */
+            arTaskManagement.mpTask->Init(&arTaskManagement.mTaskObjects);
+
+            /* Initialize and register messages receiver */
+            arTaskManagement.mpMessageReceiver->Init(arTaskManagement.mpMessageQueue,
+                arTaskManagement.mpTask->getTaskHandle(), ApplicationNS::mTaskNotificationMsgQueue);
+
+            apCommunicationManager->RegisterCallback(
+                mAddress, arTaskManagement.mpMessageReceiver);
+        }
+        else
+        {
+            LOG(LOG_ERROR, "Main::CreateTask() Failed to create task %s, unsupported address %d",
+                    apTaskName, mAddress);
+        }
+
+        return wTaskCreated;    // Return whether the task was created or not
+    };
+
+    /* Create all tasks */
+    uint8_t wTaskNumber = 0;
+
+    wCreateTask(mpCommunicationManager, mTaskManagement[wTaskNumber++], MessageNS::tAddress::DISPLAY_MANAGER,
+        ConfigNS::mDisplayTaskName, ConfigNS::mDisplayTaskPriority, ConfigNS::mDisplayTaskStackSize);
+
+    wCreateTask(mpCommunicationManager, mTaskManagement[wTaskNumber++], MessageNS::tAddress::TIME_MANAGER,
+        ConfigNS::mTimeManagerTaskName, ConfigNS::mTimeManagerTaskPriority, ConfigNS::mTimeManagerTaskStackSize);
+
+    wCreateTask(mpCommunicationManager, mTaskManagement[wTaskNumber++], MessageNS::tAddress::WIFI_MANAGER,
+        ConfigNS::mWifiManagerTaskName, ConfigNS::mWifiManagerTaskPriority, ConfigNS::mWifiManagerTaskStackSize);
+
+    wCreateTask(mpCommunicationManager, mTaskManagement[wTaskNumber++], MessageNS::tAddress::WEB_MANAGER,
+        ConfigNS::mWebSiteTaskName, ConfigNS::mWebSiteTaskPriority, ConfigNS::mWebSiteTaskStackSize);
 }
 
+/**
+ * @brief Run the application
+ *
+ * @details
+ * This function triggers all created tasks by notifying them.
+ */
 static void RunApplication(void)
 {
+    /* Lambda function to run a task based on the given task management structure */
+    auto wRunTask = [](ApplicationNS::tTaskManagement& arTaskManagement) -> void
+    {
+        /* Check if the task is created and has a valid handle */
+        if ((arTaskManagement.mpTask) &&
+            (arTaskManagement.mpTask->getTaskHandle()))
+        {
+            /* Trigger task by notifying it */
+            xTaskNotifyGive(arTaskManagement.mpTask->getTaskHandle());
+        }
+        else
+        {
+            LOG(LOG_ERROR, "Main::RunTask() Task not created or task handle is null for address %d",
+                arTaskManagement.mAddress);
+        }
+    };
+
     /* Trigger all tasks */
-
-    if ((mpDisplay != nullptr) &&
-        (mpDisplay->getTaskHandle() != nullptr))
+    for (uint8_t wI=0; wI < mcNumberOfTasks; wI++)
     {
-        xTaskNotifyGive(mpDisplay->getTaskHandle());
-    }
-
-    if ((mpTimeManager != nullptr) &&
-        (mpTimeManager->getTaskHandle() != nullptr))
-    {
-        xTaskNotifyGive(mpTimeManager->getTaskHandle());
-    }
-
-    if ((mpWiFiManager != nullptr) &&
-        (mpWiFiManager->getTaskHandle() != nullptr))
-    {
-        xTaskNotifyGive(mpWiFiManager->getTaskHandle());
-    }
-
-    if ((mpWebSite != nullptr) &&
-        (mpWebSite->getTaskHandle() != nullptr))
-    {
-        xTaskNotifyGive(mpWebSite->getTaskHandle());
+        wRunTask(mTaskManagement[wI]);
     }
 }

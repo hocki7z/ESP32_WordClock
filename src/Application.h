@@ -203,5 +203,19 @@ namespace ApplicationNS
         void SendMessage(const MessageNS::Message &arMessage);
     };
 
+     /** @brief Task management structure */
+    struct tTaskManagement
+    {
+        /* Address of the task */
+        MessageNS::tAddress mAddress;
+        /* Task object */
+        Task* mpTask;
+        /* Task objects */
+        tTaskObjects  mTaskObjects;
+        /* Message queue for the task */
+        MessageQueue* mpMessageQueue;
+        /* Message receiver for the task */
+        MessageReceiver* mpMessageReceiver;
+    };
 }; /* end of namespace ApplicationNS */
 
