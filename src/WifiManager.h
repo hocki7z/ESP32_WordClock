@@ -51,7 +51,11 @@ private:
 
     /* Periodical timer for this task */
     ApplicationNS::tTaskTimerObjects mTimerObjects;
-    ApplicationNS::TaskTimer* mpTimer;
+    ApplicationNS::TaskTimer* mpTimer = nullptr;
+
+    /* Frequent timer used to service captive-portal DNS while the AP is active. */
+    ApplicationNS::tTaskTimerObjects mDnsTimerObjects;
+    ApplicationNS::TaskTimer* mpDnsTimer = nullptr;
 
     /** @brief DNS server instance */
     DNSServer mDnsServer;
@@ -60,6 +64,7 @@ private:
 
     /* Periodical task timer ID */
     static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
+    static constexpr uint32_t mDnsTaskTimerId = 0x02;
 
     /** @brief Timeout used for WiFi STA connection */
     static constexpr uint32_t mConnectionTimeout = 30000U;  // 30 seconds

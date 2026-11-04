@@ -57,7 +57,7 @@ WiFiManager::WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 WiFiManager::~WiFiManager()
 {
-    /* Clean up task timer */
+    /* Clean up task timers */
     if (mpTimer)
     {
         /* Stop running timer */
@@ -65,6 +65,15 @@ WiFiManager::~WiFiManager()
         /*    and destroy it */
         delete mpTimer;
         mpTimer = nullptr;
+    }
+
+    if (mpDnsTimer)
+    {
+        /* Stop running timer */
+        mpDnsTimer->stop();
+        /*    and destroy it */
+        delete mpDnsTimer;
+        mpDnsTimer = nullptr;
     }
 }
 
@@ -79,9 +88,14 @@ void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Create periodical timer */
     mTimerObjects.mTaskHandle = this->getTaskHandle();
     mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
-
-    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 10000, true); // Period 10 seconds
+    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 10000, true);    // Period 10 seconds
     mpTimer->Init(&mTimerObjects);
+
+    /* Poll the synchronous DNS server frequently while captive AP mode is active. */
+    mDnsTimerObjects.mTaskHandle = this->getTaskHandle();
+    mDnsTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
+    mpDnsTimer = new ApplicationNS::TaskTimer(mDnsTaskTimerId, 50, true);           // Period 50 ms
+    mpDnsTimer->Init(&mDnsTimerObjects);
 
     /* Register WiFi events listener */
     WiFi.onEvent(
@@ -109,6 +123,18 @@ void WiFiManager::ProcessTimerEvent(const uint32_t aTimerId)
     {
         /* Process current FSM state */
         ProcessState();
+    }
+    else if (aTimerId == mDnsTaskTimerId)
+    {
+        if (mState == STATE_AP_STARTED)
+        {
+            /* Process DNS packets in task context; DNSServer does not run autonomously. */
+            mDnsServer.processNextRequest();
+        }
+    }
+    else
+    {
+        // do nothing here
     }
 }
 
@@ -295,6 +321,14 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                     {
                         LOG(LOG_ERROR, "WiFiManager::ProcessState() Start DNS server for captive portal failed");
                     }
+                    else if (mpDnsTimer != nullptr)
+                    {
+                        mpDnsTimer->start();
+                    }
+                    else
+                    {
+                        // do nothing here
+                    }
 
                     /* Move to the next state */
                     mState  = STATE_AP_STARTED;
@@ -352,6 +386,12 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                 case ARDUINO_EVENT_WIFI_AP_STOP:
                     /* LOG */
                     LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event access point stopped");
+
+                    if (mpDnsTimer != nullptr)
+                    {
+                        mpDnsTimer->stop();
+                    }
+                    mDnsServer.stop();
 
                     /* Move to the IDLE state only if the scan is not running */
                     if (WiFi.scanComplete() != WIFI_SCAN_RUNNING)
@@ -508,6 +548,12 @@ bool WiFiManager::ConnectWifi(void)
 {
     bool wRetValue = false;
 
+    if (mpDnsTimer != nullptr)
+    {
+        mpDnsTimer->stop();
+    }
+    mDnsServer.stop();
+
     /* Disconnect from the network (close AP) */
     WiFi.softAPdisconnect(true);
     /* Disconnect from the network */
@@ -589,6 +635,12 @@ bool WiFiManager::ConnectWifi(void)
  */
 void WiFiManager::ConnectAP(void)
 {
+    if (mpDnsTimer != nullptr)
+    {
+        mpDnsTimer->stop();
+    }
+    mDnsServer.stop();
+
     /* Disconnect from the network (close AP) */
     WiFi.softAPdisconnect(true);
     /* Disconnect from the network */
