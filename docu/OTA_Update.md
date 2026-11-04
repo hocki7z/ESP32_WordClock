@@ -67,6 +67,8 @@ boot**, not rollback.
 
 If all checks pass, `esp_ota_set_boot_partition()` selects the uploaded partition
 for the next boot. It does not start the new application immediately.
+The application also stores a one-shot boolean flag in settings to mark the
+next startup as an FW-update restart.
 
 ## 5. Respond and restart
 
@@ -84,6 +86,11 @@ firmware. Reconnect or reload the Web UI after the device restarts.
 The bootloader starts the selected application. During `InitApplication()`, before
 application tasks are created, `SyncFlashPartitionWithFirmware()` compares that
 application's embedded ProductInfo with the dedicated partition at `0x3FF000`.
+Before application initialization, reset-reason handling consumes the pending
+flag and increments the FW-update restart counter instead of the generic
+software-reset counter. Because the marker is a boolean, it records that an
+update restart was requested; it does not verify which application partition
+actually started.
 
 - If the records match, no erase/write is needed.
 - If they differ, the ProductInfo partition is erased and the embedded record is
@@ -95,6 +102,10 @@ The uploaded record is carried **inside the application image**. Startup
 synchronization copies it to the shared ProductInfo partition; OTA does not place
 it at `0x3FF000` during the upload. The stored record supplies product information
 and the installed version used by subsequent update checks.
+
+The build timestamp in ProductInfo is stored in UTC. The Web UI formats it as
+`DD.MM.YYYY HH:MM:SS` for display, but does not convert it to the configured
+device timezone; the displayed clock time is therefore UTC.
 
 ## 7. Subsequent updates and rollback limits
 
