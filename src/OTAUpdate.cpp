@@ -12,6 +12,7 @@
 #include <cstdint>
 
 #include "ProductInfo.h"
+#include "Configuration.h"
 #include "OTAUpdate.h"
 #include "OTAUpdateCustomJs.h"
 
@@ -210,6 +211,9 @@ void RegisterRoutes(AsyncWebServer* apServer)
                 }
 
                 mOtaError = esp_ota_set_boot_partition(mpOtaPartition);
+
+                Settings.SetValue<bool>(ConfigNS::mKeyPendingFirmwareUpdate, (mOtaError == ESP_OK));
+
                 mOtaStatus = (mOtaError == ESP_OK)
                     ? OtaUploadStatus::ReadyToBoot
                     : OtaUploadStatus::Failed;

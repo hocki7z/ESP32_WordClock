@@ -174,52 +174,63 @@ static void MultiResetDetection(void)
 
 static void CheckResetReason(void)
 {
-    /* Determine the reason for the last system reset */
-    esp_reset_reason_t wReason = esp_reset_reason();
-
-    /* Update corresponding counters in settings */
-    switch (wReason)
+    if (Settings.GetValue<bool>(ConfigNS::mKeyPendingFirmwareUpdate, false))
     {
-        case ESP_RST_POWERON:   // Power-on reset
-            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPowerOn);
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Power-on reset, %d times",
-                    Settings.GetCounter(ConfigNS::mKeyCounterResetPowerOn));
-            break;
+        Settings.RemoveKey(ConfigNS::mKeyPendingFirmwareUpdate);
+        Settings.IncreaseCounter(ConfigNS::mKeyCounterResetFirmwareUpdate);
 
-        case ESP_RST_SW:        // Software reset
-            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetSoftware);
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Software reset, %d times",
-                    Settings.GetCounter(ConfigNS::mKeyCounterResetSoftware));
-            break;
+        LOG(LOG_DEBUG, "Main::CheckResetReason() Firmware update, %d times",
+                Settings.GetCounter(ConfigNS::mKeyCounterResetFirmwareUpdate));
+    }
+    else
+    {
+        /* No pending firmware update, check the reason for the last system reset */
+        esp_reset_reason_t wReason = esp_reset_reason();
 
-        case ESP_RST_WDT:       // Watchdog reset
-        case ESP_RST_INT_WDT:   // Interrupt watchdog reset
-        case ESP_RST_TASK_WDT:  // Task watchdog reset
-            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetWatchdog);
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Watchdog reset, %d times",
-                    Settings.GetCounter(ConfigNS::mKeyCounterResetWatchdog));
-            break;
+        /* Update corresponding counters in settings */
+        switch (wReason)
+        {
+            case ESP_RST_POWERON:   // Power-on reset
+                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPowerOn);
+                LOG(LOG_DEBUG, "Main::CheckResetReason() Power-on reset, %d times",
+                        Settings.GetCounter(ConfigNS::mKeyCounterResetPowerOn));
+                break;
 
-        case ESP_RST_PANIC:     // Panic reset
-            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPanic);
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Panic reset, %d times",
-                    Settings.GetCounter(ConfigNS::mKeyCounterResetPanic));
-            break;
+            case ESP_RST_SW:        // Software reset
+                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetSoftware);
+                LOG(LOG_DEBUG, "Main::CheckResetReason() Software reset, %d times",
+                        Settings.GetCounter(ConfigNS::mKeyCounterResetSoftware));
+                break;
 
-        case ESP_RST_BROWNOUT:  // Brownout reset
-            Settings.IncreaseCounter(ConfigNS::mKeyCounterResetBrownout);
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Brownout reset, %d times",
-                    Settings.GetCounter(ConfigNS::mKeyCounterResetBrownout));
-            break;
+            case ESP_RST_WDT:       // Watchdog reset
+            case ESP_RST_INT_WDT:   // Interrupt watchdog reset
+            case ESP_RST_TASK_WDT:  // Task watchdog reset
+                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetWatchdog);
+                LOG(LOG_DEBUG, "Main::CheckResetReason() Watchdog reset, %d times",
+                        Settings.GetCounter(ConfigNS::mKeyCounterResetWatchdog));
+                break;
 
-        case ESP_RST_EXT:       // External reset
-        case ESP_RST_DEEPSLEEP: // Deep sleep reset
-        case ESP_RST_SDIO:      // SDIO reset
-        case ESP_RST_UNKNOWN:   // unknown reset reason
-        default:
-            LOG(LOG_DEBUG, "Main::CheckResetReason() Other reset reason: %d", wReason);
-            // other reset reasons are not counted
-            break;
+            case ESP_RST_PANIC:     // Panic reset
+                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPanic);
+                LOG(LOG_DEBUG, "Main::CheckResetReason() Panic reset, %d times",
+                        Settings.GetCounter(ConfigNS::mKeyCounterResetPanic));
+                break;
+
+            case ESP_RST_BROWNOUT:  // Brownout reset
+                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetBrownout);
+                LOG(LOG_DEBUG, "Main::CheckResetReason() Brownout reset, %d times",
+                        Settings.GetCounter(ConfigNS::mKeyCounterResetBrownout));
+                break;
+
+            case ESP_RST_EXT:       // External reset
+            case ESP_RST_DEEPSLEEP: // Deep sleep reset
+            case ESP_RST_SDIO:      // SDIO reset
+            case ESP_RST_UNKNOWN:   // unknown reset reason
+            default:
+                LOG(LOG_DEBUG, "Main::CheckResetReason() Other reset reason: %d", wReason);
+                // other reset reasons are not counted
+                break;
+        }
     }
 }
 
