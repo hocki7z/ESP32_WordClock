@@ -82,6 +82,10 @@ namespace ConfigNS
     static const SettingsNS::tKey mKeyCounterResetWatchdog          = SettingsNS::tKey(mCountersConfig, mApplicationGroup, 0x02);
     static const SettingsNS::tKey mKeyCounterResetPanic             = SettingsNS::tKey(mCountersConfig, mApplicationGroup, 0x03);
     static const SettingsNS::tKey mKeyCounterResetBrownout          = SettingsNS::tKey(mCountersConfig, mApplicationGroup, 0x04);
+    static const SettingsNS::tKey mKeyCounterResetFirmwareUpdate    = SettingsNS::tKey(mCountersConfig, mApplicationGroup, 0x05);
+
+    /* One-shot flag marking the next reboot as a firmware update */
+    static const SettingsNS::tKey mKeyPendingFirmwareUpdate         = SettingsNS::tKey(mParamsConfig, mApplicationGroup, 0x00);
 
 
     /* Keys for display settings */
