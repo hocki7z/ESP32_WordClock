@@ -38,138 +38,23 @@ static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 135, "Unexpected produc
 static_assert(sizeof(ProductInfoNS::ProductInfoImage::mcData) == sizeof(ProductInfoNS::Record),
     "Embedded product info must contain exactly one record");
 
-
-/**
- * @brief Read and validate product/build information from the read-only partition.
+/** @brief Get the product information record.
  *
- * The partition starts at flash address 0x3FF000 in min_spiffs_custom.csv.
- * Date/time uses a NUL-terminated UTC ISO-8601 timestamp. The commit hash (8 hex chars)
- * and branch (up to 20 UTF-8 characters) are NUL-terminated strings.
+ * @details
+ * This function retrieves the product information record
+ * that is embedded in the firmware image.
  *
- * @param[out] arRecord Receives the record after successful validation.
- * @return true if a valid record was read.
- */
-bool ReadFlashPartition(Record& arRecord)
+ * @return The product information record.
+*/
+Record GetProductInfoRecord(void)
 {
-    /* Initialize the return value to false, indicating failure by default */
-    bool wRetValue = false;
+    /* Record object to hold the product information */
+    Record wRecord;
 
-    /* Find the first partition with the specified type, subtype, and label */
-    const esp_partition_t* const wpPartition = esp_partition_find_first(
-        ESP_PARTITION_TYPE_DATA,
-        static_cast<esp_partition_subtype_t>(mcProductInfoPartitionSubtype),
-        "productinfo");
+    /* Retrieve the product information record from the embedded firmware image */
+    std::memcpy(&wRecord, ProductInfoNS::ProductInfoImage::mcData, sizeof(Record));
 
-    /* Check if the partition was found and has sufficient size for the record */
-    if (wpPartition && (wpPartition->size >= sizeof(Record)))
-    {
-        Record wRecord{};
-
-        /* Read the record from the partition into wRecord */
-        if (esp_partition_read(wpPartition, 0, &wRecord, sizeof(wRecord)) == ESP_OK)
-        {
-            /* Validate the magic bytes and format version of the record */
-            if ((memcmp(wRecord.mMagic, mcProductInfoMagic, mcProductInfoMagicSize) == 0) &&
-                (wRecord.mFormatVersion == mcProductInfoFormatVersion))
-            {
-                /* Calculate the CRC-32 of the record (excluding the CRC field itself) */
-                const uint32_t wCrc = CalculateCrc32(
-                    reinterpret_cast<const uint8_t*>(&wRecord), offsetof(Record, mCrc32));
-                /* Retrieve the stored CRC from the record */
-                const uint32_t wStoredCrc =  static_cast<uint32_t>(wRecord.mCrc32[0])         |
-                                            (static_cast<uint32_t>(wRecord.mCrc32[1]) << 8)   |
-                                            (static_cast<uint32_t>(wRecord.mCrc32[2]) << 16)  |
-                                            (static_cast<uint32_t>(wRecord.mCrc32[3]) << 24);
-
-                /* Compare the calculated CRC with the stored CRC */
-                if (wCrc == wStoredCrc)
-                {
-                    /* Assign the validated record to the output parameter */
-                    arRecord = wRecord;
-                    /* Set the return value to true, indicating success */
-                    wRetValue = true;
-                }
-            }
-        }
-    }
-
-    return wRetValue;
-}
-
-/**
- * @brief Synchronize the flash partition with the firmware image.
- *
- * This function checks if the product information in the flash partition matches
- * the product information embedded in the firmware image. If they do not match,
- * it erases the flash partition and writes the firmware's product information to it.
- *
- * @return true if the synchronization was successful or unnecessary, false otherwise.
- */
-bool SyncFlashPartitionWithFirmware(void)
-{
-    /* Flag indicating whether the synchronization succeeded */
-    bool wSyncSucceeded = false;    // default - not succeeded
-
-    /* Find the flash partition for product information */
-    const esp_partition_t* const wpPartition = esp_partition_find_first(
-        ESP_PARTITION_TYPE_DATA,
-        static_cast<esp_partition_subtype_t>(mcProductInfoPartitionSubtype),
-        "productinfo");
-
-    /* Check if the partition was found and is large enough to hold the record */
-    if ((wpPartition != nullptr) &&
-        (wpPartition->size >= sizeof(ProductInfoImage::mcData)))
-    {
-        constexpr size_t kCompareChunkSize = 128;
-        uint8_t wBuffer[kCompareChunkSize]{};
-
-        bool wRecordMatches = true;
-        bool wReadSucceeded = true;
-
-
-        for (size_t wOffset = 0; wOffset < sizeof(ProductInfoImage::mcData); wOffset += sizeof(wBuffer))
-        {
-            /* Determine the size of the current chunk to read */
-            const size_t wChunkSize = sizeof(ProductInfoImage::mcData) - wOffset < sizeof(wBuffer)
-                                          ? (sizeof(ProductInfoImage::mcData) - wOffset) : sizeof(wBuffer);
-
-            /* Read the current chunk from the flash partition */
-            if (esp_partition_read(wpPartition, wOffset, wBuffer, wChunkSize) != ESP_OK)
-            {
-                wReadSucceeded = false;     // Error reading from the partition, exit the loop
-                break;
-            }
-
-            /* Compare the current chunk with the corresponding chunk in the firmware image */
-            if (memcmp(wBuffer, ProductInfoImage::mcData + wOffset, wChunkSize) != 0)
-            {
-                wRecordMatches = false;   // The records do not match, exit the loop
-                break;
-            }
-        }
-
-        /* If the read succeeded, check if the images match */
-        if (wReadSucceeded)
-        {
-            wSyncSucceeded = true;
-
-            /* If the record does not match, erase the full partition and write the record */
-            if (!wRecordMatches)
-            {
-                wSyncSucceeded = (esp_partition_erase_range(wpPartition, 0, wpPartition->size) == ESP_OK) &&
-                    (esp_partition_write(wpPartition, 0, ProductInfoImage::mcData, sizeof(ProductInfoImage::mcData)) == ESP_OK);
-            }
-
-            /* If the synchronization succeeded, read back the record to verify */
-            if (wSyncSucceeded)
-            {
-                Record wRecord{};
-                wSyncSucceeded = ReadFlashPartition(wRecord);
-            }
-        }
-    }
-
-    return wSyncSucceeded;
+    return wRecord; // Return the product information record
 }
 
 /**
@@ -261,22 +146,22 @@ bool IsNewVersionAllowed(const tSoftwareVersion& arNewVersion, tSoftwareVersion&
     /* Check if the new version is valid */
     if (arNewVersion.IsValid())
     {
-        Record wCurrentRecord{};
+        /* Retrieve the current product info record */
+        Record wCurrentRecord = GetProductInfoRecord();
 
-        /* Read the current software version from the flash partition */
-        if (!ReadFlashPartition(wCurrentRecord) ||
-            !wCurrentRecord.mSoftwareVersion.IsValid())
-        {
-            /* If the current software version is invalid, set it to the default invalid version */
-            arCurrentVersion = mcInvalidSoftwareVersion;
-            wRetValue = true;
-        }
-        else
+        /* Check if the current software version is valid */
+        if (wCurrentRecord.mSoftwareVersion.IsValid())
         {
             /* If the current software version is valid, update the current version */
             arCurrentVersion = wCurrentRecord.mSoftwareVersion;
             /* and check if the new version is greater */
             wRetValue = (arNewVersion > wCurrentRecord.mSoftwareVersion);
+        }
+        else
+        {
+            /* If the current software version is invalid, set it to the default invalid version */
+            arCurrentVersion = mcInvalidSoftwareVersion;
+            wRetValue = true;
         }
     }
 

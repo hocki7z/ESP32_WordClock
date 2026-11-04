@@ -13,8 +13,3 @@ SSIDList mSSIDList;
 /** @brief Shared display-scene snapshot */
 DisplaySceneSnapshot mDisplaySceneSnapshot;
 
-/** @brief Retrieve the product information from the flash partition. */
-bool ConfigNS::GetProductInfo(ProductInfoNS::Record& arRecord)
-{
-	return ProductInfoNS::ReadFlashPartition(arRecord);
-}

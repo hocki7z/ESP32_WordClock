@@ -108,8 +108,7 @@ namespace ProductInfoNS
         uint8_t mCrc32[4];                          // CRC-32 of all preceding fields, stored little-endian.
     };
 
-    bool ReadFlashPartition(Record& arRecord);
-    bool SyncFlashPartitionWithFirmware(void);
+    Record GetProductInfoRecord(void);
 
     bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImageSize, Record& arRecord);
     bool IsNewVersionAllowed(const tSoftwareVersion& arNewVersion, tSoftwareVersion& arCurrentVersion);
