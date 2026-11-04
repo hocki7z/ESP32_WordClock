@@ -92,9 +92,9 @@ def _place_image(image, path, offset, label):
 def _productinfo_version(path):
     """Validate the ProductInfo record using the shared format version and return its version tuple.
 
-    The record is 139 bytes: identifier and format version at offsets 0-16,
+    The record is 135 bytes: identifier and format version at offsets 0-16,
     the three-byte version at offsets 17-19, and a little-endian CRC-32 at
-    offsets 135-138. The preceding fields are covered by the CRC.
+    offsets 131-134. The preceding fields are covered by the CRC.
 
     Args:
         path: Path to the generated ProductInfo partition image.
@@ -114,13 +114,13 @@ def _productinfo_version(path):
     project_dir = (Path(env.subst("$PROJECT_DIR")) if env is not None
                    else Path(__file__).resolve().parents[1])
     magic, format_version = productinfo_format.load_format(project_dir)
-    record_size = 139
+    record_size = 135
     if len(data) < record_size or data[:16] != magic or data[16] != format_version:
         raise ValueError("ProductInfo image has an unsupported or invalid record")
 
     record = data[:record_size]
-    stored_crc = int.from_bytes(record[135:139], "little")
-    if zlib.crc32(record[:135]) != stored_crc:
+    stored_crc = int.from_bytes(record[131:135], "little")
+    if zlib.crc32(record[:131]) != stored_crc:
         raise ValueError("ProductInfo image CRC validation failed")
 
     return tuple(record[17:20])

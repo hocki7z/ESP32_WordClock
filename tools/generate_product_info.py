@@ -201,24 +201,24 @@ def _generate_flash_record(build_info):
     project_dir = Path(_PLATFORMIO_ENV.subst("$PROJECT_DIR"))
     magic, format_version = productinfo_format.load_format(project_dir)
     version = build_info["software_version"]
-    build_time_bytes = build_info["generated_utc"].encode("ascii")
+    build_time_bytes = build_info["generated_local"].encode("ascii")
     commit_hash_short = build_info["full_hash"][:8].encode("ascii")
     branch_short = build_info["branch"][:20].encode("utf-8")
 
-    build_time_bytes = build_time_bytes[:24].ljust(25, b"\0")
+    build_time_bytes = build_time_bytes[:20].ljust(21, b"\0")
     commit_hash_short = commit_hash_short[:8].ljust(9, b"\0")
     branch_short = branch_short[:80].ljust(81, b"\0")
     record = (
         magic                               # 0..15: shared record identifier
         + bytes((format_version,))          # 16: record format version
         + bytes(version)                    # 17..19: software version
-        + build_time_bytes                  # 20..44: NUL-terminated UTC ISO-8601 date/time
-        + branch_short                      # 45..125: UTF-8 branch, max 20 chars, NUL-terminated
-        + commit_hash_short                 # 126..134: NUL-terminated short commit hash
+        + build_time_bytes                  # 20..40: NUL-terminated readable local build date/time
+        + branch_short                      # 41..121: UTF-8 branch, max 20 chars, NUL-terminated
+        + commit_hash_short                 # 122..130: NUL-terminated short commit hash
     )
-    record += zlib.crc32(record).to_bytes(4, "little")  # 135..138: CRC-32
-    if len(record) != 139:
-        raise ValueError("Product info record must be exactly 139 bytes")
+    record += zlib.crc32(record).to_bytes(4, "little")  # 131..134: CRC-32
+    if len(record) != 135:
+        raise ValueError("Product info record must be exactly 135 bytes")
 
     image = bytearray(b"\xFF" * _PRODUCTINFO_PARTITION_SIZE)
     image[:len(record)] = record
@@ -277,7 +277,7 @@ def _make_header(build_info):
     comments = {
         "AUTO_GIT_INFO_GIT_VERSION": "Git version",
         "AUTO_GIT_INFO_GEN_DATE": "Local generation date",
-        "AUTO_GIT_INFO_GEN_DATE_ISO_8601": "Local generation date in ISO format (UTC)",
+        "AUTO_GIT_INFO_GEN_DATE_ISO_8601": "Generation date in ISO-8601 format (UTC)",
         "AUTO_GIT_INFO_COMMITS_NUMBER": "Number of commits reachable from HEAD",
         "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "1 if tracked files are modified, otherwise 0",
         "AUTO_GIT_INFO_GIT_BRANCH": "Current Git branch",

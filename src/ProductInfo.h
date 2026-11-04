@@ -102,7 +102,7 @@ namespace ProductInfoNS
         uint8_t mMagic[PRODUCTINFO_MAGIC_SIZE];     // Record identifier bytes.
         uint8_t mFormatVersion;                     // Binary record layout version.
         tSoftwareVersion mSoftwareVersion;          // Software version of the firmware.
-        char mBuildDateTimeUtc[25];                 // NUL-terminated UTC ISO-8601 build timestamp.
+        char mBuildDateTimeLocal[21];               // NUL-terminated local build timestamp: D.M.YYYY, HH:MM:SS.
         char mBranchShort[81];                      // NUL-terminated branch name, limited to 20 UTF-8 characters.
         char mCommitHashShort[9];                   // NUL-terminated first 8 hexadecimal commit-hash characters.
         uint8_t mCrc32[4];                          // CRC-32 of all preceding fields, stored little-endian.

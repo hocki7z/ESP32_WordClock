@@ -1347,15 +1347,9 @@ void WebSite::UpdateProductInfo(void)
             wSoftwareVersion = wVersionText;
         }
 
-        if (wProductInfo.mBuildDateTimeUtc[0] != '\0')
+        if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
         {
-            char wBuildDateTimeUtc[32]{};
-            if (!DateTimeNS::FormatIso8601Utc(wProductInfo.mBuildDateTimeUtc,
-                    wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc)))
-            {
-                snprintf(wBuildDateTimeUtc, sizeof(wBuildDateTimeUtc), "%s", wProductInfo.mBuildDateTimeUtc);
-            }
-            wBuildDateTime = wBuildDateTimeUtc;
+            wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
         }
 
         if (wProductInfo.mCommitHashShort[0] != '\0')
@@ -1375,7 +1369,7 @@ void WebSite::UpdateProductInfo(void)
      */
 
     const std::array<const char*, 4> wProductInfoNames = {
-        "Software version", "Build date/time", "Branch", "Commit hash"
+        "Software version", "Local build date/time", "Branch", "Commit hash"
     };
 
     const std::array<const char*, 4> wProductInfoValues = {

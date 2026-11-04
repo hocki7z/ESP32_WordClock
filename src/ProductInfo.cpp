@@ -31,9 +31,9 @@ constexpr tSoftwareVersion mcInvalidSoftwareVersion{0xFF, 0xFF, 0xFF};
 
 
 /* Static assertions to ensure the Record structure has the expected layout and size */
-static_assert(sizeof(ProductInfoNS::Record) == 139, "Unexpected product info record layout");
-/* The CRC-32 field is expected to be at offset 135 in the Record structure */
-static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 135, "Unexpected product info CRC offset");
+static_assert(sizeof(ProductInfoNS::Record) == 135, "Unexpected product info record layout");
+/* The CRC-32 field is expected to be at offset 131 in the Record structure */
+static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 131, "Unexpected product info CRC offset");
 /* The embedded product info in the firmware image must contain exactly one record */
 static_assert(sizeof(ProductInfoNS::FirmwareImage::mcData) == sizeof(ProductInfoNS::Record),
     "Embedded product info must contain exactly one record");
@@ -43,7 +43,8 @@ static_assert(sizeof(ProductInfoNS::FirmwareImage::mcData) == sizeof(ProductInfo
  * @brief Read and validate product/build information from the read-only partition.
  *
  * The partition starts at flash address 0x3FF000 in min_spiffs_custom.csv.
- * Date/time uses a NUL-terminated UTC ISO-8601 timestamp. The commit hash (8 hex chars)
+ * Date/time uses the build host's NUL-terminated local timestamp (D.M.YYYY, HH:MM:SS).
+ * The commit hash (8 hex chars)
  * and branch (up to 20 UTF-8 characters) are NUL-terminated strings.
  *
  * @param[out] arRecord Receives the record after successful validation.
