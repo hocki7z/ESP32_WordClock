@@ -35,7 +35,7 @@ static_assert(sizeof(ProductInfoNS::Record) == 139, "Unexpected product info rec
 /* The CRC-32 field is expected to be at offset 135 in the Record structure */
 static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 135, "Unexpected product info CRC offset");
 /* The embedded product info in the firmware image must contain exactly one record */
-static_assert(sizeof(ProductInfoNS::FirmwareImage::mcData) == sizeof(ProductInfoNS::Record),
+static_assert(sizeof(ProductInfoNS::ProductInfoImage::mcData) == sizeof(ProductInfoNS::Record),
     "Embedded product info must contain exactly one record");
 
 
@@ -118,7 +118,7 @@ bool SyncFlashPartitionWithFirmware(void)
 
     /* Check if the partition was found and is large enough to hold the record */
     if ((wpPartition != nullptr) &&
-        (wpPartition->size >= sizeof(FirmwareImage::mcData)))
+        (wpPartition->size >= sizeof(ProductInfoImage::mcData)))
     {
         constexpr size_t kCompareChunkSize = 128;
         uint8_t wBuffer[kCompareChunkSize]{};
@@ -127,11 +127,11 @@ bool SyncFlashPartitionWithFirmware(void)
         bool wReadSucceeded = true;
 
 
-        for (size_t wOffset = 0; wOffset < sizeof(FirmwareImage::mcData); wOffset += sizeof(wBuffer))
+        for (size_t wOffset = 0; wOffset < sizeof(ProductInfoImage::mcData); wOffset += sizeof(wBuffer))
         {
             /* Determine the size of the current chunk to read */
-            const size_t wChunkSize = sizeof(FirmwareImage::mcData) - wOffset < sizeof(wBuffer)
-                                            ? (sizeof(FirmwareImage::mcData) - wOffset) : sizeof(wBuffer);
+            const size_t wChunkSize = sizeof(ProductInfoImage::mcData) - wOffset < sizeof(wBuffer)
+                                          ? (sizeof(ProductInfoImage::mcData) - wOffset) : sizeof(wBuffer);
 
             /* Read the current chunk from the flash partition */
             if (esp_partition_read(wpPartition, wOffset, wBuffer, wChunkSize) != ESP_OK)
@@ -141,7 +141,7 @@ bool SyncFlashPartitionWithFirmware(void)
             }
 
             /* Compare the current chunk with the corresponding chunk in the firmware image */
-            if (memcmp(wBuffer, FirmwareImage::mcData + wOffset, wChunkSize) != 0)
+            if (memcmp(wBuffer, ProductInfoImage::mcData + wOffset, wChunkSize) != 0)
             {
                 wRecordMatches = false;   // The records do not match, exit the loop
                 break;
@@ -157,7 +157,7 @@ bool SyncFlashPartitionWithFirmware(void)
             if (!wRecordMatches)
             {
                 wSyncSucceeded = (esp_partition_erase_range(wpPartition, 0, wpPartition->size) == ESP_OK) &&
-                    (esp_partition_write(wpPartition, 0, FirmwareImage::mcData, sizeof(FirmwareImage::mcData)) == ESP_OK);
+                    (esp_partition_write(wpPartition, 0, ProductInfoImage::mcData, sizeof(ProductInfoImage::mcData)) == ESP_OK);
             }
 
             /* If the synchronization succeeded, read back the record to verify */
