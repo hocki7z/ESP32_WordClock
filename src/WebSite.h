@@ -144,6 +144,10 @@ private:
         //
         Control::ControlId_t mProductInfoGroup;
         Control::ControlId_t mProductInfoLabel;
+        Control::ControlId_t mSystemInfoGroup;
+        Control::ControlId_t mSystemInfoLabel;
+        Control::ControlId_t mDiagnosticsGroup;
+        Control::ControlId_t mDiagnosticsLabel;
         //
         Control::ControlId_t mFirmwareUpdateGroup;
     };
@@ -221,6 +225,8 @@ private:
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
     void UpdateProductInfo(void);
+    void UpdateSystemInfo(void);
+    void UpdateDiagnosticsInfo(void);
 
     static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);
 };

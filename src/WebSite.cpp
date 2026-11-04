@@ -6,6 +6,7 @@
  */
 #include <array>
 #include <ESPUI.h>
+#include <WiFi.h>
 
 #include "Logger.h"
 #include "Configuration.h"
@@ -272,8 +273,24 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mProductInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
         "");    // Placeholder for product information, will be updated in UpdateProductInfo()
 
-    /* Update the product information displayed on the web UI */
+    /**
+     * Tab Settings / Group System Information
+     */
+    mWebUIControlID.mSystemInfoGroup = AddGroupHelper("System Information", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mSystemInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for system information, will be updated in UpdateSystemInfo()
+
+    /**
+     * Tab Settings / Group Diagnostics Information
+     */
+    mWebUIControlID.mDiagnosticsGroup = AddGroupHelper("Diagnostics Information", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mDiagnosticsLabel = AddLabelControl("", mWebUIControlID.mDiagnosticsGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for diagnostics information, will be updated in UpdateDiagnosticsInfo()
+
+    /* Update information */
     UpdateProductInfo();
+    UpdateSystemInfo();
+    UpdateDiagnosticsInfo();
 
 
     /**
@@ -1369,7 +1386,7 @@ void WebSite::UpdateProductInfo(void)
      */
 
     const std::array<const char*, 4> wProductInfoNames = {
-        "Software version", "Local build date/time", "Branch", "Commit hash"
+        "Software version", "Build date/time", "Branch", "Commit hash"
     };
 
     const std::array<const char*, 4> wProductInfoValues = {
@@ -1379,6 +1396,100 @@ void WebSite::UpdateProductInfo(void)
     /* Update the product information label on the web UI with the constructed HTML table */
     ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
         BuildHtmlTable(wProductInfoNames, wProductInfoValues));
+}
+
+void WebSite::UpdateSystemInfo(void)
+{
+    const uint64_t wUptimeSeconds = millis() / 1000ULL;
+    const uint64_t wDays    = wUptimeSeconds / 86400ULL;
+    const uint32_t wHours   = static_cast<uint32_t>((wUptimeSeconds / 3600ULL) % 24ULL);
+    const uint32_t wMinutes = static_cast<uint32_t>((wUptimeSeconds / 60ULL) % 60ULL);
+    const uint32_t wSeconds = static_cast<uint32_t>(wUptimeSeconds % 60ULL);
+
+    char wUptimeText[32]{};
+    snprintf(wUptimeText, sizeof(wUptimeText), "%llud %02u:%02u:%02u",
+        static_cast<unsigned long long>(wDays),
+        static_cast<unsigned>(wHours),
+        static_cast<unsigned>(wMinutes),
+        static_cast<unsigned>(wSeconds));
+
+    const uint32_t wSketchSize = ESP.getSketchSize();
+    const uint32_t wFreeOtaSpace = ESP.getFreeSketchSpace();
+    const uint32_t wOtaSlotSize = wSketchSize + wFreeOtaSpace;
+    const uint32_t wHeapSize = ESP.getHeapSize();
+    const uint32_t wFreeHeap = ESP.getFreeHeap();
+    const uint32_t wMaxAllocHeap = ESP.getMaxAllocHeap();
+    const uint32_t wMinFreeHeap = ESP.getMinFreeHeap();
+
+    const std::array<String, 8> wSystemInfoValues = {
+        String(wUptimeText),
+        String(wSketchSize / 1024) + " KB / " + String(wOtaSlotSize / 1024) + " KB",
+        String(wFreeOtaSpace / 1024) + " KB",
+        String(wHeapSize / 1024) + " KB",
+        String(wFreeHeap / 1024) + " KB",
+        String(wMaxAllocHeap / 1024) + " KB",
+        String(wMinFreeHeap / 1024) + " KB",
+        String(ESP.getCpuFreqMHz()) + " MHz"
+    };
+    const std::array<const char*, 8> wSystemInfoNames = {
+        "Runtime",      // System uptime
+        "Firmware flash used / OTA slot",
+        "Free OTA space",
+        "Heap total",
+        "Heap free",
+        "Largest free heap block",
+        "Minimum free heap",
+        "CPU frequency"
+    };
+    std::array<const char*, 8> wSystemInfoValuesText{};
+    for (size_t wIndex = 0; wIndex < wSystemInfoValues.size(); ++wIndex)
+    {
+        wSystemInfoValuesText[wIndex] = wSystemInfoValues[wIndex].c_str();
+    }
+
+    ESPUI.updateLabel(mWebUIControlID.mSystemInfoLabel,
+        BuildHtmlTable(wSystemInfoNames, wSystemInfoValuesText));
+}
+
+void WebSite::UpdateDiagnosticsInfo(void)
+{
+    // const std::array<String, 10> wDiagnosticsValues = {
+    //     WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected",
+    //     WiFi.SSID(),
+    //     WiFi.localIP().toString(),
+    //     String(WiFi.RSSI()) + " dBm",
+    // };
+    // const std::array<const char*, 10> wDiagnosticsNames = {
+    //     "WiFi status",
+    //     "WiFi SSID",
+    //     "WiFi IP address",
+    //     "WiFi RSSI",
+    // };
+
+    const std::array<String, 6> wDiagnosticsValues = {
+        String(Settings.GetCounter(ConfigNS::mKeyCounterResetPowerOn)),
+        String(Settings.GetCounter(ConfigNS::mKeyCounterResetSoftware)),
+        String(Settings.GetCounter(ConfigNS::mKeyCounterResetWatchdog)),
+        String(Settings.GetCounter(ConfigNS::mKeyCounterResetPanic)),
+        String(Settings.GetCounter(ConfigNS::mKeyCounterResetBrownout)),
+        String(Settings.GetCounter(ConfigNS::mKeyCounterResetFirmwareUpdate))
+    };
+    const std::array<const char*, 6> wDiagnosticsNames = {
+        "Power-on resets",
+        "Software resets",
+        "Watchdog resets",
+        "Panic resets",
+        "Brownout resets",
+        "Firmware-updates"      // Firmware-update restarts
+    };
+    std::array<const char*, 6> wDiagnosticsValuesText{};
+    for (size_t wIndex = 0; wIndex < wDiagnosticsValues.size(); ++wIndex)
+    {
+        wDiagnosticsValuesText[wIndex] = wDiagnosticsValues[wIndex].c_str();
+    }
+
+    ESPUI.updateLabel(mWebUIControlID.mDiagnosticsLabel,
+        BuildHtmlTable(wDiagnosticsNames, wDiagnosticsValuesText));
 }
 
 void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
