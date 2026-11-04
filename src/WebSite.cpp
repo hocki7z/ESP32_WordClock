@@ -109,8 +109,8 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* ESPUI log mode - turn on/off verbose debugging */
     ESPUI.setVerbosity((LOG_LEVEL == LOG_VERBOSE) ? Verbosity::Verbose : Verbosity::Quiet);
 
-	/* Make sliders continually report their position as they are being dragged. */
-	ESPUI.sliderContinuous = true;
+    /* Send slider changes only when the user releases the slider. */
+    ESPUI.sliderContinuous = false;     // Disable continuous slider mode
 
     /* Add the tabs for the web UI */
     mWebUIControlID.mOverViewTab   = ESPUI.addControl(Control::Type::Tab, "overview",    "Overview",    TAB_CONTROL_COLOR);
