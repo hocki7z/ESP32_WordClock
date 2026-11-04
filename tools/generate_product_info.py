@@ -223,14 +223,14 @@ def _generate_productinfo_record(build_info):
         "/* Auto-generated product information record; do not edit. */",
         "#pragma once",
         "#include <cstdint>",
-        "namespace ProductInfoNS { namespace ProductInfoImage {",
-        "alignas(4) static constexpr uint8_t mcData[] = {",
+        "namespace ProductInfoNS {",
+        "alignas(4) static constexpr uint8_t mcRecordData[] = {",
     ]
     for offset in range(0, len(record), 16):
         chunk = record[offset:offset + 16]
         header_lines.append("    " + ", ".join("0x{:02X}".format(value) for value in chunk) + ",")
-    header_lines.extend(("};", "} } // namespace ProductInfoNS::ProductInfoImage", ""))
-    image_header_path = build_dir / "ProductInfoImage.h"
+    header_lines.extend(("};", "} // namespace ProductInfoNS", ""))
+    image_header_path = build_dir / "ProductInfoRecord.h"
     image_header_path.write_text("\n".join(header_lines), encoding="ascii", newline="\n")
     _PLATFORMIO_ENV.Append(CPPPATH=[str(build_dir)])
     print("Product info: embedded {}-byte record generated {}".format(len(record), image_header_path))

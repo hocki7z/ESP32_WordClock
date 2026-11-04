@@ -10,7 +10,7 @@
 
 #include <esp_partition.h>
 
-#include "ProductInfoImage.h"   // Generated during the build; defines the ProductInfo record embedded in the firmware.
+#include "ProductInfoRecord.h"   // Generated during the build; defines the ProductInfo record embedded in the firmware.
 #include "ProductInfo.h"
 
 namespace ProductInfoNS
@@ -35,7 +35,7 @@ static_assert(sizeof(ProductInfoNS::Record) == 139, "Unexpected product info rec
 /* The CRC-32 field is expected to be at offset 135 in the Record structure */
 static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 135, "Unexpected product info CRC offset");
 /* The embedded product info in the firmware image must contain exactly one record */
-static_assert(sizeof(ProductInfoNS::ProductInfoImage::mcData) == sizeof(ProductInfoNS::Record),
+static_assert(sizeof(ProductInfoNS::mcRecordData) == sizeof(ProductInfoNS::Record),
     "Embedded product info must contain exactly one record");
 
 /** @brief Get the product information record.
@@ -52,7 +52,7 @@ Record GetProductInfoRecord(void)
     Record wRecord;
 
     /* Retrieve the product information record from the embedded firmware image */
-    std::memcpy(&wRecord, ProductInfoNS::ProductInfoImage::mcData, sizeof(Record));
+    std::memcpy(&wRecord, ProductInfoNS::mcRecordData, sizeof(Record));
 
     return wRecord; // Return the product information record
 }
