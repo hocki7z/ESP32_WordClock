@@ -56,6 +56,9 @@ STATIC_ASSERT_RECORD_LAYOUT(sizeof(Record) == PRODUCTINFO_RECORD_SIZE,
     "Unexpected ProductInfo record size");
 STATIC_ASSERT_RECORD_LAYOUT(sizeof(mcRecordData) == sizeof(Record),
     "Embedded ProductInfo must contain exactly one record");
+// STATIC_ASSERT_RECORD_LAYOUT(
+//     PRODUCTINFO_BRANCH_SIZE >= (PRODUCTINFO_SHORT_BRANCH_NAME_SIZE * 4 + 1),
+//     "ProductInfo branch field cannot hold the configured UTF-8 branch name and NUL terminator");
 
 
 /** @brief Get the product information record.

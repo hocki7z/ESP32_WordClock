@@ -199,7 +199,8 @@ def _generate_productinfo_record(build_info):
     version = build_info["software_version"]
     build_time_bytes = build_info["generated_local"].encode("ascii")
     commit_hash_short = build_info["full_hash"][:productinfo_format_info.commit_hash_size - 1].encode("ascii")
-    branch_short = build_info["branch"][:productinfo_format_info.branch_size - 1].encode("utf-8")
+    # Limit by Unicode code points before encoding, so truncation cannot split UTF-8.
+    branch_short = build_info["branch"][:productinfo_format_info.short_branch_name_size].encode("utf-8")
 
     if len(version) != productinfo_format_info.software_version_size:
         raise ValueError("Software version length does not match ProductInfo.h")
@@ -208,8 +209,9 @@ def _generate_productinfo_record(build_info):
         productinfo_format_info.build_datetime_size, b"\0")
     commit_hash_short = commit_hash_short[:productinfo_format_info.commit_hash_size - 1].ljust(
         productinfo_format_info.commit_hash_size, b"\0")
-    branch_short = branch_short[:productinfo_format_info.branch_size - 1].ljust(
-        productinfo_format_info.branch_size, b"\0")
+    if len(branch_short) >= productinfo_format_info.branch_size:
+        raise ValueError("ProductInfo branch field is too small for the configured UTF-8 name length plus NUL")
+    branch_short = branch_short.ljust(productinfo_format_info.branch_size, b"\0")
     record = (
         productinfo_format_info.magic
         + bytes((productinfo_format_info.format_version,))
@@ -246,7 +248,7 @@ def _generate_productinfo_record(build_info):
     pass    # end of _generate_productinfo_record
 
 
-def _make_header(build_info):
+def _make_header(build_info, productinfo_format_info):
     """Render AutoGitInfo.h from a previously collected metadata snapshot."""
 
     software_version = build_info["software_version"]
@@ -261,7 +263,9 @@ def _make_header(build_info):
         "AUTO_GIT_INFO_COMMITS_NUMBER": str(build_info["commit_count"]),
         "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "1" if build_info["working_tree_modified"] else "0",
         "AUTO_GIT_INFO_GIT_BRANCH": _c_string(branch),
-        "AUTO_GIT_INFO_GIT_BRANCH_SHORT": _c_string(branch[:20]),
+        "AUTO_GIT_INFO_GIT_BRANCH_SHORT": _c_string(
+            branch[:productinfo_format_info.short_branch_name_size]
+        ),
         "AUTO_GIT_INFO_COMMIT_HASH": _c_string(full_hash),
         "AUTO_GIT_INFO_COMMIT_HASH_SHORT": _c_string(full_hash[:8]),
         "AUTO_GIT_INFO_COMMIT_TAG": _c_string(build_info["tag"]),
@@ -278,7 +282,9 @@ def _make_header(build_info):
         "AUTO_GIT_INFO_COMMITS_NUMBER": "Number of commits reachable from HEAD",
         "AUTO_GIT_INFO_WORKING_TREE_MODIFIED": "1 if tracked files are modified, otherwise 0",
         "AUTO_GIT_INFO_GIT_BRANCH": "Current Git branch",
-        "AUTO_GIT_INFO_GIT_BRANCH_SHORT": "Current Git branch, limited to 20 characters",
+        "AUTO_GIT_INFO_GIT_BRANCH_SHORT": "Current Git branch, limited to {} characters".format(
+            productinfo_format_info.short_branch_name_size
+        ),
         "AUTO_GIT_INFO_COMMIT_HASH": "Full commit hash",
         "AUTO_GIT_INFO_COMMIT_HASH_SHORT": "Short commit hash, limited to 8 hexadecimal characters",
         "AUTO_GIT_INFO_COMMIT_TAG": "Selected XX.YY.ZZ tag on HEAD, or 255.255.255 if HEAD has no valid tag",
@@ -334,7 +340,8 @@ def _generate_git_info(project_dir, build_dir, build_env=None, tag_strategy="hig
         print("Git info: unable to read Git metadata: {}; using fallback metadata".format(detail))
         build_info = _fallback_build_info()
 
-    content = _make_header(build_info)
+    productinfo_format_info = productinfo_format.load_format(project_dir)
+    content = _make_header(build_info, productinfo_format_info)
 
     # Write the generated header to disk, creating the parent directory if necessary.
     header_path.parent.mkdir(parents=True, exist_ok=True)

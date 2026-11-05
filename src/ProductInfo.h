@@ -23,13 +23,18 @@
 /* The format version is a single byte (0-255) that indicates the layout of the ProductInfo record. */
 #define PRODUCTINFO_FORMAT_VERSION  1
 
+/* The short branch name is limited to 20 characters. */
+#define PRODUCTINFO_SHORT_BRANCH_NAME_SIZE      20
+
 /* ProductInfo record field lengths in bytes; keep in sync with Record below. */
-#define PRODUCTINFO_FORMAT_VERSION_SIZE     1
-#define PRODUCTINFO_SOFTWARE_VERSION_SIZE   3
-#define PRODUCTINFO_BUILD_DATETIME_SIZE     21
-#define PRODUCTINFO_BRANCH_SIZE             81
-#define PRODUCTINFO_COMMIT_HASH_SIZE        9
-#define PRODUCTINFO_CRC32_SIZE              4
+#define PRODUCTINFO_FORMAT_VERSION_SIZE         1
+#define PRODUCTINFO_SOFTWARE_VERSION_SIZE       3
+#define PRODUCTINFO_BUILD_DATETIME_SIZE         21
+#define PRODUCTINFO_BRANCH_SIZE                 PRODUCTINFO_SHORT_BRANCH_NAME_SIZE * 4 + 1
+#define PRODUCTINFO_COMMIT_HASH_SIZE            9
+#define PRODUCTINFO_CRC32_SIZE                  4
+
+
 
 /* CRC covers all preceding fields; the record ends immediately after its CRC. */
 #define PRODUCTINFO_CRC32_OFFSET                                            \
@@ -124,8 +129,8 @@ namespace ProductInfoNS
         tSoftwareVersion mSoftwareVersion;
         /*  NUL-terminated local build timestamp */
         char mBuildDateTimeLocal[PRODUCTINFO_BUILD_DATETIME_SIZE];
-        /* NUL-terminated branch name, max 20 UTF-8 characters*/
-        char mBranchShort[PRODUCTINFO_BRANCH_SIZE];
+        /* NUL-terminated branch name limited to PRODUCTINFO_SHORT_BRANCH_NAME_SIZE symbols */
+        char mBranchShort[PRODUCTINFO_BRANCH_SIZE];     // UTF-8 encoding may require up to 4 bytes per Unicode code point, plus NUL terminator.
         /* NUL-terminated first 8 commit-hash characters*/
         char mCommitHashShort[PRODUCTINFO_COMMIT_HASH_SIZE];
         /* CRC-32 of preceding fields, stored little-endian*/
