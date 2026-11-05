@@ -30,13 +30,39 @@ constexpr uint8_t mcProductInfoPartitionSubtype = 0x40;
 constexpr tSoftwareVersion mcInvalidSoftwareVersion{0xFF, 0xFF, 0xFF};
 
 
+/* Define offsets for for record layout checks */
+#define PRODUCTINFO_SOFTWARE_VERSION_OFFSET     (PRODUCTINFO_MAGIC_SIZE              + PRODUCTINFO_FORMAT_VERSION_SIZE)
+#define PRODUCTINFO_BUILD_DATETIME_OFFSET       (PRODUCTINFO_SOFTWARE_VERSION_OFFSET + PRODUCTINFO_SOFTWARE_VERSION_SIZE)
+#define PRODUCTINFO_BRANCH_OFFSET               (PRODUCTINFO_BUILD_DATETIME_OFFSET   + PRODUCTINFO_BUILD_DATETIME_SIZE)
+#define PRODUCTINFO_COMMIT_HASH_OFFSET          (PRODUCTINFO_BRANCH_OFFSET           + PRODUCTINFO_BRANCH_SIZE)
+
+/* Define static assertion macros for record layout checks */
+#define STATIC_ASSERT_RECORD_LAYOUT(condition, message) static_assert(condition, message)
+
+#define STATIC_ASSERT_RECORD_OFFSET(field, expected_offset)                     \
+    STATIC_ASSERT_RECORD_LAYOUT(offsetof(Record, field) == expected_offset,     \
+    "Unexpected ProductInfo record offset for " #field)
+
 /* Static assertions to ensure the Record structure has the expected layout and size */
-static_assert(sizeof(ProductInfoNS::Record) == 139, "Unexpected product info record layout");
-/* The CRC-32 field is expected to be at offset 135 in the Record structure */
-static_assert(offsetof(ProductInfoNS::Record, mCrc32) == 135, "Unexpected product info CRC offset");
-/* The embedded product info in the firmware image must contain exactly one record */
-static_assert(sizeof(ProductInfoNS::mcRecordData) == sizeof(ProductInfoNS::Record),
-    "Embedded product info must contain exactly one record");
+STATIC_ASSERT_RECORD_OFFSET(mMagic,              0);
+STATIC_ASSERT_RECORD_OFFSET(mFormatVersion,      PRODUCTINFO_MAGIC_SIZE);
+STATIC_ASSERT_RECORD_OFFSET(mSoftwareVersion,    PRODUCTINFO_SOFTWARE_VERSION_OFFSET);
+STATIC_ASSERT_RECORD_OFFSET(mBuildDateTimeLocal, PRODUCTINFO_BUILD_DATETIME_OFFSET);
+STATIC_ASSERT_RECORD_OFFSET(mBranchShort,        PRODUCTINFO_BRANCH_OFFSET);
+STATIC_ASSERT_RECORD_OFFSET(mCommitHashShort,    PRODUCTINFO_COMMIT_HASH_OFFSET);
+STATIC_ASSERT_RECORD_OFFSET(mCrc32,              PRODUCTINFO_CRC32_OFFSET);
+
+STATIC_ASSERT_RECORD_LAYOUT(sizeof(tSoftwareVersion) == PRODUCTINFO_SOFTWARE_VERSION_SIZE,
+    "Unexpected software version field size");
+STATIC_ASSERT_RECORD_LAYOUT(sizeof(Record) == PRODUCTINFO_RECORD_SIZE,
+    "Unexpected ProductInfo record size");
+STATIC_ASSERT_RECORD_LAYOUT(sizeof(Record) - offsetof(Record, mCrc32) == PRODUCTINFO_CRC32_SIZE,
+    "Unexpected ProductInfo CRC size");
+STATIC_ASSERT_RECORD_LAYOUT(PRODUCTINFO_CRC32_OFFSET + PRODUCTINFO_CRC32_SIZE == PRODUCTINFO_RECORD_SIZE,
+    "ProductInfo record size must end immediately after the CRC field");
+STATIC_ASSERT_RECORD_LAYOUT(sizeof(mcRecordData) == sizeof(Record),
+    "Embedded ProductInfo must contain exactly one record");
+
 
 /** @brief Get the product information record.
  *

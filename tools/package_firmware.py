@@ -65,6 +65,8 @@ def _read_image(path, label):
 
 def _place_image(image, path, offset, label):
     """Copy an image into a flash-sized byte array at its absolute offset.
+        Record length, CRC location, field widths, and field offsets are loaded
+        from ProductInfo.h through ``productinfo_format``.
 
     The destination is modified in place. Unoccupied locations retain their
     existing contents (the output builders initialize them to erased-flash
@@ -91,9 +93,8 @@ def _place_image(image, path, offset, label):
 def _productinfo_version(app_path):
     """Find and validate the embedded ProductInfo record in an application image.
 
-    The record is 139 bytes: identifier and format version at offsets 0-16,
-    the three-byte version at offsets 17-19, and a little-endian CRC-32 at
-    offsets 135-138. The preceding fields are covered by the CRC.
+    Record length and all field offsets are loaded from ProductInfo.h through
+    ``productinfo_format`` so packaging follows the application record layout.
 
     Args:
         app_path: Path to the application binary containing the embedded record.
@@ -112,20 +113,24 @@ def _productinfo_version(app_path):
     # Direct CLI execution supplies __file__ normally.
     project_dir = (Path(env.subst("$PROJECT_DIR")) if env is not None
                    else Path(__file__).resolve().parents[1])
-    magic, format_version = productinfo_format.load_format(project_dir)
-    record_size = 139
+    productinfo_format_info = productinfo_format.load_format(project_dir)
+    record_size = productinfo_format_info.record_size
     search_offset = 0
     while True:
-        record_offset = data.find(magic, search_offset)
+        record_offset = data.find(productinfo_format_info.magic, search_offset)
         if record_offset < 0:
             break
         record_end = record_offset + record_size
         if record_end <= len(data):
             record = data[record_offset:record_end]
-            stored_crc = int.from_bytes(record[135:139], "little")
-            if (record[16] == format_version and
-                    zlib.crc32(record[:135]) == stored_crc):
-                return tuple(record[17:20])
+            crc_start = productinfo_format_info.crc32_offset
+            crc_end = crc_start + productinfo_format_info.crc32_size
+            stored_crc = int.from_bytes(record[crc_start:crc_end], "little")
+            version_start = productinfo_format_info.software_version_offset
+            version_end = version_start + productinfo_format_info.software_version_size
+            if (record[productinfo_format_info.format_version_offset] == productinfo_format_info.format_version and
+                    zlib.crc32(record[:crc_start]) == stored_crc):
+                return tuple(record[version_start:version_end])
         search_offset = record_offset + 1
 
     raise ValueError("No valid embedded ProductInfo record found in application image")
