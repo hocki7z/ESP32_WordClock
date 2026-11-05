@@ -32,8 +32,13 @@
 #define PRODUCTINFO_CRC32_SIZE              4
 
 /* CRC covers all preceding fields; the record ends immediately after its CRC. */
-#define PRODUCTINFO_CRC32_OFFSET            131
-#define PRODUCTINFO_RECORD_SIZE             135
+#define PRODUCTINFO_CRC32_OFFSET                                            \
+    (PRODUCTINFO_MAGIC_SIZE + PRODUCTINFO_FORMAT_VERSION_SIZE +             \
+     PRODUCTINFO_SOFTWARE_VERSION_SIZE + PRODUCTINFO_BUILD_DATETIME_SIZE +  \
+     PRODUCTINFO_BRANCH_SIZE + PRODUCTINFO_COMMIT_HASH_SIZE)
+
+#define PRODUCTINFO_RECORD_SIZE                                             \
+    (PRODUCTINFO_CRC32_OFFSET + PRODUCTINFO_CRC32_SIZE)
 
 namespace ProductInfoNS
 {

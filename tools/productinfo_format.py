@@ -6,6 +6,7 @@ marks ProductInfo records; it does not encrypt or authenticate firmware.
 """
 
 from pathlib import Path
+import ast
 import re
 from typing import NamedTuple
 
@@ -45,6 +46,69 @@ class ProductInfoFormat(NamedTuple):
         return self.branch_offset + self.branch_size
 
 
+def _read_integer_macros(header):
+    """Collect ProductInfo #define expressions, joining C continuation lines."""
+    macros = {}
+    lines = header.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        match = re.match(r"^[ \t]*#define[ \t]+(PRODUCTINFO_[A-Z0-9_]+)[ \t]+(.*)$", line)
+        index += 1
+        if match is None:
+            continue
+
+        name, expression = match.groups()
+        while expression.rstrip().endswith("\\"):
+            expression = expression.rstrip()[:-1] + " "
+            if index >= len(lines):
+                raise ValueError("Unterminated continued definition for {}".format(name))
+            expression += lines[index].strip()
+            index += 1
+        macros[name] = expression.strip()
+    return macros
+
+
+def _evaluate_integer_macro(name, macros, cache, active=()):
+    """Evaluate integer literals, macro references, parentheses, unary +, and addition only."""
+    if name in cache:
+        return cache[name]
+    if name in active:
+        raise ValueError("Recursive ProductInfo macro definition: {}".format(name))
+    expression = macros.get(name)
+    if expression is None:
+        raise ValueError("Invalid ProductInfo.h: missing numeric definition {}".format(name))
+
+    # Reject every token not needed by these simple integer definitions before
+    # parsing. This intentionally does not implement the C preprocessor.
+    tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*|\d+|[()+]", expression)
+    if "".join(tokens) != re.sub(r"\s+", "", expression):
+        raise ValueError("Unsupported expression for {}: {}".format(name, expression))
+    try:
+        parsed = ast.parse(expression, mode="eval")
+    except SyntaxError as error:
+        raise ValueError("Invalid integer expression for {}: {}".format(name, expression)) from error
+
+    def evaluate(node):
+        if isinstance(node, ast.Expression):
+            return evaluate(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+            return node.value
+        if isinstance(node, ast.Name) and node.id.startswith("PRODUCTINFO_"):
+            return _evaluate_integer_macro(node.id, macros, cache, active + (name,))
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return evaluate(node.left) + evaluate(node.right)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.UAdd):
+            return evaluate(node.operand)
+        raise ValueError("Unsupported integer expression for {}: {}".format(name, expression))
+
+    value = evaluate(parsed)
+    if value < 0:
+        raise ValueError("ProductInfo definition {} must not be negative".format(name))
+    cache[name] = value
+    return value
+
+
 def load_format(project_dir):
     """Load and validate the ProductInfo definitions without compiling C++.
 
@@ -59,9 +123,10 @@ def load_format(project_dir):
         OSError: If the header cannot be read.
         ValueError: If either definition is missing or has an invalid value.
 
-    Only single-line macros are supported: comma-separated hexadecimal byte
-    literals for the identifier and a decimal integer (0-255) for the version.
-    This is a targeted parser, not a general C++ preprocessor.
+    Numeric definitions may use decimal literals, parentheses, unary plus,
+    addition, and references to other PRODUCTINFO_* definitions. This is a
+    bounded parser for the header's simple layout expressions, not a general
+    C++ preprocessor.
     """
     header = (Path(project_dir) / "src" / "ProductInfo.h").read_text(encoding="utf-8")
 
@@ -80,16 +145,11 @@ def load_format(project_dir):
         "PRODUCTINFO_CRC32_OFFSET",
         "PRODUCTINFO_RECORD_SIZE",
     )
+    macros = _read_integer_macros(header)
     constants = {}
+    cache = {}
     for name in numeric_names:
-        match = re.search(
-            r"^[ \t]*#define[ \t]+{}[ \t]+(\d+)[ \t]*$".format(name),
-            header,
-            re.MULTILINE,
-        )
-        if match is None:
-            raise ValueError("Invalid ProductInfo.h: missing numeric definition {}".format(name))
-        constants[name] = int(match[1])
+        constants[name] = _evaluate_integer_macro(name, macros, cache)
 
     version = constants["PRODUCTINFO_FORMAT_VERSION"]
     if identifier is None or not 0 <= version <= 255:
