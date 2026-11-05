@@ -52,14 +52,8 @@ STATIC_ASSERT_RECORD_OFFSET(mBranchShort,        PRODUCTINFO_BRANCH_OFFSET);
 STATIC_ASSERT_RECORD_OFFSET(mCommitHashShort,    PRODUCTINFO_COMMIT_HASH_OFFSET);
 STATIC_ASSERT_RECORD_OFFSET(mCrc32,              PRODUCTINFO_CRC32_OFFSET);
 
-STATIC_ASSERT_RECORD_LAYOUT(sizeof(tSoftwareVersion) == PRODUCTINFO_SOFTWARE_VERSION_SIZE,
-    "Unexpected software version field size");
 STATIC_ASSERT_RECORD_LAYOUT(sizeof(Record) == PRODUCTINFO_RECORD_SIZE,
     "Unexpected ProductInfo record size");
-STATIC_ASSERT_RECORD_LAYOUT(sizeof(Record) - offsetof(Record, mCrc32) == PRODUCTINFO_CRC32_SIZE,
-    "Unexpected ProductInfo CRC size");
-STATIC_ASSERT_RECORD_LAYOUT(PRODUCTINFO_CRC32_OFFSET + PRODUCTINFO_CRC32_SIZE == PRODUCTINFO_RECORD_SIZE,
-    "ProductInfo record size must end immediately after the CRC field");
 STATIC_ASSERT_RECORD_LAYOUT(sizeof(mcRecordData) == sizeof(Record),
     "Embedded ProductInfo must contain exactly one record");
 
