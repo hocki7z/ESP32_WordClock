@@ -20,6 +20,7 @@ class ProductInfoFormat(NamedTuple):
     software_version_size: int
     build_datetime_size: int
     branch_size: int
+    short_branch_name_size: int
     commit_hash_size: int
     crc32_size: int
     crc32_offset: int
@@ -70,7 +71,7 @@ def _read_integer_macros(header):
 
 
 def _evaluate_integer_macro(name, macros, cache, active=()):
-    """Evaluate integer literals, macro references, parentheses, unary +, and addition only."""
+    """Evaluate integer literals, macro references, parentheses, unary +, addition, and multiplication."""
     if name in cache:
         return cache[name]
     if name in active:
@@ -81,7 +82,7 @@ def _evaluate_integer_macro(name, macros, cache, active=()):
 
     # Reject every token not needed by these simple integer definitions before
     # parsing. This intentionally does not implement the C preprocessor.
-    tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*|\d+|[()+]", expression)
+    tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*|\d+|[()+*]", expression)
     if "".join(tokens) != re.sub(r"\s+", "", expression):
         raise ValueError("Unsupported expression for {}: {}".format(name, expression))
     try:
@@ -98,6 +99,8 @@ def _evaluate_integer_macro(name, macros, cache, active=()):
             return _evaluate_integer_macro(node.id, macros, cache, active + (name,))
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
             return evaluate(node.left) + evaluate(node.right)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+            return evaluate(node.left) * evaluate(node.right)
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.UAdd):
             return evaluate(node.operand)
         raise ValueError("Unsupported integer expression for {}: {}".format(name, expression))
@@ -124,7 +127,7 @@ def load_format(project_dir):
         ValueError: If either definition is missing or has an invalid value.
 
     Numeric definitions may use decimal literals, parentheses, unary plus,
-    addition, and references to other PRODUCTINFO_* definitions. This is a
+    addition, multiplication, and references to other PRODUCTINFO_* definitions. This is a
     bounded parser for the header's simple layout expressions, not a general
     C++ preprocessor.
     """
@@ -140,6 +143,7 @@ def load_format(project_dir):
         "PRODUCTINFO_SOFTWARE_VERSION_SIZE",
         "PRODUCTINFO_BUILD_DATETIME_SIZE",
         "PRODUCTINFO_BRANCH_SIZE",
+        "PRODUCTINFO_SHORT_BRANCH_NAME_SIZE",
         "PRODUCTINFO_COMMIT_HASH_SIZE",
         "PRODUCTINFO_CRC32_SIZE",
         "PRODUCTINFO_CRC32_OFFSET",
@@ -172,6 +176,7 @@ def load_format(project_dir):
         software_version_size=constants["PRODUCTINFO_SOFTWARE_VERSION_SIZE"],
         build_datetime_size=constants["PRODUCTINFO_BUILD_DATETIME_SIZE"],
         branch_size=constants["PRODUCTINFO_BRANCH_SIZE"],
+        short_branch_name_size=constants["PRODUCTINFO_SHORT_BRANCH_NAME_SIZE"],
         commit_hash_size=constants["PRODUCTINFO_COMMIT_HASH_SIZE"],
         crc32_size=constants["PRODUCTINFO_CRC32_SIZE"],
         crc32_offset=constants["PRODUCTINFO_CRC32_OFFSET"],
@@ -184,6 +189,8 @@ def load_format(project_dir):
         raise ValueError("The ProductInfo software version must contain exactly three bytes")
     if format_info.crc32_size != 4:
         raise ValueError("The ProductInfo CRC-32 field must occupy exactly four bytes")
+    if format_info.short_branch_name_size * 4 >= format_info.branch_size:
+        raise ValueError("PRODUCTINFO_BRANCH_SIZE must fit every supported UTF-8 branch name plus NUL")
 
     expected_crc_offset = (
         len(magic) + format_info.format_version_size + format_info.software_version_size
