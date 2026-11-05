@@ -11,7 +11,6 @@
 #include "Application.h"
 #include "SSIDList.h"
 #include "Settings.hpp"
-#include "ProductInfo.h"
 
 #include "DisplayLayout.h"
 
@@ -212,8 +211,5 @@ namespace ConfigNS
         /* WAT  */  "WAT-1",
         /* WET  */  "WET0WEST,M3.5.0/1,M10.5.0",
     };
-
-
-    bool GetProductInfo(ProductInfoNS::Record& arRecord);
 
 }   /* end of namespace ConfigNS */

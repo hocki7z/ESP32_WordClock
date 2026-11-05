@@ -9,6 +9,7 @@
 
 #include "Logger.h"
 #include "Configuration.h"
+#include "ProductInfo.h"
 #include "DateTime.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
@@ -1325,41 +1326,38 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
  */
 void WebSite::UpdateProductInfo(void)
 {
-    ProductInfoNS::Record wProductInfo{};
-
     /* Default values */
     String wSoftwareVersion = "Unknown";
     String wBuildDateTime   = "Unavailable";
     String wCommitHash      = "Unavailable";
     String wBranch          = "Unavailable";
 
-    /* Retrieve product information from the configuration */
-    if (ConfigNS::GetProductInfo(wProductInfo))
+    ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
+
+    if (wProductInfo.mSoftwareVersion.IsValid())
     {
-        if (wProductInfo.mSoftwareVersion.IsValid())
-        {
-            char wVersionText[12] = {0};
-            snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+        char wVersionText[12] = {0};
+        snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
+            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
+            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
+            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
 
-            wSoftwareVersion = wVersionText;
-        }
+        wSoftwareVersion = wVersionText;
+    }
 
-        if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
-        {
-            wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
-        }
+    if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
+    {
+        wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
+    }
 
-        if (wProductInfo.mCommitHashShort[0] != '\0')
-        {
-            wCommitHash = wProductInfo.mCommitHashShort;
-        }
-        if (wProductInfo.mBranchShort[0] != '\0')
-        {
-            wBranch = wProductInfo.mBranchShort;
-        }
+    if (wProductInfo.mCommitHashShort[0] != '\0')
+    {
+        wCommitHash = wProductInfo.mCommitHashShort;
+    }
+
+    if (wProductInfo.mBranchShort[0] != '\0')
+    {
+        wBranch = wProductInfo.mBranchShort;
     }
 
 
@@ -1369,7 +1367,7 @@ void WebSite::UpdateProductInfo(void)
      */
 
     const std::array<const char*, 4> wProductInfoNames = {
-        "Software version", "Local build date/time", "Branch", "Commit hash"
+        "Software version", "Build date/time", "Branch", "Commit hash"
     };
 
     const std::array<const char*, 4> wProductInfoValues = {

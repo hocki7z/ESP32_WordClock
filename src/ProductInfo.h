@@ -23,6 +23,23 @@
 /* The format version is a single byte (0-255) that indicates the layout of the ProductInfo record. */
 #define PRODUCTINFO_FORMAT_VERSION  1
 
+/* ProductInfo record field lengths in bytes; keep in sync with Record below. */
+#define PRODUCTINFO_FORMAT_VERSION_SIZE     1
+#define PRODUCTINFO_SOFTWARE_VERSION_SIZE   3
+#define PRODUCTINFO_BUILD_DATETIME_SIZE     21
+#define PRODUCTINFO_BRANCH_SIZE             81
+#define PRODUCTINFO_COMMIT_HASH_SIZE        9
+#define PRODUCTINFO_CRC32_SIZE              4
+
+/* CRC covers all preceding fields; the record ends immediately after its CRC. */
+#define PRODUCTINFO_CRC32_OFFSET                                            \
+    (PRODUCTINFO_MAGIC_SIZE + PRODUCTINFO_FORMAT_VERSION_SIZE +             \
+     PRODUCTINFO_SOFTWARE_VERSION_SIZE + PRODUCTINFO_BUILD_DATETIME_SIZE +  \
+     PRODUCTINFO_BRANCH_SIZE + PRODUCTINFO_COMMIT_HASH_SIZE)
+
+#define PRODUCTINFO_RECORD_SIZE                                             \
+    (PRODUCTINFO_CRC32_OFFSET + PRODUCTINFO_CRC32_SIZE)
+
 namespace ProductInfoNS
 {
     /** @brief Software version structure */
@@ -99,17 +116,23 @@ namespace ProductInfoNS
     /** @brief Product information record structure */
     struct __attribute__((packed)) Record
     {
-        uint8_t mMagic[PRODUCTINFO_MAGIC_SIZE];     // Record identifier bytes.
-        uint8_t mFormatVersion;                     // Binary record layout version.
-        tSoftwareVersion mSoftwareVersion;          // Software version of the firmware.
-        char mBuildDateTimeLocal[21];               // NUL-terminated local build timestamp: D.M.YYYY, HH:MM:SS.
-        char mBranchShort[81];                      // NUL-terminated branch name, limited to 20 UTF-8 characters.
-        char mCommitHashShort[9];                   // NUL-terminated first 8 hexadecimal commit-hash characters.
-        uint8_t mCrc32[4];                          // CRC-32 of all preceding fields, stored little-endian.
+        /* Record identifier bytes */
+        uint8_t mMagic[PRODUCTINFO_MAGIC_SIZE];
+        /* Binary record layout version */
+        uint8_t mFormatVersion;
+        /* Software version of the firmware */
+        tSoftwareVersion mSoftwareVersion;
+        /*  NUL-terminated local build timestamp */
+        char mBuildDateTimeLocal[PRODUCTINFO_BUILD_DATETIME_SIZE];
+        /* NUL-terminated branch name, max 20 UTF-8 characters*/
+        char mBranchShort[PRODUCTINFO_BRANCH_SIZE];
+        /* NUL-terminated first 8 commit-hash characters*/
+        char mCommitHashShort[PRODUCTINFO_COMMIT_HASH_SIZE];
+        /* CRC-32 of preceding fields, stored little-endian*/
+        uint8_t mCrc32[PRODUCTINFO_CRC32_SIZE];
     };
 
-    bool ReadFlashPartition(Record& arRecord);
-    bool SyncFlashPartitionWithFirmware(void);
+    Record GetProductInfoRecord(void);
 
     bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImageSize, Record& arRecord);
     bool IsNewVersionAllowed(const tSoftwareVersion& arNewVersion, tSoftwareVersion& arCurrentVersion);

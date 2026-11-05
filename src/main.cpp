@@ -4,7 +4,6 @@
 #include "Settings.hpp"
 
 #include "Configuration.h"
-#include "ProductInfo.h"
 
 #include "Application.h"
 #include "Communication.h"
@@ -255,12 +254,6 @@ static void CheckResetReason(void)
  */
 static void InitApplication(void)
 {
-    /* Restore build metadata embedded in the application OTA image if needed. */
-    if (!ProductInfoNS::SyncFlashPartitionWithFirmware())
-    {
-        LOG(LOG_ERROR, "ProductInfo: failed to synchronize the flash partition");
-    }
-
     /* Create communication manager */
     mpCommunicationManager = new CommunicationNS::CommunicationManager();
 

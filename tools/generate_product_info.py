@@ -42,10 +42,6 @@ _UNKNOWN_VERSION        = (0xFF, 0xFF, 0xFF)
 _GENERATED_HEADER       = "AutoGitInfo.h"     # Generated in the active build directory.
 _DEFINE_VALUE_COLUMN    = 49    # Column at which to align the value of each ``#define`` in the generated header.
 
-# Constants for flash partition generation.
-_PRODUCTINFO_PARTITION_SIZE = 0x1000
-
-
 def _format_define(name, value):
     """Format one C preprocessor definition with its value at the target column.
 
@@ -195,58 +191,59 @@ def _fallback_build_info():
     }
 
 
-def _generate_flash_record(build_info):
-    """Generate the fixed-layout partition image from the shared metadata snapshot."""
+def _generate_productinfo_record(build_info):
+    """Generate and embed the ProductInfo record from the shared metadata snapshot."""
 
     project_dir = Path(_PLATFORMIO_ENV.subst("$PROJECT_DIR"))
-    magic, format_version = productinfo_format.load_format(project_dir)
+    productinfo_format_info = productinfo_format.load_format(project_dir)
     version = build_info["software_version"]
     build_time_bytes = build_info["generated_local"].encode("ascii")
-    commit_hash_short = build_info["full_hash"][:8].encode("ascii")
-    branch_short = build_info["branch"][:20].encode("utf-8")
+    commit_hash_short = build_info["full_hash"][:productinfo_format_info.commit_hash_size - 1].encode("ascii")
+    branch_short = build_info["branch"][:productinfo_format_info.branch_size - 1].encode("utf-8")
 
-    build_time_bytes = build_time_bytes[:20].ljust(21, b"\0")
-    commit_hash_short = commit_hash_short[:8].ljust(9, b"\0")
-    branch_short = branch_short[:80].ljust(81, b"\0")
+    if len(version) != productinfo_format_info.software_version_size:
+        raise ValueError("Software version length does not match ProductInfo.h")
+
+    build_time_bytes = build_time_bytes[:productinfo_format_info.build_datetime_size - 1].ljust(
+        productinfo_format_info.build_datetime_size, b"\0")
+    commit_hash_short = commit_hash_short[:productinfo_format_info.commit_hash_size - 1].ljust(
+        productinfo_format_info.commit_hash_size, b"\0")
+    branch_short = branch_short[:productinfo_format_info.branch_size - 1].ljust(
+        productinfo_format_info.branch_size, b"\0")
     record = (
-        magic                               # 0..15: shared record identifier
-        + bytes((format_version,))          # 16: record format version
-        + bytes(version)                    # 17..19: software version
-        + build_time_bytes                  # 20..40: NUL-terminated readable local build date/time
-        + branch_short                      # 41..121: UTF-8 branch, max 20 chars, NUL-terminated
-        + commit_hash_short                 # 122..130: NUL-terminated short commit hash
+        productinfo_format_info.magic
+        + bytes((productinfo_format_info.format_version,))
+        + bytes(version)
+        + build_time_bytes
+        + branch_short
+        + commit_hash_short
     )
-    record += zlib.crc32(record).to_bytes(4, "little")  # 131..134: CRC-32
-    if len(record) != 135:
-        raise ValueError("Product info record must be exactly 135 bytes")
+    if len(record) != productinfo_format_info.crc32_offset:
+        raise ValueError("ProductInfo fields do not end at PRODUCTINFO_CRC32_OFFSET")
+    record += zlib.crc32(record).to_bytes(productinfo_format_info.crc32_size, "little")
+    if len(record) != productinfo_format_info.record_size:
+        raise ValueError("Product info record length does not match PRODUCTINFO_RECORD_SIZE")
 
-    image = bytearray(b"\xFF" * _PRODUCTINFO_PARTITION_SIZE)
-    image[:len(record)] = record
     build_dir = Path(_PLATFORMIO_ENV.subst("$BUILD_DIR"))
-    image_path = build_dir / "productinfo.bin"
-    image_path.parent.mkdir(parents=True, exist_ok=True)
-    image_path.write_bytes(image)
-    print("Product info: generated {} (record at partition offset 0x0)".format(image_path))
 
-    # Embed only the record in the application. The remaining partition bytes
-    # are erased to 0xFF when the record is synchronized on first boot.
+    # Embed the record in the application.
     header_lines = [
-        "/* Auto-generated from productinfo.bin; do not edit. */",
+        "/* Auto-generated product information record; do not edit. */",
         "#pragma once",
         "#include <cstdint>",
-        "namespace ProductInfoNS { namespace ProductInfoImage {",
-        "alignas(4) static constexpr uint8_t mcData[] = {",
+        "namespace ProductInfoNS {",
+        "alignas(4) static constexpr uint8_t mcRecordData[] = {",
     ]
     for offset in range(0, len(record), 16):
         chunk = record[offset:offset + 16]
         header_lines.append("    " + ", ".join("0x{:02X}".format(value) for value in chunk) + ",")
-    header_lines.extend(("};", "} } // namespace ProductInfoNS::ProductInfoImage", ""))
-    image_header_path = build_dir / "ProductInfoImage.h"
+    header_lines.extend(("};", "} // namespace ProductInfoNS", ""))
+    image_header_path = build_dir / "ProductInfoRecord.h"
     image_header_path.write_text("\n".join(header_lines), encoding="ascii", newline="\n")
     _PLATFORMIO_ENV.Append(CPPPATH=[str(build_dir)])
     print("Product info: embedded {}-byte record generated {}".format(len(record), image_header_path))
 
-    pass    # end of _generate_flash_record
+    pass    # end of _generate_productinfo_record
 
 
 def _make_header(build_info):
@@ -349,12 +346,7 @@ def _generate_git_info(project_dir, build_dir, build_env=None, tag_strategy="hig
         build_env.Append(CPPPATH=[str(header_path.parent)])
 
     if _PLATFORMIO_ENV is not None:
-        _generate_flash_record(build_info)
-        # PlatformIO's ESP32 uploader appends these images to its normal
-        # esptool write_flash command; this makes regular Upload flash ProductInfo.
-        _PLATFORMIO_ENV.Append(
-            FLASH_EXTRA_IMAGES=[("0x3FF000", "$BUILD_DIR/productinfo.bin")]
-        )
+        _generate_productinfo_record(build_info)
 
     pass    # end of _generate_git_info
 
