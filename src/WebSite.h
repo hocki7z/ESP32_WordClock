@@ -142,10 +142,12 @@ private:
         Control::ControlId_t mWifiConnectButton;
         Control::ControlId_t mWifiForgetButton;
         //
-        Control::ControlId_t mProductInfoGroup;
-        Control::ControlId_t mProductInfoLabel;
-        //
         Control::ControlId_t mFirmwareUpdateGroup;
+        //
+        Control::ControlId_t mSystemInfoGroup;
+        Control::ControlId_t mProductInfoLabel;
+        Control::ControlId_t mRuntimeInfoLabel;
+        Control::ControlId_t mDeviceInfoLabel;
     };
 
     /** @brief "This" pointer for created WebSite instance */
@@ -213,14 +215,14 @@ private:
 
     template <size_t N>
     String BuildHtmlTable(const std::array<const char*, N>& arNames,
-        const std::array<const char*, N>& arValues) const;
+        const std::array<const char*, N>& arValues, bool aSeparateRows = false) const;
 
     String EscapeHtml(const char* apText) const;
 
     void UpdateDisplayPreview(const MessageNS::Message& arMessage);
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
-    void UpdateProductInfo(void);
+    void UpdateSystemInfo(void);
 
     static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);
 };
