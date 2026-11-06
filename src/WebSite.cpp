@@ -315,7 +315,10 @@ void WebSite::ProcessTimerEvent(const uint32_t aTimerId)
 
     if (aTimerId == mPeriodicalTaskTimerId)
     {
-        UpdateSystemInfo();
+        if (!OTAUpdateNS::IsUploadActive())
+        {
+            UpdateSystemInfo();
+        }
     }
     else
     {
