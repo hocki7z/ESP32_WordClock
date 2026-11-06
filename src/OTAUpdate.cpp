@@ -28,21 +28,13 @@
 
 namespace OTAUpdateNS
 {
-/** @brief Enum representing the status of an OTA upload. */
-enum class OtaUploadStatus : uint8_t
-{
-    Idle,           ///< No OTA upload is in progress
-    Receiving,      ///< OTA upload is currently being received
-//    Validating,     ///< OTA upload is being validated
-    Failed,         ///< OTA upload has failed
-//    Success,        ///< OTA upload has completed successfully
-    ReadyToBoot,    ///< OTA upload is ready to boot
-};
-
 /** @brief Pointer to the AsyncWebServer instance handling OTA updates */
 static AsyncWebServer* mpOtaServer = nullptr;
 /** @brief Pointer to the current OTA upload request */
 static AsyncWebServerRequest* mpOtaRequest = nullptr;
+
+/** @brief Pointer to the OTA update callback instance */
+static OTAUpdateCallback* mpCallback = nullptr;
 
 /** @brief Handle for the current OTA update */
 static esp_ota_handle_t mOtaHandle = 0;
@@ -60,9 +52,6 @@ static OtaUploadStatus mOtaStatus = OtaUploadStatus::Idle;
 static esp_err_t mOtaError = ESP_OK;
 /** @brief Reason for OTA failure */
 static String mOtaFailureReason;
-
-/** @brief Flag indicating whether an OTA upload is active */
-static std::atomic<bool> mOtaUploadActive{false};
 
 
 /** @brief Abort the ongoing OTA upload.
@@ -117,13 +106,18 @@ static void HandleOtaRequest(AsyncWebServerRequest* apRequest)
         const esp_err_t wError = mOtaError;
         const String wFailureReason = mOtaFailureReason;
 
-        /* Mark the OTA upload as inactive and reset relevant variables */
-        mOtaUploadActive.store(false);
+        /* Reset relevant variables */
         mpOtaRequest = nullptr;
         mOtaStatus = OtaUploadStatus::Idle;
         mpOtaPartition = nullptr;
         mOtaBytesReceived = 0;
         mOtaFailureReason = "";
+
+        /* Notify the callback about the OTA upload status change */
+        if (mpCallback != nullptr)
+        {
+            mpCallback->OnOtaUploadStatusChanged(mOtaStatus, mOtaError, mOtaFailureReason);
+        }
 
         if (wStatus == OtaUploadStatus::ReadyToBoot)
         {
@@ -192,7 +186,12 @@ static void HandleOtaUpload(AsyncWebServerRequest* apRequest, const String& arFi
                 mpOtaRequest = nullptr;
                 mOtaStatus = OtaUploadStatus::Failed;
                 mOtaFailureReason = "OTA upload disconnected.";
-                mOtaUploadActive.store(false);
+
+                /* Notify the callback about the OTA upload status change */
+                if (mpCallback != nullptr)
+                {
+                    mpCallback->OnOtaUploadStatusChanged(mOtaStatus, mOtaError, mOtaFailureReason);
+                }
             }
         });
 
@@ -226,11 +225,16 @@ static void HandleOtaUpload(AsyncWebServerRequest* apRequest, const String& arFi
             return;
         }
 
-        /* Mark the OTA update as started */
+        /* Mark the OTA handle as valid and reset relevant variables */
         mOtaHandleValid = true;
         mOtaBytesReceived = 0;
         mOtaStatus = OtaUploadStatus::Receiving;
-        mOtaUploadActive.store(true);
+
+        /* Notify the callback about the OTA upload status change */
+        if (mpCallback != nullptr)
+        {
+            mpCallback->OnOtaUploadStatusChanged(mOtaStatus, mOtaError, mOtaFailureReason);
+        }
     }
 
     /* Ignore data for another request or an upload that is not receiving */
@@ -358,19 +362,6 @@ const char* CustomJavaScript(void)
     return OTAUpdateAssets::kCustomJavaScript;  // Return the generated JavaScript code
 }
 
-/** @brief Return whether an OTA upload is currently being received or validated.
- *
- * @details
- * This function checks if an OTA upload is currently in progress, either being received or validated.
- * It returns true if an OTA upload is active, and false otherwise.
- *
- * @return true if an OTA upload is active, false otherwise.
-*/
-bool IsUploadActive(void)
-{
-    return mOtaUploadActive.load();
-}
-
 /** @brief Register OTA endpoints on the web server already started by ESPUI.
  *
  * @details
@@ -382,14 +373,21 @@ bool IsUploadActive(void)
  * that the system remains stable and responsive.
  *
  * @param apServer Pointer to the AsyncWebServer instance where OTA endpoints will be registered.
+ * @param apCallback Pointer to the OTAUpdateCallback instance for receiving OTA status updates.
+ *
  * @note This function should be called after the web server has been started by ESPUI.
 */
-void RegisterRoutes(AsyncWebServer* apServer)
+void RegisterRoutes(AsyncWebServer* apServer, OTAUpdateCallback* apCallback)
 {
     if ((apServer != nullptr) && (apServer != mpOtaServer))
     {
+        /* Store the provided server and callback pointers for OTA handling */
         mpOtaServer = apServer;
+        mpCallback = apCallback;
+
+        /* Register the "/update" endpoint for handling OTA uploads */
         mpOtaServer->on("/update", HTTP_POST, HandleOtaRequest, HandleOtaUpload);
+
     }
 }
 
