@@ -77,6 +77,16 @@ WebSite::WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 WebSite::~WebSite()
 {
+    /* Clean up task timers */
+    if (mpTimer)
+    {
+        /* Stop running timer */
+        mpTimer->stop();
+        /*    and destroy it */
+        delete mpTimer;
+        mpTimer = nullptr;
+    }
+
     /* Delete the control event queue and notification */
     delete mpControlEventQueue;
     delete mpControlEventNotification;
@@ -106,6 +116,12 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     {
         LOG(LOG_ERROR, "WebSite::Init() Failed to create control event notification");
     }
+
+    /* Create periodical timer */
+    mTimerObjects.mTaskHandle = this->getTaskHandle();
+    mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
+    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 1000, true);    // Period 1 seconds
+    mpTimer->Init(&mTimerObjects);
 
     /*
      * Initialize WEB UI but do not start it yet
@@ -293,6 +309,20 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     UpdateSystemInfo();
 }
 
+void WebSite::ProcessTimerEvent(const uint32_t aTimerId)
+{
+    LOG(LOG_VERBOSE, "WebSite::ProcessTimerEvent() Timer ID: %d", aTimerId);
+
+    if (aTimerId == mPeriodicalTaskTimerId)
+    {
+        UpdateSystemInfo();
+    }
+    else
+    {
+        // do nothing here
+    }
+}
+
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 {
     LOG(LOG_VERBOSE, "WebSite::ProcessIncomingMessage()");
@@ -313,6 +343,10 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
             OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+
+            /* Start notification timer for this task */
+            mpTimer->start();
+
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
@@ -329,6 +363,10 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
             OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+
+            /* Start notification timer for this task */
+            mpTimer->start();
+
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
@@ -1347,35 +1385,43 @@ void WebSite::UpdateSystemInfo(void)
 
     /* Update product information */
     {
-        String wSoftwareVersion = "Unknown";
-        String wBuildDateTime   = "Unavailable";
+        static bool wProductInfoInitialized = false;
 
-        /* Retrieve product information record */
-        ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
-
-        if (wProductInfo.mSoftwareVersion.IsValid())
+        if (!wProductInfoInitialized)
         {
-            char wVersionText[12] = {0};
-            snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+            /* Initialize product information on the web UI */
+            wProductInfoInitialized = true;
 
-            wSoftwareVersion = wVersionText;
+            String wSoftwareVersion = "Unknown";
+            String wBuildDateTime   = "Unavailable";
+
+            /* Retrieve product information record */
+            ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
+
+            if (wProductInfo.mSoftwareVersion.IsValid())
+            {
+                char wVersionText[12] = {0};
+                snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
+                    static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
+                    static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
+                    static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+
+                wSoftwareVersion = wVersionText;
+            }
+
+            if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
+            {
+                wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
+            }
+
+            const std::array<const char*, 2> wProductInfoNames = {
+                "Software version", "Build date/time"
+            };
+
+            /* Update the product information label on the web UI with the constructed HTML table */
+            ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
+                BuildHtmlTable(wProductInfoNames, {wSoftwareVersion.c_str(), wBuildDateTime.c_str()}));
         }
-
-        if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
-        {
-            wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
-        }
-
-        const std::array<const char*, 2> wProductInfoNames = {
-            "Software version", "Build date/time"
-        };
-
-        /* Update the product information label on the web UI with the constructed HTML table */
-        ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
-            BuildHtmlTable(wProductInfoNames, {wSoftwareVersion.c_str(), wBuildDateTime.c_str()}));
     }
 
     /* Runtime information */
