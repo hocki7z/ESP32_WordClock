@@ -7,6 +7,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <type_traits>
 
 #include <MutexCPP.h>
 #include <Preferences.h>

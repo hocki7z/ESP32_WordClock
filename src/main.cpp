@@ -1,9 +1,4 @@
-#include <Arduino.h>
-
-#include "Logger.h"
-#include "Settings.hpp"
-
-#include "Configuration.h"
+#include "Global.h"
 
 #include "Application.h"
 #include "Communication.h"
@@ -11,7 +6,7 @@
 
 #include "Display.h"
 #include "TimeManager.h"
-#include "WiFiManager.h"
+#include "WifiManager.h"
 #include "WebSite.h"
 
 
@@ -57,9 +52,7 @@
 /******************************************************************************
     PRIVATE FUNCTION PROTOTYPES
  *****************************************************************************/
-
 static void MultiResetDetection(void);
-static void CheckResetReason(void);
 static void InitApplication(void);
 static void RunApplication(void);
 
@@ -67,8 +60,6 @@ static void RunApplication(void);
 /******************************************************************************
     PRIVATE MEMBER VARIABLES
  *****************************************************************************/
-
-
 /** @brief Pointer to the multi reset detector instance */
 static MultiResetDetector* mpMultiResetDetector;
 
@@ -109,7 +100,7 @@ void setup(void)
     MultiResetDetection();
 
     /* Check the reason for the last system reset */
-    CheckResetReason();
+    RestartReasonNS::CheckResetReason();
 
     /* Initialize application */
     InitApplication();
@@ -170,85 +161,6 @@ static void MultiResetDetection(void)
         /* Clear WiFi settings to force the device to enter WIFI AP mode */
         Settings.RemoveKey(ConfigNS::mKeyWifiSSID);
         Settings.RemoveKey(ConfigNS::mKeyWifiPassword);
-    }
-}
-
-/**
- * @brief Check the reason for the last system reset
- *
- * @details
- * This function checks if there is a pending firmware update.
- * If so, it removes the pending update flag and increments the firmware update reset counter.
- * If there is no pending firmware update, it retrieves the reason for the last system reset
- * using `esp_reset_reason()` and updates the corresponding reset counters in the settings.
- */
-static void CheckResetReason(void)
-{
-    if (Settings.GetValue<bool>(ConfigNS::mKeyPendingFirmwareUpdate, false))
-    {
-        Settings.RemoveKey(ConfigNS::mKeyPendingFirmwareUpdate);
-        Settings.IncreaseCounter(ConfigNS::mKeyCounterResetFirmwareUpdate);
-
-        ConfigNS::mRestartReason = ConfigNS::tRestartReason::FirmwareUpdate;
-
-        LOG(LOG_DEBUG, "Main::CheckResetReason() Firmware update, %d times",
-                Settings.GetCounter(ConfigNS::mKeyCounterResetFirmwareUpdate));
-    }
-    else
-    {
-        /* No pending firmware update, check the reason for the last system reset */
-        esp_reset_reason_t wReason = esp_reset_reason();
-
-        /* Update corresponding counters in settings */
-        switch (wReason)
-        {
-            case ESP_RST_POWERON:   // Power-on reset
-                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPowerOn);
-                ConfigNS::mRestartReason = ConfigNS::tRestartReason::PowerOn;
-                LOG(LOG_DEBUG, "Main::CheckResetReason() Power-on reset, %d times",
-                        Settings.GetCounter(ConfigNS::mKeyCounterResetPowerOn));
-                break;
-
-            case ESP_RST_SW:        // Software reset
-                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetSoftware);
-                ConfigNS::mRestartReason = ConfigNS::tRestartReason::Software;
-                LOG(LOG_DEBUG, "Main::CheckResetReason() Software reset, %d times",
-                        Settings.GetCounter(ConfigNS::mKeyCounterResetSoftware));
-                break;
-
-            case ESP_RST_WDT:       // Watchdog reset
-            case ESP_RST_INT_WDT:   // Interrupt watchdog reset
-            case ESP_RST_TASK_WDT:  // Task watchdog reset
-                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetWatchdog);
-                ConfigNS::mRestartReason = ConfigNS::tRestartReason::Watchdog;
-                LOG(LOG_DEBUG, "Main::CheckResetReason() Watchdog reset, %d times",
-                        Settings.GetCounter(ConfigNS::mKeyCounterResetWatchdog));
-                break;
-
-            case ESP_RST_PANIC:     // Panic reset
-                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetPanic);
-                ConfigNS::mRestartReason = ConfigNS::tRestartReason::Panic;
-                LOG(LOG_DEBUG, "Main::CheckResetReason() Panic reset, %d times",
-                        Settings.GetCounter(ConfigNS::mKeyCounterResetPanic));
-                break;
-
-            case ESP_RST_BROWNOUT:  // Brownout reset
-                Settings.IncreaseCounter(ConfigNS::mKeyCounterResetBrownout);
-                ConfigNS::mRestartReason = ConfigNS::tRestartReason::Brownout;
-                LOG(LOG_DEBUG, "Main::CheckResetReason() Brownout reset, %d times",
-                        Settings.GetCounter(ConfigNS::mKeyCounterResetBrownout));
-                break;
-
-            case ESP_RST_EXT:       // External reset
-            case ESP_RST_DEEPSLEEP: // Deep sleep reset
-            case ESP_RST_SDIO:      // SDIO reset
-            case ESP_RST_UNKNOWN:   // unknown reset reason
-            default:
-                ConfigNS::mRestartReason = ConfigNS::tRestartReason::Unknown;
-                LOG(LOG_DEBUG, "Main::CheckResetReason() Other reset reason: %d", wReason);
-                // other reset reasons are not counted
-                break;
-        }
     }
 }
 

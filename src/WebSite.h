@@ -15,6 +15,7 @@
 #include "Application.h"
 #include "Configuration.h"
 #include "Settings.hpp"
+#include "SSIDList.h"
 
 
 class WebSite : public ApplicationNS::Task

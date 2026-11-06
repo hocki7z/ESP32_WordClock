@@ -14,9 +14,7 @@
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 
-
-#include "Logger.h"
-#include "Configuration.h"
+#include "Global.h"
 #include "ProductInfo.h"
 
 #include "OTAUpdateCustomJs.h"      // Generated during the build

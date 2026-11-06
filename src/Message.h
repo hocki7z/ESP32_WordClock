@@ -5,8 +5,7 @@
  *      Author: hocki
  */
 
-#ifndef SRC_MESSAGE_H_
-#define SRC_MESSAGE_H_
+#pragma once
 
 #include <Arduino.h>
 
@@ -113,4 +112,3 @@ namespace MessageNS
 
 }; /* end of namespace MessageNS */
 
-#endif /* SRC_MESSAGE_H_ */

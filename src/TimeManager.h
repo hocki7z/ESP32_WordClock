@@ -4,8 +4,7 @@
  *  Created on: 08.09.2025
  *      Author: hocki
  */
-#ifndef TIME_MANAGER_H_
-#define TIME_MANAGER_H_
+#pragma once
 
 #include <Arduino.h>
 #include <ESPNtpClient.h>
@@ -57,5 +56,3 @@ private:
 
     void SendTime(void);
 };
-
-#endif /* TIME_MANAGER_H_ */

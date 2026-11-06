@@ -11,14 +11,13 @@
 
 #include <ESPUI.h>
 
-#include "Logger.h"
-#include "Configuration.h"
+#include "Global.h"
+
 #include "ProductInfo.h"
 #include "DateTime.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
 #include "OTAUpdate.h"
-#include "Settings.hpp"
 
 #include "WebSite.h"
 
@@ -1430,7 +1429,8 @@ void WebSite::UpdateSystemInfo(void)
     /* Runtime information */
     {
         String wRuntime       = "0d 00h 00m 00s";
-        String wRestartReason = ConfigNS::tRestartReason::ToString(ConfigNS::mRestartReason);
+        String wRestartReason = RestartReasonNS::ToString(
+                                    RestartReasonNS::GetRestartReason());
 
         /* Get the current value of millis() */
         const uint32_t wNow = millis();
