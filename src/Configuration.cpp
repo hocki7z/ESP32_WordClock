@@ -13,3 +13,8 @@ SSIDList mSSIDList;
 /** @brief Shared display-scene snapshot */
 DisplaySceneSnapshot mDisplaySceneSnapshot;
 
+namespace ConfigNS
+{
+    /** @brief Shared restart reason, initialized to Unknown */
+    tRestartReason::Type mRestartReason = tRestartReason::Unknown;
+}

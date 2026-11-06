@@ -12,6 +12,8 @@
 #include <cstring>      // for strncpy, strstr
 #include <cstdlib>      // for atoi
 
+#include <esp_timer.h>
+
 
 /** Defines to print a DateTimeNS::tDateTime value as string (for logging)
  *
@@ -22,6 +24,8 @@
 #define PRINTF_DATETIME_FORMAT(datetime)    datetime.mTime.mHour, datetime.mTime.mMinute, datetime.mTime.mSecond, \
                                             datetime.mDate.mDay,  datetime.mDate.mMonth,  datetime.mDate.mYear
 
+/* Define maximum representable value: 32767 days, 23 hours, 59 minutes and 59 seconds */
+#define MAX_UPTIME_SECONDS                  (32767ULL * 86400ULL + 86399ULL)
 
 namespace DateTimeNS
 {
@@ -133,6 +137,81 @@ namespace DateTimeNS
         }
     } tDateTime;
 
+
+    /**
+     * @brief Compact uptime structure packed into a 32-bit allocation unit.
+     *
+     * @details
+     * The fields use 15 + 5 + 6 + 6 = 32 bits. The maximum representable
+     * normalized uptime is 32,767 days, 23 hours, 59 minutes, and 59 seconds
+     * (about 89.7 years, or approximately 89 years and 8 months using the
+     * average Gregorian year of 365.2425 days).
+     */
+    struct tUptime
+    {
+        uint32_t wDays    : 15;     // Storage range: 0-32,767 days
+        uint32_t wHours   : 5;      // Storage range: 0-31; normalized uptime uses 0-23
+        uint32_t wMinutes : 6;      // Storage range: 0-63; normalized uptime uses 0-59
+        uint32_t wSeconds : 6;      // Storage range: 0-63; normalized uptime uses 0-59
+
+        /**
+         * @brief Convert the uptime structure to a 32-bit word.
+         *
+         * @return 32-bit representation of the uptime.
+         */
+        uint32_t ToWord(void) const
+        {
+            return ((static_cast<uint32_t>(wDays)    & 0x7FFFU) << 17) |
+                   ((static_cast<uint32_t>(wHours)   & 0x001FU) << 12) |
+                   ((static_cast<uint32_t>(wMinutes) & 0x003FU) << 6)  |
+                   ( static_cast<uint32_t>(wSeconds) & 0x003FU);
+        }
+
+        /**
+         * @brief Populate the uptime structure from a 32-bit word.
+         *
+         * @param aWord 32-bit representation of the uptime.
+         */
+        void FromWord(uint32_t aWord)
+        {
+            wDays    = (aWord >> 17) & 0x7FFF; // Extract 15 bits for days
+            wHours   = (aWord >> 12) & 0x1F;   // Extract 5 bits for hours
+            wMinutes = (aWord >> 6)  & 0x3F;   // Extract 6 bits for minutes
+            wSeconds = aWord         & 0x3F;   // Extract 6 bits for seconds
+        }
+
+        /**
+         * @brief Equality operator overload
+         */
+        bool operator==(const tUptime& arOther) const
+        {
+            return (ToWord() == arOther.ToWord());
+        }
+
+        /**
+         * @brief Inequality operator overload
+         */
+        bool operator!=(const tUptime& arOther) const
+        {
+            return !(*this == arOther);
+        }
+
+        /**
+         * @brief Greater-than operator overload
+         */
+        bool operator>(const tUptime& arOther) const
+        {
+            return (ToWord() > arOther.ToWord());
+        }
+
+        bool operator<(const tUptime& arOther) const
+        {
+            return (ToWord() < arOther.ToWord());
+        }
+    };
+
+    /* Static assertion to ensure tUptime occupies exactly 4 bytes */
+    static_assert(sizeof(tUptime) == sizeof(uint32_t), "tUptime must occupy exactly 4 bytes");
 
     /**
      * @brief Returns day of the week given the date via Tomohiko Sakamoto's Algorithm.
@@ -257,6 +336,44 @@ namespace DateTimeNS
                 wDateTime.mDate.mMonth, wDateTime.mDate.mYear);
 
         return wDateTime;
+    }
+
+    /**
+     * @brief Returns the system uptime.
+     *
+     * @details
+     * This function retrieves the system uptime and returns it as a tUptime structure,
+     * which includes days, hours, minutes, and seconds.
+     *
+     * @return tUptime structure containing the system uptime.
+     */
+    inline tUptime Uptime(void)
+    {
+        /* Local variable to hold uptime information */
+        tUptime wUptime;
+        /* Variable to hold uptime in seconds */
+        uint64_t wUptimeSeconds = 0;
+
+        /**
+         * Calculate uptime from the ESP timer's signed 64-bit microsecond count.
+         * Its range is about 292,000 years; tUptime's 15-bit day field is the
+         * practical limit here (32,767 days, about 89.7 years).
+         */
+        wUptimeSeconds = static_cast<uint64_t>(esp_timer_get_time()) / 1000000ULL;
+
+        /* Saturate at tUptime's maximum instead of allowing the day bit-field to wrap. */
+        if (wUptimeSeconds > MAX_UPTIME_SECONDS)
+        {
+            wUptimeSeconds = MAX_UPTIME_SECONDS;
+        }
+
+        /* Calculate uptime in days, hours, minutes, and seconds */
+        wUptime.wDays    = static_cast<uint32_t>(wUptimeSeconds / 86400ULL);
+        wUptime.wHours   = static_cast<uint8_t>((wUptimeSeconds / 3600ULL) % 24ULL);
+        wUptime.wMinutes = static_cast<uint8_t>((wUptimeSeconds / 60ULL  ) % 60ULL);
+        wUptime.wSeconds = static_cast<uint8_t>( wUptimeSeconds % 60ULL);
+
+        return wUptime;     // Return the uptime structure
     }
 
     /**

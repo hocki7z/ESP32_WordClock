@@ -5,6 +5,9 @@
  *      Author: hocki
  */
 #include <array>
+
+#include <esp_ota_ops.h>
+
 #include <ESPUI.h>
 
 #include "Logger.h"
@@ -267,21 +270,26 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
 
     /**
-     * Tab Settings / Group Product Information
+     * Tab Settings / Group System Information
      */
-    mWebUIControlID.mProductInfoGroup = AddGroupHelper("Product Information", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
-    mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mProductInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+    mWebUIControlID.mSystemInfoGroup = AddGroupHelper("System Informations", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+
+    mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
         "");    // Placeholder for product information, will be updated in UpdateProductInfo()
-
-    /* Update the product information displayed on the web UI */
-    UpdateProductInfo();
-
+    AddSeparator(mWebUIControlID.mSystemInfoGroup, true);
+    mWebUIControlID.mRuntimeInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for runtime information, will be updated in UpdateRuntimeInfo()
+    AddSeparator(mWebUIControlID.mSystemInfoGroup, true);
+    mWebUIControlID.mDeviceInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for device information, will be updated in UpdateDeviceInfo()
 
     /**
      * Tab Settings / Firmware Update Group
      */
     mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
 
+    /* Update the system information displayed on the web UI */
+    UpdateSystemInfo();
 }
 
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -1149,11 +1157,13 @@ String WebSite::BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const
  *
  * @param arNames  An array of names for the table rows.
  * @param arValues An array of values corresponding to the names.
+ * @param aSeparateRows If true, selparate rows will be created for each name-value pair;
+ *                      if false, a single row will be created with all names and values.
  * @return A string containing the HTML representation of the table.
  */
 template <size_t N>
 String WebSite::BuildHtmlTable(const std::array<const char*, N>& arNames,
-    const std::array<const char*, N>& arValues) const
+    const std::array<const char*, N>& arValues, bool aSeparateRows) const
 {
     /* Initialize the HTML table string */
     String wHtml = "<table style='" CSS_STYLE_TABEL "'>";
@@ -1162,7 +1172,11 @@ String WebSite::BuildHtmlTable(const std::array<const char*, N>& arNames,
     for (size_t wI = 0; wI < N; wI++)
     {
         /* Determine if a bottom border should be applied to the row */
-        const char* wpBottomBorder = (wI + 1 < N) ? CSS_STYLE_TABEL_ROW_BORDER : "";
+        const char* wpBottomBorder = "";
+        if (aSeparateRows && (wI + 1 < N))
+        {
+            wpBottomBorder = CSS_STYLE_TABEL_ROW_BORDER;
+        }
 
         /* Build the HTML for the current row */
         wHtml += "<tr><td style='" CSS_STYLE_TABEL_NAME_CELL;
@@ -1324,61 +1338,118 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
  * branch, and commit hash from the configuration and updates the corresponding controls
  * on the web UI. If any of the information is unavailable, default values are used.
  */
-void WebSite::UpdateProductInfo(void)
+void WebSite::UpdateSystemInfo(void)
 {
-    /* Default values */
-    String wSoftwareVersion = "Unknown";
-    String wBuildDateTime   = "Unavailable";
-    String wCommitHash      = "Unavailable";
-    String wBranch          = "Unavailable";
+    /* Static variables to track elapsed time for uptime calculation */
+    static uint32_t wPreviousMillis = 0;    // Stores the previous value of millis()
+    static uint64_t wTotalMillis    = 0;    // Accumulates the total elapsed milliseconds
 
-    ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
-
-    if (wProductInfo.mSoftwareVersion.IsValid())
+    /* Update product information */
     {
-        char wVersionText[12] = {0};
-        snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
-            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
-            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
-            static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+        String wSoftwareVersion = "Unknown";
+        String wBuildDateTime   = "Unavailable";
 
-        wSoftwareVersion = wVersionText;
+        /* Retrieve product information record */
+        ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
+
+        if (wProductInfo.mSoftwareVersion.IsValid())
+        {
+            char wVersionText[12] = {0};
+            snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
+                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
+                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
+                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+
+            wSoftwareVersion = wVersionText;
+        }
+
+        if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
+        {
+            wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
+        }
+
+        const std::array<const char*, 2> wProductInfoNames = {
+            "Software version", "Build date/time"
+        };
+
+        /* Update the product information label on the web UI with the constructed HTML table */
+        ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
+            BuildHtmlTable(wProductInfoNames, {wSoftwareVersion.c_str(), wBuildDateTime.c_str()}));
     }
 
-    if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
+    /* Runtime information */
     {
-        wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
+        String wRuntime       = "0d 00h 00m 00s";
+        String wRestartReason = ConfigNS::tRestartReason::ToString(ConfigNS::mRestartReason);
+
+        DateTimeNS::tUptime wUptime = DateTimeNS::Uptime();
+
+        char wUptimeText[19]{};     // Longest output: '32767d 23h 59m 59s' (18 characters plus NUL)
+        /* Format uptime as "Xd XXh XXm XXs" */
+        snprintf(wUptimeText, sizeof(wUptimeText), "%dd %02dh %02dm %02ds",
+            wUptime.wDays, wUptime.wHours, wUptime.wMinutes, wUptime.wSeconds);
+
+        wRuntime = wUptimeText;
+
+        const std::array<const char*, 2> wRuntimeInfoNames = {
+            "Runtime", "Restart reason"
+        };
+
+        /* Update the runtime information label on the web UI with the constructed HTML table */
+        ESPUI.updateLabel(mWebUIControlID.mRuntimeInfoLabel,
+            BuildHtmlTable(wRuntimeInfoNames, {wRuntime.c_str(), wRestartReason.c_str()}));
     }
 
-    if (wProductInfo.mCommitHashShort[0] != '\0')
+    /* Device information */
     {
-        wCommitHash = wProductInfo.mCommitHashShort;
+        const esp_partition_t* wpRunningPartition = esp_ota_get_running_partition();
+        uint32_t wHeapSize = ESP.getHeapSize();
+        uint32_t wFreeHeap = ESP.getFreeHeap();
+
+        String wFlashUsage = "Unavailable";
+        if ((wpRunningPartition != nullptr) &&
+            (wpRunningPartition->size > 0))
+        {
+            /* Calculate flash usage percentages */
+            wFlashUsage = String(
+                ESP.getSketchSize() * 100.0f / wpRunningPartition->size, 2) + "%";
+        }
+
+        String wHeapUsage = "Unavailable";
+        if ((wHeapSize > 0) &&          // Check prevents division by zero
+            (wFreeHeap <= wHeapSize))   // Normally, free heap should not exceed total heap
+        {
+            /* Calculate heap usage percentages */
+            wHeapUsage = String(
+                (wHeapSize - wFreeHeap) * 100.0f / wHeapSize, 2) + "%";
+        }
+
+        /* Get maximum allocatable heap and minimum free heap in kilobytes */
+        String wMaxAllocHeap = String(ESP.getMaxAllocHeap() / 1000.0f, 2) + " kB";
+        String wMinFreeHeap  = String(ESP.getMinFreeHeap()  / 1000.0f, 2) + " kB";
+
+        const std::array<const char*, 4> wDeviceInfoNames = {
+            "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap"
+        };
+
+        /* Update the device information label on the web UI with the constructed HTML table */
+        ESPUI.updateLabel(mWebUIControlID.mDeviceInfoLabel,
+            BuildHtmlTable(wDeviceInfoNames, {wFlashUsage.c_str(), wHeapUsage.c_str(), wMaxAllocHeap.c_str(), wMinFreeHeap.c_str()}));
     }
 
-    if (wProductInfo.mBranchShort[0] != '\0')
-    {
-        wBranch = wProductInfo.mBranchShort;
-    }
-
-
-    /*
-     * Add product information
-     * (e.g., software version, build date/time, branch, commit hash)
-     */
-
-    const std::array<const char*, 4> wProductInfoNames = {
-        "Software version", "Build date/time", "Branch", "Commit hash"
-    };
-
-    const std::array<const char*, 4> wProductInfoValues = {
-        wSoftwareVersion.c_str(), wBuildDateTime.c_str(), wBranch.c_str(), wCommitHash.c_str()
-    };
-
-    /* Update the product information label on the web UI with the constructed HTML table */
-    ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
-        BuildHtmlTable(wProductInfoNames, wProductInfoValues));
 }
 
+/** @brief Control callback function for handling web UI events
+ *
+ * @details
+ * This function is called whenever a control event occurs in the web UI.
+ * It processes the event, extracts relevant information, and sends it to
+ * the control event queue for further handling.
+ *
+ * @param apSender Pointer to the control that triggered the event
+ * @param aType The type of event (e.g., value changed, button pressed)
+ * @param apParam Pointer to additional parameters associated with the event
+ */
 void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
 {
     /* Check if the website instances and inputs are valid */
