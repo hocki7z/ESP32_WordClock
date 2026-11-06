@@ -17,8 +17,10 @@
 #include "Settings.hpp"
 #include "SSIDList.h"
 
+#include "OTAUpdate.h"
 
-class WebSite : public ApplicationNS::Task
+
+class WebSite : public ApplicationNS::Task, public OTAUpdateNS::OTAUpdateCallback
 {
 public:
     WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
@@ -26,6 +28,9 @@ public:
 
     /* ApplicationNS::Task::Init */
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
+
+    /* OTAUpdateNS::OTAUpdateCallback */
+    void OnOtaUploadStatusChanged(OTAUpdateNS::OtaUploadStatus aStatus, esp_err_t aError, const String& arFailureReason) override;
 
 private:
 

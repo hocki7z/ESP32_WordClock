@@ -17,7 +17,6 @@
 #include "DateTime.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
-#include "OTAUpdate.h"
 
 #include "WebSite.h"
 
@@ -308,16 +307,42 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     UpdateSystemInfo();
 }
 
+void WebSite::OnOtaUploadStatusChanged(OTAUpdateNS::OtaUploadStatus aStatus, esp_err_t aError, const String& arFailureReason)
+{
+    switch (aStatus)
+    {
+        case OTAUpdateNS::OtaUploadStatus::Receiving:
+        case OTAUpdateNS::OtaUploadStatus::ReadyToBoot:
+            /* OTA upload process is ongoing */
+
+            if (mpTimer)
+            {
+                /* Stop the periodical timer to avoid web UI updates during OTA upload */
+                mpTimer->stop();
+            }
+            break;
+
+        case OTAUpdateNS::OtaUploadStatus::Idle:
+        case OTAUpdateNS::OtaUploadStatus::Failed:
+        default:
+            /* OTA upload process is not active */
+
+            if (mpTimer)
+            {
+                /* Restart the periodical timer to resume web UI updates */
+                mpTimer->start();
+            }
+            break;
+    }
+}
+
 void WebSite::ProcessTimerEvent(const uint32_t aTimerId)
 {
     LOG(LOG_VERBOSE, "WebSite::ProcessTimerEvent() Timer ID: %d", aTimerId);
 
     if (aTimerId == mPeriodicalTaskTimerId)
     {
-        if (!OTAUpdateNS::IsUploadActive())
-        {
-            UpdateSystemInfo();
-        }
+        UpdateSystemInfo();
     }
     else
     {
@@ -344,7 +369,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             /* Start WEB UI */
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
-            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
 
             /* Start notification timer for this task */
             mpTimer->start();
@@ -364,7 +389,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             /* Start WEB UI */
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
-            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
 
             /* Start notification timer for this task */
             mpTimer->start();
