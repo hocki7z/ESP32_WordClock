@@ -4,17 +4,28 @@
  *  Created on: 02.11.2026
  *      Author: hocki
  */
+#include <Arduino.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <atomic>
+
 #include <ESPAsyncWebServer.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 
-#include <cstddef>
-#include <cstdint>
 
-#include "ProductInfo.h"
+#include "Logger.h"
 #include "Configuration.h"
+#include "ProductInfo.h"
+
+#include "OTAUpdateCustomJs.h"      // Generated during the build
 #include "OTAUpdate.h"
-#include "OTAUpdateCustomJs.h"
+
+
+/* Log level for this module */
+#define LOG_LEVEL_OTA_UPDATE_NS    (LOG_DEBUG)
+
 
 namespace
 {
@@ -35,6 +46,7 @@ size_t mOtaBytesReceived = 0;
 OtaUploadStatus mOtaStatus = OtaUploadStatus::Idle;
 esp_err_t mOtaError = ESP_OK;
 String mOtaFailureReason;
+std::atomic<bool> mOtaUploadActive{false};
 
 void AbortOtaUpload()
 {
@@ -61,6 +73,11 @@ const char* CustomJavaScript()
     return OTAUpdateAssets::kCustomJavaScript;
 }
 
+bool IsUploadActive()
+{
+    return mOtaUploadActive.load();
+}
+
 void RegisterRoutes(AsyncWebServer* apServer)
 {
     if (apServer == nullptr || apServer == mpOtaServer)
@@ -80,6 +97,7 @@ void RegisterRoutes(AsyncWebServer* apServer)
             const OtaUploadStatus wStatus = mOtaStatus;
             const esp_err_t wError = mOtaError;
             const String wFailureReason = mOtaFailureReason;
+            mOtaUploadActive.store(false);
             mpOtaRequest = nullptr;
             mOtaStatus = OtaUploadStatus::Idle;
             mpOtaPartition = nullptr;
@@ -109,6 +127,17 @@ void RegisterRoutes(AsyncWebServer* apServer)
                 }
 
                 mpOtaRequest = apRequest;
+                apRequest->onDisconnect([apRequest]()
+                {
+                    if (mpOtaRequest == apRequest)
+                    {
+                        AbortOtaUpload();
+                        mpOtaRequest = nullptr;
+                        mOtaStatus = OtaUploadStatus::Failed;
+                        mOtaFailureReason = "OTA upload disconnected.";
+                        mOtaUploadActive.store(false);
+                    }
+                });
                 mOtaStatus = OtaUploadStatus::Failed;
                 mOtaError = ESP_FAIL;
                 mOtaFailureReason = "Invalid firmware upload.";
@@ -138,6 +167,7 @@ void RegisterRoutes(AsyncWebServer* apServer)
                 mOtaHandleValid = true;
                 mOtaBytesReceived = 0;
                 mOtaStatus = OtaUploadStatus::Receiving;
+                mOtaUploadActive.store(true);
             }
 
             if (mpOtaRequest != apRequest || mOtaStatus != OtaUploadStatus::Receiving)
@@ -150,6 +180,20 @@ void RegisterRoutes(AsyncWebServer* apServer)
                 AbortOtaUpload();
                 mOtaStatus = OtaUploadStatus::Failed;
                 mOtaError = ESP_ERR_INVALID_SIZE;
+                return;
+            }
+
+            if (aIndex != mOtaBytesReceived)
+            {
+                AbortOtaUpload();
+                mOtaStatus = OtaUploadStatus::Failed;
+                mOtaError = ESP_ERR_INVALID_SIZE;
+                mOtaFailureReason = "Firmware upload data was incomplete or out of order.";
+
+                LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_OTA_UPDATE_NS,
+                    "OTA upload offset mismatch: received offset %lu, expected %lu",
+                    static_cast<unsigned long>(aIndex),
+                    static_cast<unsigned long>(mOtaBytesReceived));
                 return;
             }
 
@@ -170,6 +214,10 @@ void RegisterRoutes(AsyncWebServer* apServer)
                 if (mOtaError != ESP_OK)
                 {
                     mOtaFailureReason = "The uploaded file is not a valid ESP32 application image.";
+                    LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_OTA_UPDATE_NS,
+                        "esp_ota_end failed: error %d, received %lu bytes",
+                        static_cast<int>(mOtaError),
+                        static_cast<unsigned long>(mOtaBytesReceived));
                     mOtaStatus = OtaUploadStatus::Failed;
                     return;
                 }
