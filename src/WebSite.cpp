@@ -76,6 +76,16 @@ WebSite::WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 WebSite::~WebSite()
 {
+    /* Clean up task timers */
+    if (mpTimer)
+    {
+        /* Stop running timer */
+        mpTimer->stop();
+        /*    and destroy it */
+        delete mpTimer;
+        mpTimer = nullptr;
+    }
+
     /* Delete the control event queue and notification */
     delete mpControlEventQueue;
     delete mpControlEventNotification;
@@ -105,6 +115,12 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     {
         LOG(LOG_ERROR, "WebSite::Init() Failed to create control event notification");
     }
+
+    /* Create periodical timer */
+    mTimerObjects.mTaskHandle = this->getTaskHandle();
+    mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
+    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 10*1000, true);    // Period 10 seconds
+    mpTimer->Init(&mTimerObjects);
 
     /*
      * Initialize WEB UI but do not start it yet
@@ -292,6 +308,20 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     UpdateSystemInfo();
 }
 
+void WebSite::ProcessTimerEvent(const uint32_t aTimerId)
+{
+    LOG(LOG_VERBOSE, "WebSite::ProcessTimerEvent() Timer ID: %d", aTimerId);
+
+    if (aTimerId == mPeriodicalTaskTimerId)
+    {
+        UpdateSystemInfo();
+    }
+    else
+    {
+        // do nothing here
+    }
+}
+
 void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 {
     LOG(LOG_VERBOSE, "WebSite::ProcessIncomingMessage()");
@@ -312,6 +342,10 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
             OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+
+            /* Start notification timer for this task */
+            mpTimer->start();
+
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
@@ -328,6 +362,10 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
             OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+
+            /* Start notification timer for this task */
+            mpTimer->start();
+
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
@@ -1340,101 +1378,140 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
  */
 void WebSite::UpdateSystemInfo(void)
 {
-    /* Static variables to track elapsed time for uptime calculation */
-    static uint32_t wPreviousMillis = 0;    // Stores the previous value of millis()
-    static uint64_t wTotalMillis    = 0;    // Accumulates the total elapsed milliseconds
-
     /* Update product information */
     {
-        String wSoftwareVersion = "Unknown";
-        String wBuildDateTime   = "Unavailable";
+        static bool wProductInfoInitialized = false;
 
-        /* Retrieve product information record */
-        ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
-
-        if (wProductInfo.mSoftwareVersion.IsValid())
+        if (!wProductInfoInitialized)
         {
-            char wVersionText[12] = {0};
-            snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
-                static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+            /* Initialize product information on the web UI */
+            wProductInfoInitialized = true;
 
-            wSoftwareVersion = wVersionText;
+            String wSoftwareVersion = "Unknown";
+            String wBuildDateTime   = "Unavailable";
+
+            /* Retrieve product information record */
+            ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
+
+            if (wProductInfo.mSoftwareVersion.IsValid())
+            {
+                char wVersionText[12] = {0};
+                snprintf(wVersionText, sizeof(wVersionText), "%u.%u.%u",
+                    static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMajor),
+                    static_cast<unsigned>(wProductInfo.mSoftwareVersion.mMinor),
+                    static_cast<unsigned>(wProductInfo.mSoftwareVersion.mBuild));
+
+                wSoftwareVersion = wVersionText;
+            }
+
+            if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
+            {
+                wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
+            }
+
+            const std::array<const char*, 2> wProductInfoNames = {
+                "Software version", "Build date/time"
+            };
+
+            /* Update the product information label on the web UI with the constructed HTML table */
+            ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
+                BuildHtmlTable(wProductInfoNames, {wSoftwareVersion.c_str(), wBuildDateTime.c_str()}));
         }
-
-        if (wProductInfo.mBuildDateTimeLocal[0] != '\0')
-        {
-            wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
-        }
-
-        const std::array<const char*, 2> wProductInfoNames = {
-            "Software version", "Build date/time"
-        };
-
-        /* Update the product information label on the web UI with the constructed HTML table */
-        ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
-            BuildHtmlTable(wProductInfoNames, {wSoftwareVersion.c_str(), wBuildDateTime.c_str()}));
     }
 
     /* Runtime information */
     {
-        String wRuntime       = "0d 00h 00m 00s";
-        String wRestartReason = ConfigNS::tRestartReason::ToString(ConfigNS::mRestartReason);
+        /* Static variables to track initialization and previous uptime */
+        static bool wRuntimeInitialized = false;
+        static DateTimeNS::tUptime wPreviousUptime{};
 
         DateTimeNS::tUptime wUptime = DateTimeNS::Uptime();
 
-        char wUptimeText[19]{};     // Longest output: '32767d 23h 59m 59s' (18 characters plus NUL)
-        /* Format uptime as "Xd XXh XXm XXs" */
-        snprintf(wUptimeText, sizeof(wUptimeText), "%dd %02dh %02dm %02ds",
-            wUptime.wDays, wUptime.wHours, wUptime.wMinutes, wUptime.wSeconds);
+        /* . */
+        constexpr uint32_t kUptimeWithoutSecondsMask = 0xFFFFFFC0U;
 
-        wRuntime = wUptimeText;
+        if ((!wRuntimeInitialized) ||
+            ((wUptime.ToWord()         & MASK_UPTIME_WITHOUT_SECONDS) !=    // Ignore the six least-significant second bits
+             (wPreviousUptime.ToWord() & MASK_UPTIME_WITHOUT_SECONDS)))     //  when comparing uptime words
+        {
+            wRuntimeInitialized = true;
 
-        const std::array<const char*, 2> wRuntimeInfoNames = {
-            "Runtime", "Restart reason"
-        };
+            /* Update previous uptime for future comparisons */
+            wPreviousUptime = wUptime;
 
-        /* Update the runtime information label on the web UI with the constructed HTML table */
-        ESPUI.updateLabel(mWebUIControlID.mRuntimeInfoLabel,
-            BuildHtmlTable(wRuntimeInfoNames, {wRuntime.c_str(), wRestartReason.c_str()}));
+            char wUptimeText[15]{};     // Longest output: '32767d 23h 59m' (14 characters plus NUL)
+            snprintf(wUptimeText, sizeof(wUptimeText), "%ud %02uh %02um",
+                static_cast<unsigned>(wUptime.wDays),
+                static_cast<unsigned>(wUptime.wHours),
+                static_cast<unsigned>(wUptime.wMinutes));
+
+            String wRestartReason = ConfigNS::tRestartReason::ToString(ConfigNS::mRestartReason);
+            const std::array<const char*, 2> wRuntimeInfoNames = {
+                "Runtime", "Restart reason"
+            };
+
+            /* Update the runtime information label on the web UI. */
+            ESPUI.updateLabel(mWebUIControlID.mRuntimeInfoLabel,
+                BuildHtmlTable(wRuntimeInfoNames, {wUptimeText, wRestartReason.c_str()}));
+        }
     }
 
     /* Device information */
     {
+        /* Static variables to track initialization and previous device metrics */
+        static bool wDeviceInfoInitialized = false;
+        static std::array<uint32_t, 6> wPreviousDeviceMetrics{};
+
+        /* Retrieve device metrics */
         const esp_partition_t* wpRunningPartition = esp_ota_get_running_partition();
-        uint32_t wHeapSize = ESP.getHeapSize();
-        uint32_t wFreeHeap = ESP.getFreeHeap();
+        const uint32_t wPartitionSize =
+            (wpRunningPartition != nullptr) ? wpRunningPartition->size : 0U;
+        const uint32_t wSketchSize = ESP.getSketchSize();
+        const uint32_t wHeapSize = ESP.getHeapSize();
+        const uint32_t wFreeHeap = ESP.getFreeHeap();
+        const uint32_t wMaxAllocHeapBytes = ESP.getMaxAllocHeap();
+        const uint32_t wMinFreeHeapBytes = ESP.getMinFreeHeap();
 
-        String wFlashUsage = "Unavailable";
-        if ((wpRunningPartition != nullptr) &&
-            (wpRunningPartition->size > 0))
-        {
-            /* Calculate flash usage percentages */
-            wFlashUsage = String(
-                ESP.getSketchSize() * 100.0f / wpRunningPartition->size, 2) + "%";
-        }
-
-        String wHeapUsage = "Unavailable";
-        if ((wHeapSize > 0) &&          // Check prevents division by zero
-            (wFreeHeap <= wHeapSize))   // Normally, free heap should not exceed total heap
-        {
-            /* Calculate heap usage percentages */
-            wHeapUsage = String(
-                (wHeapSize - wFreeHeap) * 100.0f / wHeapSize, 2) + "%";
-        }
-
-        /* Get maximum allocatable heap and minimum free heap in kilobytes */
-        String wMaxAllocHeap = String(ESP.getMaxAllocHeap() / 1000.0f, 2) + " kB";
-        String wMinFreeHeap  = String(ESP.getMinFreeHeap()  / 1000.0f, 2) + " kB";
-
-        const std::array<const char*, 4> wDeviceInfoNames = {
-            "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap"
+        const std::array<uint32_t, 6> wDeviceMetrics = {
+            wPartitionSize, wSketchSize, wHeapSize, wFreeHeap,
+            wMaxAllocHeapBytes, wMinFreeHeapBytes
         };
 
-        /* Update the device information label on the web UI with the constructed HTML table */
-        ESPUI.updateLabel(mWebUIControlID.mDeviceInfoLabel,
-            BuildHtmlTable(wDeviceInfoNames, {wFlashUsage.c_str(), wHeapUsage.c_str(), wMaxAllocHeap.c_str(), wMinFreeHeap.c_str()}));
+        /* Reformat and update the device information only when a raw metric changes. */
+        if (!wDeviceInfoInitialized || (wDeviceMetrics != wPreviousDeviceMetrics))
+        {
+            wDeviceInfoInitialized = true;
+
+            /* Update previous device metrics for future comparisons */
+            wPreviousDeviceMetrics = wDeviceMetrics;
+
+            String wFlashUsage = "Unavailable";
+            if (wPartitionSize > 0)
+            {
+                /* Calculate flash usage percentage */
+                wFlashUsage = String(wSketchSize * 100.0f / wPartitionSize, 2) + "%";
+            }
+
+            String wHeapUsage = "Unavailable";
+            if ((wHeapSize > 0) && (wFreeHeap <= wHeapSize))
+            {
+                /* Calculate heap usage percentage */
+                wHeapUsage = String((wHeapSize - wFreeHeap) * 100.0f / wHeapSize, 2) + "%";
+            }
+
+            /* Convert maximum allocatable and minimum free heap to kilobytes. */
+            String wMaxAllocHeap = String(wMaxAllocHeapBytes / 1000.0f, 2) + " kB";
+            String wMinFreeHeap  = String(wMinFreeHeapBytes  / 1000.0f, 2) + " kB";
+
+            const std::array<const char*, 4> wDeviceInfoNames = {
+                "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap"
+            };
+
+            ESPUI.updateLabel(mWebUIControlID.mDeviceInfoLabel,
+                BuildHtmlTable(wDeviceInfoNames, {
+                    wFlashUsage.c_str(), wHeapUsage.c_str(),
+                    wMaxAllocHeap.c_str(), wMinFreeHeap.c_str()}));
+        }
     }
 
 }

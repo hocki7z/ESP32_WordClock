@@ -27,6 +27,10 @@
 /* Define maximum representable value: 32767 days, 23 hours, 59 minutes and 59 seconds */
 #define MAX_UPTIME_SECONDS                  (32767ULL * 86400ULL + 86399ULL)
 
+/* Define maximum representable value for tUptime without seconds: 32767 days, 23 hours and 59 minutes */
+#define MASK_UPTIME_WITHOUT_SECONDS         0xFFFFFFC0U
+
+
 namespace DateTimeNS
 {
     /**

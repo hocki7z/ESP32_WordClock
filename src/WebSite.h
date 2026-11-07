@@ -86,6 +86,9 @@ private:
     static_assert(std::is_trivially_copyable<ControlEvent>::value,
         "ControlEvent must remain byte-copyable for the FreeRTOS queue");
 
+    /* Periodical task timer ID */
+    static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
+
     /** @brief Task notification value for control events */
     static constexpr uint32_t mTaskNotificationControlEvent = 0x82;     //binary: 00000000 00000000 00000000 10000010
     /** @brief Length of the control event queue */
@@ -162,9 +165,16 @@ private:
     /** @brief SSID labels for the bounded option pool */
     std::array<std::array<char, SSID_NAME_SIZE>, mcMaxSsidCount> mWifiSsidLabels{};
 
+    /* Periodical timer for this task */
+    ApplicationNS::tTaskTimerObjects mTimerObjects;
+    ApplicationNS::TaskTimer* mpTimer = nullptr;
+
     /** @brief Pointers to the control event queue and its notification */
     ControlEventQueue* mpControlEventQueue = nullptr;
     TaskNotification*  mpControlEventNotification = nullptr;
+
+    /* ApplicationNS::Task::ProcessTimerEvent() */
+    void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
 
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
