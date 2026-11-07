@@ -4,222 +4,391 @@
  *  Created on: 02.11.2026
  *      Author: hocki
  */
+#include <Arduino.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <atomic>
+
 #include <ESPAsyncWebServer.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 
-#include <cstddef>
-#include <cstdint>
 
-#include "ProductInfo.h"
+#include "Logger.h"
 #include "Configuration.h"
+#include "ProductInfo.h"
+
+#include "OTAUpdateCustomJs.h"      // Generated during the build
 #include "OTAUpdate.h"
-#include "OTAUpdateCustomJs.h"
 
-namespace
+
+/* Log level for this module */
+#define LOG_LEVEL_OTA_UPDATE_NS    (LOG_DEBUG)
+
+namespace OTAUpdateNS
 {
-enum class OtaUploadStatus : uint8_t
-{
-    Idle,
-    Receiving,
-    Failed,
-    ReadyToBoot,
-};
+/** @brief Pointer to the AsyncWebServer instance handling OTA updates */
+static AsyncWebServer* mpOtaServer = nullptr;
+/** @brief Pointer to the current OTA upload request */
+static AsyncWebServerRequest* mpOtaRequest = nullptr;
 
-AsyncWebServer* mpOtaServer = nullptr;
-AsyncWebServerRequest* mpOtaRequest = nullptr;
-esp_ota_handle_t mOtaHandle = 0;
-bool mOtaHandleValid = false;
-const esp_partition_t* mpOtaPartition = nullptr;
-size_t mOtaBytesReceived = 0;
-OtaUploadStatus mOtaStatus = OtaUploadStatus::Idle;
-esp_err_t mOtaError = ESP_OK;
-String mOtaFailureReason;
+/** @brief Pointer to the OTA update callback instance */
+static OTAUpdateCallback* mpCallback = nullptr;
 
-void AbortOtaUpload()
+/** @brief Handle for the current OTA update */
+static esp_ota_handle_t mOtaHandle = 0;
+/** @brief Flag indicating whether the OTA handle is valid */
+static bool mOtaHandleValid = false;
+
+/** @brief Pointer to the OTA partition being written to */
+static const esp_partition_t* mpOtaPartition = nullptr;
+/** @brief Number of OTA bytes received */
+static size_t mOtaBytesReceived = 0;
+
+/** @brief Current OTA upload status */
+static OtaUploadStatus mOtaStatus = OtaUploadStatus::Idle;
+/** @brief Last OTA error code */
+static esp_err_t mOtaError = ESP_OK;
+/** @brief Reason for OTA failure */
+static String mOtaFailureReason;
+
+
+/** @brief Abort the ongoing OTA upload.
+ *
+ * @details
+ * This function aborts the current OTA upload if it is in progress.
+ * It resets the OTA handle and marks it as invalid.
+ */
+static void AbortOtaUpload(void)
 {
     if (mOtaHandleValid)
     {
+        /* Abort the OTA update and reset the handle */
         esp_ota_abort(mOtaHandle);
         mOtaHandle = 0;
+
         mOtaHandleValid = false;
     }
 }
 
-void RestartAfterOta(void*)
+/** @brief Restart the system after a short delay following an OTA update.
+ *
+ * @details
+ * This function delays for 1.5 seconds to allow any pending operations to complete,
+ * then restarts the ESP32. It is intended to be used as a task function.
+ */
+static void RestartAfterOta(void*)
 {
     vTaskDelay(pdMS_TO_TICKS(1500));
     ESP.restart();
     vTaskDelete(nullptr);
 }
+
+/** @brief Handle an OTA upload request.
+ *
+ * @details
+ * This function is called when an OTA upload request is received.
+ * It checks the status of the upload, and if the upload is complete,
+ * it sends an appropriate response to the client.
+ *
+ * If the upload was successful, it schedules a system restart.
+ *
+ * @param apRequest Pointer to the AsyncWebServerRequest object representing the OTA request.
+ */
+static void HandleOtaRequest(AsyncWebServerRequest* apRequest)
+{
+    /* Check if the incoming request is the current OTA request */
+    if (apRequest == mpOtaRequest)
+    {
+        /* Store the current OTA status, error, and failure reason */
+        const OtaUploadStatus wStatus = mOtaStatus;
+        const esp_err_t wError = mOtaError;
+        const String wFailureReason = mOtaFailureReason;
+
+        /* Reset relevant variables */
+        mpOtaRequest = nullptr;
+        mOtaStatus = OtaUploadStatus::Idle;
+        mpOtaPartition = nullptr;
+        mOtaBytesReceived = 0;
+        mOtaFailureReason = "";
+
+        /* Notify the callback about the OTA upload status change */
+        if (mpCallback != nullptr)
+        {
+            mpCallback->OnOtaUploadStatusChanged(mOtaStatus, mOtaError, mOtaFailureReason);
+        }
+
+        if (wStatus == OtaUploadStatus::ReadyToBoot)
+        {
+            /* If the OTA upload was successful, send a success response */
+            apRequest->send(200, "text/plain", "Firmware accepted. The device is restarting now.");
+            /* and create a task to restart the device after a short delay */
+            xTaskCreate(RestartAfterOta, "ota_restart", 1024, nullptr, 1, nullptr);
+            return;
+        }
+
+        /* OTA upload failed */
+        LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_OTA_UPDATE_NS, "OTA upload failed: status %d, error %d, reason: %s",
+            static_cast<int>(wStatus), static_cast<int>(wError), wFailureReason.c_str());
+
+        /* Send a failure response */
+        apRequest->send(400, "text/plain",
+            wFailureReason.isEmpty()
+                ? String("Firmware update failed (ESP error ") + String(static_cast<int>(wError)) + ")."
+                : wFailureReason);
+    }
+    else
+    {
+        /* If the request is not the current OTA request, send a 400 Bad Request response */
+        apRequest->send(400, "text/plain", "No firmware image was received or another upload is active.");
+    }
 }
 
-namespace OTAUpdateNS
+/**
+ * @brief Handle OTA upload requests.
+ *
+ * @details
+ * This function is called when an OTA upload request is received.
+ * It manages the OTA upload process, including initialization, validation,
+ * and handling of incoming firmware data chunks.
+ *
+ * @param apRequest Pointer to the AsyncWebServerRequest object.
+ * @param arFilename Name of the uploaded firmware file.
+ * @param aIndex Index of the current data chunk.
+ * @param apData Pointer to the data chunk.
+ * @param aLength Length of the data chunk.
+ * @param aFinal Indicates if this is the final data chunk.
+ */
+static void HandleOtaUpload(AsyncWebServerRequest* apRequest, const String& arFilename, size_t aIndex,
+    uint8_t* apData, size_t aLength, bool aFinal)
 {
-const char* CustomJavaScript()
-{
-    return OTAUpdateAssets::kCustomJavaScript;
-}
+    /* Handle the incoming OTA firmware data in chunks */
 
-void RegisterRoutes(AsyncWebServer* apServer)
-{
-    if (apServer == nullptr || apServer == mpOtaServer)
+    /* If this is the first chunk of data (index 0), initialize the OTA process */
+    if (aIndex == 0)
+    {
+        // Check if another OTA upload is already in progress
+        if (mpOtaRequest != nullptr && mpOtaRequest != apRequest)
+        {
+            return;
+        }
+
+        /* Store the current OTA request pointer */
+        mpOtaRequest = apRequest;
+
+        /* Set up a disconnect handler for the OTA request */
+        apRequest->onDisconnect([apRequest]()
+        {
+            if (mpOtaRequest == apRequest)
+            {
+                AbortOtaUpload();
+                mpOtaRequest = nullptr;
+                mOtaStatus = OtaUploadStatus::Failed;
+                mOtaFailureReason = "OTA upload disconnected.";
+
+                /* Notify the callback about the OTA upload status change */
+                if (mpCallback != nullptr)
+                {
+                    mpCallback->OnOtaUploadStatusChanged(mOtaStatus, mOtaError, mOtaFailureReason);
+                }
+            }
+        });
+
+        /* Mark the OTA upload as failed initially */
+        mOtaStatus = OtaUploadStatus::Failed;
+        mOtaError = ESP_FAIL;
+        mOtaFailureReason = "Invalid firmware upload.";
+
+        /* Validate that the uploaded file has a ".bin" extension */
+        String wLowerFilename = arFilename;
+        wLowerFilename.toLowerCase();
+        if (!wLowerFilename.endsWith(".bin"))
+        {
+            return;
+        }
+
+        /* Check if an OTA update partition is available */
+        mpOtaPartition = esp_ota_get_next_update_partition(nullptr);
+        if (mpOtaPartition == nullptr)
+        {
+            mOtaError = ESP_ERR_NOT_FOUND;
+            return;
+        }
+
+        /* If the OTA update could not be started, reset the handle and mark it as invalid */
+        mOtaError = esp_ota_begin(mpOtaPartition, OTA_SIZE_UNKNOWN, &mOtaHandle);
+        if (mOtaError != ESP_OK)
+        {
+            mOtaHandle = 0;
+            mOtaHandleValid = false;
+            return;
+        }
+
+        /* Mark the OTA handle as valid and reset relevant variables */
+        mOtaHandleValid = true;
+        mOtaBytesReceived = 0;
+        mOtaStatus = OtaUploadStatus::Receiving;
+
+        /* Notify the callback about the OTA upload status change */
+        if (mpCallback != nullptr)
+        {
+            mpCallback->OnOtaUploadStatusChanged(mOtaStatus, mOtaError, mOtaFailureReason);
+        }
+    }
+
+    /* Ignore data for another request or an upload that is not receiving */
+    if (mpOtaRequest != apRequest || mOtaStatus != OtaUploadStatus::Receiving)
     {
         return;
     }
 
-    apServer->on("/update", HTTP_POST,
-        [](AsyncWebServerRequest* apRequest)
+    /* Abort the OTA upload if the data exceeds the partition size */
+    if (aLength > mpOtaPartition->size - mOtaBytesReceived)
+    {
+        AbortOtaUpload();
+        mOtaStatus = OtaUploadStatus::Failed;
+        mOtaError = ESP_ERR_INVALID_SIZE;
+        return;
+    }
+
+    /* Abort if the received data index does not match the expected offset */
+    if (aIndex != mOtaBytesReceived)
+    {
+        AbortOtaUpload();
+        mOtaStatus = OtaUploadStatus::Failed;
+        mOtaError = ESP_ERR_INVALID_SIZE;
+        mOtaFailureReason = "Firmware upload data was incomplete or out of order.";
+
+        LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_OTA_UPDATE_NS,
+            "OTA upload offset mismatch: received offset %lu, expected %lu",
+            static_cast<unsigned long>(aIndex),
+            static_cast<unsigned long>(mOtaBytesReceived));
+        return;
+    }
+
+    /* Abort the OTA upload if writing to the partition fails */
+    mOtaError = esp_ota_write(mOtaHandle, apData, aLength);
+    if (mOtaError != ESP_OK)
+    {
+        AbortOtaUpload();
+        mOtaStatus = OtaUploadStatus::Failed;
+        return;
+    }
+
+    /* Update the number of bytes received */
+    mOtaBytesReceived += aLength;
+
+    /* Finalize and validate the OTA image after the final chunk */
+    if (aFinal)
+    {
+        mOtaError = esp_ota_end(mOtaHandle);
+        mOtaHandle = 0;
+        mOtaHandleValid = false;
+
+        if (mOtaError != ESP_OK)
         {
-            if (mpOtaRequest != apRequest)
-            {
-                apRequest->send(400, "text/plain", "No firmware image was received or another upload is active.");
-                return;
-            }
+            mOtaStatus = OtaUploadStatus::Failed;
+            mOtaFailureReason = "The uploaded file is not a valid ESP32 application image.";
+            LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_OTA_UPDATE_NS,
+                "esp_ota_end failed: error %d, received %lu bytes",
+                static_cast<int>(mOtaError),
+                static_cast<unsigned long>(mOtaBytesReceived));
+            return;
+        }
 
-            const OtaUploadStatus wStatus = mOtaStatus;
-            const esp_err_t wError = mOtaError;
-            const String wFailureReason = mOtaFailureReason;
-            mpOtaRequest = nullptr;
-            mOtaStatus = OtaUploadStatus::Idle;
-            mpOtaPartition = nullptr;
-            mOtaBytesReceived = 0;
-            mOtaFailureReason = "";
+        /* Validate the OTA image by checking for a valid embedded ProductInfo record */
+        ProductInfoNS::Record wNewRecord{};
+        ProductInfoNS::tSoftwareVersion wCurrentVersion{};
 
-            if (wStatus == OtaUploadStatus::ReadyToBoot)
-            {
-                apRequest->send(200, "text/plain", "Firmware accepted. The device is restarting now.");
-                xTaskCreate(RestartAfterOta, "ota_restart", 2048, nullptr, 1, nullptr);
-                return;
-            }
-
-            apRequest->send(400, "text/plain",
-                wFailureReason.isEmpty()
-                    ? String("Firmware update failed (ESP error ") + String(static_cast<int>(wError)) + ")."
-                    : wFailureReason);
-        },
-        [](AsyncWebServerRequest* apRequest, const String& arFilename, size_t aIndex,
-            uint8_t* apData, size_t aLength, bool aFinal)
+        if (!ProductInfoNS::FindProductInfoInOtaImage(mpOtaPartition, mOtaBytesReceived, wNewRecord))
         {
-            if (aIndex == 0)
-            {
-                if (mpOtaRequest != nullptr && mpOtaRequest != apRequest)
-                {
-                    return;
-                }
+            mOtaError = ESP_ERR_INVALID_CRC;
+            mOtaFailureReason = "No valid embedded ProductInfo record was found in the firmware image.";
+            mOtaStatus = OtaUploadStatus::Failed;
+            return;
+        }
 
-                mpOtaRequest = apRequest;
-                mOtaStatus = OtaUploadStatus::Failed;
-                mOtaError = ESP_FAIL;
-                mOtaFailureReason = "Invalid firmware upload.";
+        if (!wNewRecord.mSoftwareVersion.IsValid())
+        {
+            mOtaError = ESP_FAIL;
+            mOtaFailureReason = "Update refused: the selected firmware version is invalid (255.255.255).";
+            mOtaStatus = OtaUploadStatus::Failed;
+            return;
+        }
 
-                String wLowerFilename = arFilename;
-                wLowerFilename.toLowerCase();
-                if (!wLowerFilename.endsWith(".bin"))
-                {
-                    return;
-                }
+        if (!ProductInfoNS::IsNewVersionAllowed(wNewRecord.mSoftwareVersion, wCurrentVersion))
+        {
+            char wMessage[128]{};
+            snprintf(wMessage, sizeof(wMessage),
+                "Update refused: firmware version %u.%u.%u is not newer than installed version %u.%u.%u.",
+                static_cast<unsigned>(wNewRecord.mSoftwareVersion.mMajor),
+                static_cast<unsigned>(wNewRecord.mSoftwareVersion.mMinor),
+                static_cast<unsigned>(wNewRecord.mSoftwareVersion.mBuild),
+                static_cast<unsigned>(wCurrentVersion.mMajor),
+                static_cast<unsigned>(wCurrentVersion.mMinor),
+                static_cast<unsigned>(wCurrentVersion.mBuild));
 
-                mpOtaPartition = esp_ota_get_next_update_partition(nullptr);
-                if (mpOtaPartition == nullptr)
-                {
-                    mOtaError = ESP_ERR_NOT_FOUND;
-                    return;
-                }
+            mOtaFailureReason = wMessage;
+            mOtaError = ESP_FAIL;
+            mOtaStatus = OtaUploadStatus::Failed;
+            return;
+        }
 
-                mOtaError = esp_ota_begin(mpOtaPartition, OTA_SIZE_UNKNOWN, &mOtaHandle);
-                if (mOtaError != ESP_OK)
-                {
-                    mOtaHandle = 0;
-                    mOtaHandleValid = false;
-                    return;
-                }
+        /* Set the boot partition to the newly uploaded OTA partition */
+        mOtaError = esp_ota_set_boot_partition(mpOtaPartition);
 
-                mOtaHandleValid = true;
-                mOtaBytesReceived = 0;
-                mOtaStatus = OtaUploadStatus::Receiving;
-            }
+        /* Update the pending firmware update flag in the settings */
+        Settings.SetValue<bool>(ConfigNS::mKeyPendingFirmwareUpdate, (mOtaError == ESP_OK));
 
-            if (mpOtaRequest != apRequest || mOtaStatus != OtaUploadStatus::Receiving)
-            {
-                return;
-            }
-
-            if (aLength > mpOtaPartition->size - mOtaBytesReceived)
-            {
-                AbortOtaUpload();
-                mOtaStatus = OtaUploadStatus::Failed;
-                mOtaError = ESP_ERR_INVALID_SIZE;
-                return;
-            }
-
-            mOtaError = esp_ota_write(mOtaHandle, apData, aLength);
-            if (mOtaError != ESP_OK)
-            {
-                AbortOtaUpload();
-                mOtaStatus = OtaUploadStatus::Failed;
-                return;
-            }
-            mOtaBytesReceived += aLength;
-
-            if (aFinal)
-            {
-                mOtaError = esp_ota_end(mOtaHandle);
-                mOtaHandle = 0;
-                mOtaHandleValid = false;
-                if (mOtaError != ESP_OK)
-                {
-                    mOtaFailureReason = "The uploaded file is not a valid ESP32 application image.";
-                    mOtaStatus = OtaUploadStatus::Failed;
-                    return;
-                }
-
-                ProductInfoNS::Record wNewRecord{};
-                if (!ProductInfoNS::FindProductInfoInOtaImage(mpOtaPartition, mOtaBytesReceived, wNewRecord))
-                {
-                    mOtaError = ESP_ERR_INVALID_CRC;
-                    mOtaFailureReason = "No valid embedded ProductInfo record was found in the firmware image.";
-                    mOtaStatus = OtaUploadStatus::Failed;
-                    return;
-                }
-
-                ProductInfoNS::tSoftwareVersion wCurrentVersion{};
-                if (!wNewRecord.mSoftwareVersion.IsValid())
-                {
-                    mOtaError = ESP_FAIL;
-                    mOtaFailureReason = "Update refused: the selected firmware version is invalid (255.255.255).";
-                    mOtaStatus = OtaUploadStatus::Failed;
-                    return;
-                }
-
-                if (!ProductInfoNS::IsNewVersionAllowed(wNewRecord.mSoftwareVersion, wCurrentVersion))
-                {
-                    char wMessage[128]{};
-                    snprintf(wMessage, sizeof(wMessage),
-                        "Update refused: firmware version %u.%u.%u is not newer than installed version %u.%u.%u.",
-                        static_cast<unsigned>(wNewRecord.mSoftwareVersion.mMajor),
-                        static_cast<unsigned>(wNewRecord.mSoftwareVersion.mMinor),
-                        static_cast<unsigned>(wNewRecord.mSoftwareVersion.mBuild),
-                        static_cast<unsigned>(wCurrentVersion.mMajor),
-                        static_cast<unsigned>(wCurrentVersion.mMinor),
-                        static_cast<unsigned>(wCurrentVersion.mBuild));
-
-                    mOtaFailureReason = wMessage;
-                    mOtaError = ESP_FAIL;
-                    mOtaStatus = OtaUploadStatus::Failed;
-                    return;
-                }
-
-                mOtaError = esp_ota_set_boot_partition(mpOtaPartition);
-
-                Settings.SetValue<bool>(ConfigNS::mKeyPendingFirmwareUpdate, (mOtaError == ESP_OK));
-
-                mOtaStatus = (mOtaError == ESP_OK)
-                    ? OtaUploadStatus::ReadyToBoot
-                    : OtaUploadStatus::Failed;
-            }
-        });
-
-    mpOtaServer = apServer;
+        mOtaStatus = (mOtaError == ESP_OK)
+            ? OtaUploadStatus::ReadyToBoot
+            : OtaUploadStatus::Failed;
+    }
 }
+
+/** @brief Return the custom JavaScript injected into the ESPUI page.
+ *
+ * @details
+ * This function returns a pointer to the custom JavaScript code
+ * that is injected into the ESPUI page for OTA update functionality.
+ * The JavaScript code is generated during the build process and is
+ * stored in the OTAUpdateCustomJs.h header file.
+ *
+ * @return A pointer to the custom JavaScript code as a null-terminated string.
+*/
+const char* CustomJavaScript(void)
+{
+    return OTAUpdateAssets::kCustomJavaScript;  // Return the generated JavaScript code
 }
+
+/** @brief Register OTA endpoints on the web server already started by ESPUI.
+ *
+ * @details
+ * This function registers the necessary endpoints on the provided AsyncWebServer
+ * instance for handling OTA updates. It sets up the "/update" endpoint to handle
+ * OTA upload requests, including receiving firmware data, validating it, and managing
+ * the OTA process.
+ * The function also handles disconnections and errors during the OTA process, ensuring
+ * that the system remains stable and responsive.
+ *
+ * @param apServer Pointer to the AsyncWebServer instance where OTA endpoints will be registered.
+ * @param apCallback Pointer to the OTAUpdateCallback instance for receiving OTA status updates.
+ *
+ * @note This function should be called after the web server has been started by ESPUI.
+*/
+void RegisterRoutes(AsyncWebServer* apServer, OTAUpdateCallback* apCallback)
+{
+    if ((apServer != nullptr) && (apServer != mpOtaServer))
+    {
+        /* Store the provided server and callback pointers for OTA handling */
+        mpOtaServer = apServer;
+        mpCallback = apCallback;
+
+        /* Register the "/update" endpoint for handling OTA uploads */
+        mpOtaServer->on("/update", HTTP_POST, HandleOtaRequest, HandleOtaUpload);
+
+    }
+}
+
+}   // namespace OTAUpdateNS

@@ -4,11 +4,16 @@
  *  Created on: 02.11.2026
  *      Author: hocki
  */
+#include <Arduino.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 
 #include <esp_partition.h>
+#include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "ProductInfoRecord.h"   // Generated during the build; defines the ProductInfo record embedded in the firmware.
 #include "ProductInfo.h"
@@ -94,6 +99,7 @@ bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImage
     bool wFound = false;
     /* Buffer for reading chunks from the OTA image */
     uint8_t wBuffer[mcReadChunkSize]{};
+    uint8_t wChunksSinceYield = 0;
 
     for (size_t wOffset = 0; !wFound && wOffset < aImageSize;)
     {
@@ -150,6 +156,14 @@ bool FindProductInfoInOtaImage(const esp_partition_t* apPartition, size_t aImage
 
         /* Advance the offset for the next read chunk, ensuring overlap for magic bytes */
         wOffset += (wReadSize == mcReadChunkSize) ? (wReadSize - (mcProductInfoMagicSize - 1)) : wReadSize;
+
+        /* OTA validation runs in AsyncTCP's watchdog-protected task. */
+        esp_task_wdt_reset();
+        if (++wChunksSinceYield >= 16)
+        {
+            wChunksSinceYield = 0;
+            vTaskDelay(1);
+        }
     }
 
     return wFound;  // Return whether product information was found
