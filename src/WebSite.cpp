@@ -48,6 +48,9 @@
 #define CSS_STYLE_TABEL_VALUE_CELL      "padding:5px 0;overflow-wrap:anywhere;word-break:break-word;vertical-align:top;"
 #define CSS_STYLE_TABEL_ROW_BORDER      "border-bottom:1px solid #808080;"
 
+/** Periodical task timer period in milliseconds */
+#define PERIODICAL_TIMER_PERIOD         15000   // 15 seconds
+
 /* Delay for web UI updates in milliseconds */
 #define WEB_UI_UPDATE_DELAY             100     // It seems that a small delay is enough to avoid issues with the web UI updates, especially when updating control states
 
@@ -119,7 +122,7 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Create periodical timer */
     mTimerObjects.mTaskHandle = this->getTaskHandle();
     mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
-    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 10*1000, true);    // Period 10 seconds
+    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, PERIODICAL_TIMER_PERIOD, true);
     mpTimer->Init(&mTimerObjects);
 
     /*
@@ -308,13 +311,38 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     UpdateSystemInfo();
 }
 
+void WebSite::OnOtaUploadStatusChanged(OTAUpdateNS::OtaUploadStatus aStatus, esp_err_t aError, const String& arFailureReason)
+{
+    switch (aStatus)
+    {
+        case OTAUpdateNS::OtaUploadStatus::Receiving:
+        case OTAUpdateNS::OtaUploadStatus::ReadyToBoot:
+            /* OTA upload process is ongoing */
+
+            mIsWebUIUpdateEnabled = false;  // Disable web UI updates during OTA upload
+            break;
+
+        case OTAUpdateNS::OtaUploadStatus::Idle:
+        case OTAUpdateNS::OtaUploadStatus::Failed:
+        default:
+            /* OTA upload process is not active */
+
+            mIsWebUIUpdateEnabled = true;  // Re-enable web UI updates after OTA upload
+            break;
+    }
+}
+
 void WebSite::ProcessTimerEvent(const uint32_t aTimerId)
 {
     LOG(LOG_VERBOSE, "WebSite::ProcessTimerEvent() Timer ID: %d", aTimerId);
 
     if (aTimerId == mPeriodicalTaskTimerId)
     {
-        UpdateSystemInfo();
+        /* Update the system information only if web UI updates are enabled */
+        if (mIsWebUIUpdateEnabled)
+        {
+            UpdateSystemInfo();
+        }
     }
     else
     {
@@ -341,7 +369,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             /* Start WEB UI */
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
-            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
 
             /* Start notification timer for this task */
             mpTimer->start();
@@ -361,7 +389,7 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             /* Start WEB UI */
             ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
             ESPUI.begin("Wordclock");
-            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer());
+            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
 
             /* Start notification timer for this task */
             mpTimer->start();
@@ -374,7 +402,11 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY:
-            UpdateDisplayPreview(arMessage);
+            /* Update display preview only if web UI updates are enabled */
+            if (mIsWebUIUpdateEnabled)
+            {
+                UpdateDisplayPreview(arMessage);
+            }
             break;
 
         default:
@@ -1426,9 +1458,6 @@ void WebSite::UpdateSystemInfo(void)
         static DateTimeNS::tUptime wPreviousUptime{};
 
         DateTimeNS::tUptime wUptime = DateTimeNS::Uptime();
-
-        /* . */
-        constexpr uint32_t kUptimeWithoutSecondsMask = 0xFFFFFFC0U;
 
         if ((!wRuntimeInitialized) ||
             ((wUptime.ToWord()         & MASK_UPTIME_WITHOUT_SECONDS) !=    // Ignore the six least-significant second bits

@@ -16,8 +16,10 @@
 #include "Configuration.h"
 #include "Settings.hpp"
 
+#include "OTAUpdate.h"
 
-class WebSite : public ApplicationNS::Task
+
+class WebSite : public ApplicationNS::Task, public OTAUpdateNS::OTAUpdateCallback
 {
 public:
     WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, const uint32_t aStackSize);
@@ -25,6 +27,9 @@ public:
 
     /* ApplicationNS::Task::Init */
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
+
+    /* OTAUpdateNS::OTAUpdateCallback */
+    void OnOtaUploadStatusChanged(OTAUpdateNS::OtaUploadStatus aStatus, esp_err_t aError, const String& arFailureReason) override;
 
 private:
 
@@ -165,9 +170,12 @@ private:
     /** @brief SSID labels for the bounded option pool */
     std::array<std::array<char, SSID_NAME_SIZE>, mcMaxSsidCount> mWifiSsidLabels{};
 
-    /* Periodical timer for this task */
+    /** @brief Periodical timer for this task */
     ApplicationNS::tTaskTimerObjects mTimerObjects;
     ApplicationNS::TaskTimer* mpTimer = nullptr;
+
+    /** @brief Flag indicating whether Web UI updates are enabled */
+    bool mIsWebUIUpdateEnabled = true;
 
     /** @brief Pointers to the control event queue and its notification */
     ControlEventQueue* mpControlEventQueue = nullptr;
