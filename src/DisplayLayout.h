@@ -4,8 +4,7 @@
  *  Created on: 19.10.2026
  *      Author: hocki
  */
-#ifndef DISPLAY_LAYOUT_H_
-#define DISPLAY_LAYOUT_H_
+#pragma once
 
 #include <FastLED.h>
 #include <MutexCPP.h>
@@ -185,9 +184,6 @@ private:
     /** @brief Latest scene snapshot */
     DisplayScene mScene;
 };
-
-/** @brief Shared snapshot instance; access only through synchronized methods */
-extern DisplaySceneSnapshot mDisplaySceneSnapshot;
 
 
 /***************************************************************************************************
@@ -484,5 +480,3 @@ const tWord mcWordExtraMinutesTable[ EXTRA_MINUTE_COUNT ][ MAX_EXTRA_MINUTE_WORD
     { WORD_PLUS,   WORD_NUM_3,  WORD_MINUTEN  },    // +3 Minutes
     { WORD_PLUS,   WORD_NUM_4,  WORD_MINUTEN  },    // +4 Minutes
 };
-
-#endif /* DISPLAY_LAYOUT_H_ */

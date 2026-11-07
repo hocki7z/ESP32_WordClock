@@ -25,16 +25,14 @@
 #include "../credentials.h"
 #endif /* USE_CREDENTIALS */
 
+#include "Global.h"
+
 #include <WiFi.h>
 #include <WiFiClient.h>
 
 #include <esp_wifi.h>
 
-#include "Logger.h"
-#include "Configuration.h"
-#include "Serialize.h"
-
-#include "WiFiManager.h"
+#include "WifiManager.h"
 
 
 /* Log level for this module */

@@ -15,7 +15,7 @@
 #include "Application.h"
 #include "Configuration.h"
 #include "Settings.hpp"
-
+#include "SSIDList.h"
 #include "OTAUpdate.h"
 
 
@@ -170,6 +170,9 @@ private:
     /** @brief SSID labels for the bounded option pool */
     std::array<std::array<char, SSID_NAME_SIZE>, mcMaxSsidCount> mWifiSsidLabels{};
 
+    /** @brief Flag indicating if WiFi is in AP mode */
+    bool mIsWifiAPMode = true;
+
     /** @brief Periodical timer for this task */
     ApplicationNS::tTaskTimerObjects mTimerObjects;
     ApplicationNS::TaskTimer* mpTimer = nullptr;
@@ -191,6 +194,9 @@ private:
 
     void HandleControlEvent(const ControlEvent& arEvent);
     void HandleWiFiControlEvent(const ControlEvent& arEvent);
+
+    void InitWebUIControls(void);
+    void StartWebServer(bool aIsWifiAPMode);
 
     Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None,
         const bool aExpandable = false, const bool aExpanded = false);

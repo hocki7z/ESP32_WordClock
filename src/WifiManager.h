@@ -4,8 +4,7 @@
  *  Created on: 13.09.2025
  *      Author: hocki
  */
-#ifndef WIFI_MANAGER_H_
-#define WIFI_MANAGER_H_
+#pragma once
 
 #include <Arduino.h>
 
@@ -104,4 +103,3 @@ private:
     void HandleWifiEvent(WiFiEvent_t aEvent);
 };
 
-#endif /* WIFI_MANAGER_H_ */

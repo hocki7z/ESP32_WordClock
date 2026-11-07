@@ -21,41 +21,6 @@ using namespace ApplicationNS;
 
 namespace ConfigNS
 {
-    struct tRestartReason
-    {
-        enum Type : uint8_t
-        {
-            Unknown = 0,            ///< Unknown restart reason
-            PowerOn,                ///< Restart due to power-on
-            Software,               ///< Restart due to software request
-            Watchdog,               ///< Restart due to watchdog timeout
-            Panic,                  ///< Restart due to panic (assertion failure)
-            Brownout,               ///< Restart due to brownout detection
-            FirmwareUpdate          ///< Restart due to firmware update
-        };
-
-        /** @brief Converts the restart reason to a string
-         *
-         * @param aReason The restart reason to convert
-         * @return A string representation of the restart reason
-         */
-
-        static const char* ToString(Type aReason)
-        {
-            switch (aReason)
-            {
-                case Unknown:        return "Unknown";
-                case PowerOn:        return "Power-on";
-                case Software:       return "Software request";
-                case Watchdog:       return "Watchdog timeout";
-                case Panic:          return "Panic";
-                case Brownout:       return "Brownout detection";
-                case FirmwareUpdate: return "Firmware update";
-                default:             return "Invalid reason";
-            }
-        }
-    };
-
 
     /**
      * Task configurations
@@ -247,8 +212,5 @@ namespace ConfigNS
         /* WAT  */  "WAT-1",
         /* WET  */  "WET0WEST,M3.5.0/1,M10.5.0",
     };
-
-
-    extern tRestartReason::Type mRestartReason;
 
 }   /* end of namespace ConfigNS */

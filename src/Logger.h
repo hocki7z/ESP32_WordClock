@@ -5,8 +5,7 @@
  *      Author: hocki
  */
 
-#ifndef LOGGER_H_
-#define LOGGER_H_
+#pragma once
 
 #include <Arduino.h>
 #include <esp32-hal-log.h>
@@ -115,4 +114,3 @@ typedef enum tLogLevel
                 ((byte & 0x02) ? '1' : '0'), \
                 ((byte & 0x01) ? '1' : '0')
 
-#endif /* LOGGER_H_ */

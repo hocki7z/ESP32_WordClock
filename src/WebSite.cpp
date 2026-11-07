@@ -10,14 +10,13 @@
 
 #include <ESPUI.h>
 
-#include "Logger.h"
-#include "Configuration.h"
+#include "Global.h"
+
 #include "ProductInfo.h"
 #include "DateTime.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
 #include "OTAUpdate.h"
-#include "Settings.hpp"
 
 #include "WebSite.h"
 
@@ -125,190 +124,8 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, PERIODICAL_TIMER_PERIOD, true);
     mpTimer->Init(&mTimerObjects);
 
-    /*
-     * Initialize WEB UI but do not start it yet
-     */
-
-    /* ESPUI log mode - turn on/off verbose debugging */
-    ESPUI.setVerbosity((LOG_LEVEL == LOG_VERBOSE) ? Verbosity::Verbose : Verbosity::Quiet);
-
-    /* Send slider changes only when the user releases the slider. */
-    ESPUI.sliderContinuous = false;     // Disable continuous slider mode
-
-    /* Add the tabs for the web UI */
-    mWebUIControlID.mOverViewTab   = ESPUI.addControl(Control::Type::Tab, "overview",    "Overview",    TAB_CONTROL_COLOR);
-    mWebUIControlID.mLedDisplayTab = ESPUI.addControl(Control::Type::Tab, "led-display", "LED Display", TAB_CONTROL_COLOR);
-    mWebUIControlID.mSettingsTab   = ESPUI.addControl(Control::Type::Tab, "settings",    "Settings",    TAB_CONTROL_COLOR);
-
-
-    /**
-     * Tab Overview / Group Preview
-     */
-    mWebUIControlID.mPreviewGroup = AddGroupHelper("Preview", mWebUIControlID.mOverViewTab, GROUP_CONTROL_COLOR);
-
-    /* Live preview of the word-clock LED matrix */
-    mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mPreviewGroup, CSS_STYLE_PREVIEW,
-        BuildDisplayPreviewSvg()); // "Here will be a live preview of the word-clock LED matrix. Please wait until the first update is received from the device
-
-
-    /**
-     * Tab LED Display / Group Display
-     */
-    mWebUIControlID.mLedDisplayDisplayGroup = AddGroupHelper("Display", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
-
-    /* Clock mode */
-    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Clock mode");
-    mWebUIControlID.mDisplayClockMode = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
-            mcClockModeItems, WORDCLOCK_MODE_NUMBER,
-            ConfigNS::mKeyDisplayClockMode, mcDefaultDisplayClockMode);
-
-    /* Switcher for 'IT IS' words */
-    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show 'IT IS'");
-    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
-            ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
-
-    /* Switch for single minutes */
-    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show single minutes");
-    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
-            ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
-
-
-    /**
-     * Tab LED Display / Group Color
-     */
-    mWebUIControlID.mLedDisplayColorGroup = AddGroupHelper("Colors", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
-
-    /* Day time and background colors */
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Day");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
-
-    mWebUIControlID.mDisplayColorTime = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-        ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
-    mWebUIControlID.mDisplayColorBkgd = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-        ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
-
-    /* Separator */
-    AddSeparator(mWebUIControlID.mLedDisplayColorGroup);
-
-    /* Night time and background colors */
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Night");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
-
-    mWebUIControlID.mDisplayColorTimeNight = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-        ConfigNS::mKeyDisplayColorTimeNight, ConfigNS::mDefaultDisplayColorTimeNight);
-    mWebUIControlID.mDisplayColorBkgdNight = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-        ConfigNS::mKeyDisplayColorBkgdNight, ConfigNS::mDefaultDisplayColorBkgdNight);
-
-
-    /**
-     * Tab LED Display / Group Brightness
-     */
-    mWebUIControlID.mLedDisplayBrightnessGroup = AddGroupHelper("Brightness", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
-
-    /* Switcher for day/night mode activation */
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
-    mWebUIControlID.mDisplayUseDayNightMode = AddSwitcherControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH,
-            ConfigNS::mKeyDisplayUseDayNightMode, ConfigNS::mDefaultDisplayUseDayNightMode);
-
-    /* Time input for day mode start/end */
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day mode");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "start time");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "end time");
-    mWebUIControlID.mDisplayDayModeStartTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-            ConfigNS::mKeyDisplayDayModeStartTime, ConfigNS::mDefaultDisplayDayModeStartTime);
-    mWebUIControlID.mDisplayDayModeEndTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-            ConfigNS::mKeyDisplayDayModeEndTime, ConfigNS::mDefaultDisplayDayModeEndTime);
-
-    AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup, true); // Draw a line separator
-
-    /* Sliders for day time/background brightness */
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
-    mWebUIControlID.mDisplayBrightnessTime = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-        ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime);
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
-    mWebUIControlID.mDisplayBrightnessBkgd = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-            ConfigNS::mKeyDisplayBrightnessBkgd, ConfigNS::mDefaultDisplayBrightnessBkgd);
-
-    AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Night");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
-    mWebUIControlID.mDisplayBrightnessTimeNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-        ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTimeNight);
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
-    mWebUIControlID.mDisplayBrightnessBkgdNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-        ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
-
-
-    /**
-     * Tab Settings / Group Time
-     */
-    mWebUIControlID.mSettingsTimeGroup = AddGroupHelper("Time", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
-
-    /* NTP server selection */
-    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "NTP server");
-    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
-            ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
-            ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
-    /* Timezone selection */
-    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "Time zone");
-    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
-            ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
-            ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
-
-
-    /**
-     * Tab Settings / Group WiFi
-     */
-    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
-
-    /* WiFi settings controls here (e.g., SSID, password, etc.) */
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
-    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT,
-        nullptr, 0, ConfigNS::mInvalidKey, 0, ControlHandler::WifiSsidSelect);
-
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password");
-    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT,
-        ConfigNS::mInvalidKey, ControlHandler::WifiPassword);
-
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL, "Show/Hide Password");
-    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH,
-        ConfigNS::mInvalidKey, false, ControlHandler::WifiPasswordShowHide);
-
-    /* Add buttons for scanning WiFi networks and connecting to the selected network */
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
-        ControlHandler::WifiConnectButton);
-
-    mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
-        ControlHandler::WifiScanButton);
-    mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
-        ControlHandler::WifiForgetButton);
-
-
-    /**
-     * Tab Settings / Group System Information
-     */
-    mWebUIControlID.mSystemInfoGroup = AddGroupHelper("System Informations", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
-
-    mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
-        "");    // Placeholder for product information, will be updated in UpdateProductInfo()
-    AddSeparator(mWebUIControlID.mSystemInfoGroup, true);
-    mWebUIControlID.mRuntimeInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
-        "");    // Placeholder for runtime information, will be updated in UpdateRuntimeInfo()
-    AddSeparator(mWebUIControlID.mSystemInfoGroup, true);
-    mWebUIControlID.mDeviceInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
-        "");    // Placeholder for device information, will be updated in UpdateDeviceInfo()
-
-    /**
-     * Tab Settings / Firmware Update Group
-     */
-    mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
-
-    /* Update the system information displayed on the web UI */
-    UpdateSystemInfo();
+    /* Initialize WEB UI but do not start it yet */
+    InitWebUIControls();
 }
 
 void WebSite::OnOtaUploadStatusChanged(OTAUpdateNS::OtaUploadStatus aStatus, esp_err_t aError, const String& arFailureReason)
@@ -357,43 +174,13 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
     switch (arMessage.mId)
     {
         case MessageNS::tMessageId::MSG_EVENT_WIFI_STA_CONNECTED:
-            /* WiFi connected, start WEB server */
-            LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server");
-
-            /* Normal Mode - no captive portal */
-            ESPUI.captivePortal = false;
-
-            /* Update WiFi settings controls */
-            UpdateWiFiSettingsControls();
-
-            /* Start WEB UI */
-            ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
-            ESPUI.begin("Wordclock");
-            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
-
-            /* Start notification timer for this task */
-            mpTimer->start();
-
+            /* WiFi connected in STA mode, start WEB server */
+            StartWebServer(false);  // no captive portal
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
-            /* Access point started, start WEB server */
-            LOG(LOG_DEBUG, "WebSite::ProcessIncomingMessage() Start web server in AP mode");
-
-            /* Offline Mode - enable captive portal */
-            ESPUI.captivePortal = true;
-
-            /* Update WiFi settings controls */
-            UpdateWiFiSettingsControls();
-
-            /* Start WEB UI */
-            ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
-            ESPUI.begin("Wordclock");
-            OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
-
-            /* Start notification timer for this task */
-            mpTimer->start();
-
+            /* WiFi connected in AP mode, start WEB server */
+            StartWebServer(true);   // enable captive portal
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
@@ -629,9 +416,11 @@ void WebSite::HandleWiFiControlEvent(const ControlEvent& arEvent)
 
             if (wIsSsidValid)
             {
-                /* Allows any valid SSID in captive-portal mode;
-                 * otherwise, excludes index 0 (the current network) */
-                wIsSsidValid = ESPUI.captivePortal || (wSsidIndex > 0);
+                /**
+                 * Allows any valid SSID if Wifi AP mode is active,
+                 * otherwise, excludes index 0 (the current network)
+                 */
+                wIsSsidValid = mIsWifiAPMode || (wSsidIndex > 0);
 
                 /* Check password validity: it is non-empty and the selected network is encrypted */
                 wIsPasswordValid = ((wPassw.length() > 7) && wSelectedSsid.mEncrypted);    // Technical minimum length: 8 characters
@@ -749,6 +538,234 @@ void WebSite::HandleWiFiControlEvent(const ControlEvent& arEvent)
     {
         SendMessage(wMessage);
     }
+}
+
+/**
+ * @brief Initialize the web UI controls
+ *
+ * @details
+ * This function sets up the initial state of the Web UI controls.
+ */
+void WebSite::InitWebUIControls(void)
+{
+    /* ESPUI log mode - turn on/off verbose debugging */
+    ESPUI.setVerbosity((LOG_LEVEL == LOG_VERBOSE) ? Verbosity::Verbose : Verbosity::Quiet);
+
+    /* Send slider changes only when the user releases the slider. */
+    ESPUI.sliderContinuous = false;     // Disable continuous slider mode
+
+
+    /* Add the tabs for the web UI */
+    mWebUIControlID.mOverViewTab   = ESPUI.addControl(Control::Type::Tab, "overview",    "Overview",    TAB_CONTROL_COLOR);
+    mWebUIControlID.mLedDisplayTab = ESPUI.addControl(Control::Type::Tab, "led-display", "LED Display", TAB_CONTROL_COLOR);
+    mWebUIControlID.mSettingsTab   = ESPUI.addControl(Control::Type::Tab, "settings",    "Settings",    TAB_CONTROL_COLOR);
+
+
+    /**
+     * Tab Overview / Group Preview
+     */
+    mWebUIControlID.mPreviewGroup = AddGroupHelper("Preview", mWebUIControlID.mOverViewTab, GROUP_CONTROL_COLOR);
+
+    /* Live preview of the word-clock LED matrix */
+    mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mPreviewGroup, CSS_STYLE_PREVIEW,
+        BuildDisplayPreviewSvg()); // "Here will be a live preview of the word-clock LED matrix. Please wait until the first update is received from the device
+
+
+    /**
+     * Tab LED Display / Group Display
+     */
+    mWebUIControlID.mLedDisplayDisplayGroup = AddGroupHelper("Display", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+
+    /* Clock mode */
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Clock mode");
+    mWebUIControlID.mDisplayClockMode = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
+            mcClockModeItems, WORDCLOCK_MODE_NUMBER,
+            ConfigNS::mKeyDisplayClockMode, mcDefaultDisplayClockMode);
+
+    /* Switcher for 'IT IS' words */
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show 'IT IS'");
+    mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
+
+    /* Switch for single minutes */
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show single minutes");
+    mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
+
+
+    /**
+     * Tab LED Display / Group Color
+     */
+    mWebUIControlID.mLedDisplayColorGroup = AddGroupHelper("Colors", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+
+    /* Day time and background colors */
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Day");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
+
+    mWebUIControlID.mDisplayColorTime = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
+    mWebUIControlID.mDisplayColorBkgd = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
+
+    /* Separator */
+    AddSeparator(mWebUIControlID.mLedDisplayColorGroup);
+
+    /* Night time and background colors */
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Night");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
+    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
+
+    mWebUIControlID.mDisplayColorTimeNight = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorTimeNight, ConfigNS::mDefaultDisplayColorTimeNight);
+    mWebUIControlID.mDisplayColorBkgdNight = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+        ConfigNS::mKeyDisplayColorBkgdNight, ConfigNS::mDefaultDisplayColorBkgdNight);
+
+
+    /**
+     * Tab LED Display / Group Brightness
+     */
+    mWebUIControlID.mLedDisplayBrightnessGroup = AddGroupHelper("Brightness", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+
+    /* Switcher for day/night mode activation */
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
+    mWebUIControlID.mDisplayUseDayNightMode = AddSwitcherControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayUseDayNightMode, ConfigNS::mDefaultDisplayUseDayNightMode);
+
+    /* Time input for day mode start/end */
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day mode");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "start time");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "end time");
+    mWebUIControlID.mDisplayDayModeStartTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayDayModeStartTime, ConfigNS::mDefaultDisplayDayModeStartTime);
+    mWebUIControlID.mDisplayDayModeEndTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayDayModeEndTime, ConfigNS::mDefaultDisplayDayModeEndTime);
+
+    AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup, true); // Draw a line separator
+
+    /* Sliders for day time/background brightness */
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
+    mWebUIControlID.mDisplayBrightnessTime = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime);
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
+    mWebUIControlID.mDisplayBrightnessBkgd = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+            ConfigNS::mKeyDisplayBrightnessBkgd, ConfigNS::mDefaultDisplayBrightnessBkgd);
+
+    AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Night");
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
+    mWebUIControlID.mDisplayBrightnessTimeNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTimeNight);
+    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
+    mWebUIControlID.mDisplayBrightnessBkgdNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
+
+
+    /**
+     * Tab Settings / Group Time
+     */
+    mWebUIControlID.mSettingsTimeGroup = AddGroupHelper("Time", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+
+    /* NTP server selection */
+    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "NTP server");
+    mWebUIControlID.mDatetimeNtpServer = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
+            ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
+            ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
+    /* Timezone selection */
+    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "Time zone");
+    mWebUIControlID.mDatetimeTimeZone = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
+            ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
+            ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+
+
+    /**
+     * Tab Settings / Group WiFi
+     */
+    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+
+    /* WiFi settings controls here (e.g., SSID, password, etc.) */
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
+    mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT,
+        nullptr, 0, ConfigNS::mInvalidKey, 0, ControlHandler::WifiSsidSelect);
+
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password");
+    mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT,
+        ConfigNS::mInvalidKey, ControlHandler::WifiPassword);
+
+    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL, "Show/Hide Password");
+    mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH,
+        ConfigNS::mInvalidKey, false, ControlHandler::WifiPasswordShowHide);
+
+    /* Add buttons for scanning WiFi networks and connecting to the selected network */
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+        ControlHandler::WifiConnectButton);
+
+    mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+        ControlHandler::WifiScanButton);
+    mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+        ControlHandler::WifiForgetButton);
+
+
+    /**
+     * Tab Settings / Group System Information
+     */
+    mWebUIControlID.mSystemInfoGroup = AddGroupHelper("System Informations", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+
+    mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for product information, will be updated in UpdateProductInfo()
+    AddSeparator(mWebUIControlID.mSystemInfoGroup, true);
+    mWebUIControlID.mRuntimeInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for runtime information, will be updated in UpdateRuntimeInfo()
+    AddSeparator(mWebUIControlID.mSystemInfoGroup, true);
+    mWebUIControlID.mDeviceInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
+        "");    // Placeholder for device information, will be updated in UpdateDeviceInfo()
+
+    /**
+     * Tab Settings / Firmware Update Group
+     */
+    mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+
+    /* Update the system information displayed on the web UI */
+    UpdateSystemInfo();
+}
+
+/**
+ * @brief Start the web server
+ *
+ * @details
+ * This function initializes and starts the web server, optionally enabling
+ * WiFi Access Point (AP) mode with a captive portal. It also updates the WiFi
+ * settings controls and registers the necessary routes for OTA updates.
+ *
+ * @param aIsWifiAPMode True to start in WiFi AP mode with captive portal; false for normal mode
+ */
+void WebSite::StartWebServer(bool aIsWifiAPMode)
+{
+    LOG(LOG_DEBUG, "WebSite::StartWebServer() Starting web server, Captive Portal: %d",
+            aIsWifiAPMode);
+
+    /* Set WiFi AP mode flag */
+    mIsWifiAPMode = aIsWifiAPMode;
+
+    /* Set captive portal mode for ESPUI */
+    ESPUI.captivePortal = mIsWifiAPMode;
+
+    /* Update WiFi settings controls */
+    UpdateWiFiSettingsControls();
+
+    /* Set custom JavaScript for OTA update handling */
+    ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
+
+    /* Start WEB UI */
+    ESPUI.begin("Wordclock");
+
+    /* Register OTA update routes */
+    OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
+
+    /* Start notification timer for this task */
+    mpTimer->start();
 }
 
 /**
@@ -1321,7 +1338,7 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
         auto& wLabel = mWifiSsidLabels[wI];
         snprintf(wLabel.data(), wLabel.size(), "%s", wSsidEntry.mSsid);
 
-        if ((wI == 0) && !ESPUI.captivePortal)
+        if ((wI == 0) && !mIsWifiAPMode)
         {
             wCurrentSsid.Set(wSsidEntry);
         }
@@ -1352,8 +1369,8 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
         ESPUI.updateControlValue(mWebUIControlID.mWifiSSIDList[wI], -2L);
     }
 
-    /* Check if captive portal is enabled */
-    if (ESPUI.captivePortal)
+    /* Check if Wifi AP mode is enabled */
+    if (mIsWifiAPMode)
     {
         /* WiFi access point (offline) */
         wCurrentSsid.Clear();
@@ -1379,7 +1396,7 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
 
     /* Update forget network button label: "Forget network" or "Forget network <SSID>" if selected SSID is not valid */
     String wLabel = "Forget network";
-    if (!ESPUI.captivePortal && wCurrentSsid.IsValid())
+    if (!mIsWifiAPMode && wCurrentSsid.IsValid())
     {
         wLabel += " ";
         wLabel += wCurrentSsid.mSsid;
@@ -1392,7 +1409,7 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     ESPUI.setEnabled(mWebUIControlID.mWifiPasswordShowHide, true);
     ESPUI.setEnabled(mWebUIControlID.mWifiScanButton,       true);
     ESPUI.setEnabled(mWebUIControlID.mWifiConnectButton,    false);
-    ESPUI.setEnabled(mWebUIControlID.mWifiForgetButton,     (!ESPUI.captivePortal));   // Only enable forget button if connected to WiFi router
+    ESPUI.setEnabled(mWebUIControlID.mWifiForgetButton,     (!mIsWifiAPMode));   // Only enable forget button if connected to WiFi router
 
     if (aForceUpdate)
     {
@@ -1457,7 +1474,7 @@ void WebSite::UpdateSystemInfo(void)
         static bool wRuntimeInitialized = false;
         static DateTimeNS::tUptime wPreviousUptime{};
 
-        DateTimeNS::tUptime wUptime = DateTimeNS::Uptime();
+        DateTimeNS::tUptime wUptime = DateTimeNS::GetUptime();
 
         if ((!wRuntimeInitialized) ||
             ((wUptime.ToWord()         & MASK_UPTIME_WITHOUT_SECONDS) !=    // Ignore the six least-significant second bits
@@ -1474,7 +1491,9 @@ void WebSite::UpdateSystemInfo(void)
                 static_cast<unsigned>(wUptime.wHours),
                 static_cast<unsigned>(wUptime.wMinutes));
 
-            String wRestartReason = ConfigNS::tRestartReason::ToString(ConfigNS::mRestartReason);
+            String wRestartReason = RestartReasonNS::ToString(
+                                            RestartReasonNS::GetRestartReason());
+
             const std::array<const char*, 2> wRuntimeInfoNames = {
                 "Runtime", "Restart reason"
             };
@@ -1533,6 +1552,7 @@ void WebSite::UpdateSystemInfo(void)
             String wMinFreeHeap  = String(wMinFreeHeapBytes  / 1000.0f, 2) + " kB";
 
             const std::array<const char*, 4> wDeviceInfoNames = {
+            // "Flash",            "Heap",           "Max block",        "Min free"
                 "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap"
             };
 

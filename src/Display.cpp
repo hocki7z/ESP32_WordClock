@@ -5,13 +5,7 @@
  *      Author: hocki
  */
 
-#include <Arduino.h>
-
-#include "Logger.h"
-#include "Configuration.h"
-#include "Serialize.h"
-#include "Settings.hpp"
-
+#include "Global.h"
 #include "Display.h"
 
 

@@ -9,12 +9,7 @@
 
 #include <ESPNtpClient.h>
 
-#include "Logger.h"
-#include "Configuration.h"
-#include "Serialize.h"
-#include "Settings.hpp"
-
-#include "Timezone.h"
+#include "Global.h"
 
 #include "TimeManager.h"
 

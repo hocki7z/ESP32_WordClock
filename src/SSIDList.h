@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <Arduino.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -227,6 +229,3 @@ private:
         return !wDuplicateFound;
     }
 };
-
-/** @brief Shared list instance; access entries only through synchronized methods */
-extern SSIDList mSSIDList;
