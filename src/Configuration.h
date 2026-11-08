@@ -196,25 +196,6 @@ namespace ConfigNS
         /* WET  */  "Western European Time (DTS)",
     };
 
-    static constexpr const char* mcTimezoneNamesGerman[mcTimezoneItemsCount] = {
-        /* AEST */  "Australische Ostküstenzeit",
-        /* ACST */  "Australische Zentralzeit",
-        /* AFT  */  "Afghanistan-Zeit",
-        /* AKST */  "Alaska-Zeit (Sommerzeit)",
-        /* AST  */  "Atlantische Standardzeit",
-        /* CAT  */  "Zentralafrikanische Zeit",
-        /* CET  */  "Mitteleuropäische Zeit (Sommerzeit)",
-        /* CST  */  "Nordamerikanische Zentralzeit (Sommerzeit)",
-        /* EAT  */  "Ostafrikanische Zeit",
-        /* EET  */  "Osteuropäische Zeit (Sommerzeit)",
-        /* EST  */  "Nordamerikanische Ostküstenzeit (Sommerzeit)",
-        /* MSK  */  "Moskauer Standardzeit",
-        /* MST  */  "Rocky-Mountain-Zeit (Sommerzeit)",
-        /* PST  */  "Pazifische Zeit (Sommerzeit)",
-        /* WAT  */  "Westafrikanische Zeit",
-        /* WET  */  "Westeuropäische Zeit (Sommerzeit)",
-    };
-
     static constexpr const char* mcTimezones[mcTimezoneItemsCount] = {
         /* AEST */  "AEST-10",
         /* ACST */  "ACST-9:30",
