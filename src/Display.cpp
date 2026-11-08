@@ -43,10 +43,8 @@ static constexpr uint32_t mcFadeStepMs = 20;
 static constexpr uint32_t mcSaverFadeInMs   = 2000;
 static constexpr uint32_t mcSaverHoldMs     = 1000;
 static constexpr uint32_t mcSaverFadeOutMs  = 2000;
-/* Screen saver: random pause between two spawns and words per spawn */
-static constexpr uint32_t mcSaverSpawnMinMs = 300;
-static constexpr uint32_t mcSaverSpawnMaxMs = 1500;
-static constexpr uint8_t  mcSaverSpawnMaxWords = 2;
+/* Screen saver: fixed delay before the next word starts fading in */
+static constexpr uint32_t mcSaverSpawnMs    = 1000;
 /* Screen saver: delay between two animation steps */
 static constexpr uint32_t mcSaverStepMs     = 20;
 
@@ -439,14 +437,8 @@ void Display::ScreenSaverStep(void)
 
     if (static_cast<int32_t>(wNow - mSaverNextSpawn) >= 0)
     {
-        const uint8_t wCount = random(1, mcSaverSpawnMaxWords + 1);
-
-        for (uint8_t wI = 0; wI < wCount; wI++)
-        {
-            SpawnSaverWord(wNow);
-        }
-
-        mSaverNextSpawn = wNow + random(mcSaverSpawnMinMs, mcSaverSpawnMaxMs + 1);
+        SpawnSaverWord(wNow);
+        mSaverNextSpawn = wNow + mcSaverSpawnMs;
     }
 
     Clear();
