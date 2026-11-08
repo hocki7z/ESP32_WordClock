@@ -348,6 +348,9 @@ void WiFiManager::ProcessState(const WiFiEvent_t aEvent)
                     LOG(LOG_DEBUG, "WiFiManager::ProcessState() Event got IP from connected wifi router %s",
                             WiFi.localIP().toString().c_str());
 
+                    /* Notify */
+                    SendMessage(MessageNS::tMessageId::MSG_EVENT_WIFI_STA_GOT_IP);
+
                     if (IsInternetAvailable())
                     {
                         LOG(LOG_DEBUG, "WiFiManager::ProcessState() We are online");
@@ -504,6 +507,10 @@ void WiFiManager::SendMessage(MessageNS::tMessageId wMessageId)
 
     /* Send message to the web manager */
     wMessage.mDestination = MessageNS::tAddress::WEB_MANAGER;
+    Task::SendMessage(wMessage);
+
+    /* Send message to the display manager */
+    wMessage.mDestination = MessageNS::tAddress::DISPLAY_MANAGER;
     Task::SendMessage(wMessage);
 }
 

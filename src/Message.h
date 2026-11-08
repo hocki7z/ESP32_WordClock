@@ -54,6 +54,7 @@ namespace MessageNS
         MGS_EVENT_WIFI_EVENT_TRIGGERED,     // Payload: 1 byte  - WiFiEvent_t
         MSG_EVENT_WIFI_STA_CONNECTED,       // No payload
         MSG_EVENT_WIFI_STA_DISCONNECTED,    // No payload
+        MSG_EVENT_WIFI_STA_GOT_IP,          // No payload
         MSG_EVENT_WIFI_AP_STARTED,          // No payload
         MSG_EVENT_WIFI_AP_STOPPED,          // No payload
         MSG_EVENT_WIFI_INTERNET_AVAILABLE,  // No payload

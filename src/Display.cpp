@@ -5,8 +5,11 @@
  *      Author: hocki
  */
 
+#include <WiFi.h>
+
 #include "Global.h"
 #include "Display.h"
+#include "Font5x7.h"
 
 
 /* Log level for this module */
@@ -18,6 +21,17 @@ static constexpr uint32_t mcUpdateDelay = 10;
 
 /* Intro color */
 static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
+
+/* Duration of the intro before the startup text is scrolled */
+static constexpr uint32_t mcIntroDelayMs = 3000;
+/* Delay between two scroll steps (one matrix column) */
+static constexpr uint32_t mcScrollStepMs = 70;
+/* Scrolling text color */
+static constexpr tColor mScrollTextColor = mIntroColor;
+/* Top row of the scrolling text (vertically centered) */
+static constexpr uint8_t mcScrollTextRow = (MATRIX_HEIGHT - Font5x7NS::mGlyphHeight) / 2;
+/* Width of one character including spacing */
+static constexpr int32_t mcScrollCharWidth = Font5x7NS::mGlyphWidth + Font5x7NS::mGlyphSpacing;
 
 
 /**
@@ -34,13 +48,35 @@ Display::Display(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 Display::~Display()
 {
-    // do nothing
+    if (mpIntroTimer)
+    {
+        mpIntroTimer->stop();
+        delete mpIntroTimer;
+        mpIntroTimer = nullptr;
+    }
+
+    if (mpScrollTimer)
+    {
+        mpScrollTimer->stop();
+        delete mpScrollTimer;
+        mpScrollTimer = nullptr;
+    }
 }
 
 void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
+
+    /* Create intro (one-shot) and scroll (periodic) timers */
+    mTimerObjects.mTaskHandle = this->getTaskHandle();
+    mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
+
+    mpIntroTimer = new ApplicationNS::TaskTimer(mIntroTimerId, pdMS_TO_TICKS(mcIntroDelayMs), false);
+    mpIntroTimer->Init(&mTimerObjects);
+
+    mpScrollTimer = new ApplicationNS::TaskTimer(mScrollTimerId, pdMS_TO_TICKS(mcScrollStepMs), true);
+    mpScrollTimer->Init(&mTimerObjects);
 
     /* Initialize FastLED */
     // Initialize LEDs
@@ -60,10 +96,37 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Prepare display scene */
     mDisplayScene.Clear();
     /* Display intro */
-    PaintWord(WORD_WORDCLOCK, mIntroColor & COLOR_RGB_MASK);
+    ShowIntro();
+}
 
-    /* Show new data on the LED matrix */
-    FastLED.show();
+void Display::task(void)
+{
+    /* Start intro delay */
+    mState = STATE_INTRO;
+    mpIntroTimer->start();
+
+    /* Execute base class task */
+    ApplicationNS::Task::task();
+}
+
+void Display::ProcessTimerEvent(const uint32_t aTimerId)
+{
+    switch (aTimerId)
+    {
+        case mIntroTimerId:
+            LOG(LOG_DEBUG, "Display::ProcessTimerEvent() Intro delay elapsed");
+            mIntroElapsed = true;
+            TryStartScrollText();
+            break;
+
+        case mScrollTimerId:
+            ScrollTextStep();
+            break;
+
+        default:
+            LOG(LOG_ERROR, "Display::ProcessTimerEvent() Unknown timer ID %08X", aTimerId);
+            break;
+    }
 }
 
 void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -80,12 +143,16 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             {
                 /* Store new date and time */
                 mDateTime = DateTimeNS::DwordToDateTime(wDword);
+                mDateTimeValid = true;
 
                 LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Datetime changed: " PRINTF_DATETIME_PATTERN,
                         PRINTF_DATETIME_FORMAT(mDateTime));
 
-                /* Update display */
-                UpdateDisplay();
+                /* Update display (time is shown only after the startup sequence) */
+                if (mState == STATE_TIME)
+                {
+                    UpdateDisplay();
+                }
             }
         }
             break;
@@ -96,13 +163,151 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Settings changed");
 
             /* Update display */
-            UpdateDisplay();
+            if ((mState == STATE_TIME) && mDateTimeValid)
+            {
+                UpdateDisplay();
+            }
         }
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_WIFI_STA_GOT_IP:
+            if (!mStartupTextDone)
+            {
+                SetScrollText(String("IP ") + WiFi.localIP().toString());
+            }
+            break;
+
+        case MessageNS::tMessageId::MSG_EVENT_WIFI_AP_STARTED:
+            if (!mStartupTextDone)
+            {
+                SetScrollText(String("AP ") + WiFi.softAPIP().toString());
+            }
             break;
 
         default:
             // do nothing
             break;
+    }
+}
+
+/**
+ * @brief Shows the intro word on an otherwise dark matrix.
+ */
+void Display::ShowIntro(void)
+{
+    Clear();
+    PaintWord(WORD_WORDCLOCK, mIntroColor & COLOR_RGB_MASK);
+
+    /* Show new data on the LED matrix */
+    FastLED.show();
+}
+
+/**
+ * @brief Sets the text to be scrolled and starts scrolling when possible.
+ *
+ * @param arText The text to scroll.
+ */
+void Display::SetScrollText(const String& arText)
+{
+    LOG(LOG_DEBUG, "Display::SetScrollText() '%s'", arText.c_str());
+
+    mScrollText = arText;
+    TryStartScrollText();
+}
+
+/**
+ * @brief Starts scrolling the pending text once the intro delay has elapsed.
+ */
+void Display::TryStartScrollText(void)
+{
+    if ((mState == STATE_INTRO) && mIntroElapsed && (mScrollText.length() > 0))
+    {
+        /* Start with the text just outside the right matrix edge */
+        mScrollOffset = -static_cast<int32_t>(MATRIX_WIDTH);
+        mState = STATE_SCROLL_TEXT;
+
+        ScrollTextStep();
+        mpScrollTimer->start();
+    }
+}
+
+/**
+ * @brief Renders one scroll frame and advances the text by one column.
+ */
+void Display::ScrollTextStep(void)
+{
+    if (mState != STATE_SCROLL_TEXT)
+    {
+        return;
+    }
+
+    const int32_t wTextLength = static_cast<int32_t>(mScrollText.length());
+    const int32_t wTextWidth  = wTextLength * mcScrollCharWidth;
+
+    /* Text has completely left the matrix */
+    if (mScrollOffset > wTextWidth)
+    {
+        FinishScrollText();
+        return;
+    }
+
+    BitMatrix wTextMask(MATRIX_WIDTH, MATRIX_HEIGHT);
+
+    for (uint16_t wCol = 0; wCol < MATRIX_WIDTH; wCol++)
+    {
+        const int32_t wTextCol = mScrollOffset + wCol;
+
+        if ((wTextCol >= 0) && (wTextCol < wTextWidth))
+        {
+            const int32_t wCharIndex = wTextCol / mcScrollCharWidth;
+            const int32_t wGlyphCol  = wTextCol % mcScrollCharWidth;
+
+            if (wGlyphCol < Font5x7NS::mGlyphWidth)
+            {
+                const uint8_t wBits = Font5x7NS::GetGlyph(mScrollText[wCharIndex])[wGlyphCol];
+
+                for (uint8_t wRow = 0; wRow < Font5x7NS::mGlyphHeight; wRow++)
+                {
+                    if ((wBits & (1U << wRow)) != 0)
+                    {
+                        wTextMask.SetBit(mcScrollTextRow + wRow, wCol);
+                    }
+                }
+            }
+        }
+    }
+
+    /* Match the logical LED mask to the physical layout (zigzag order) */
+    wTextMask.SetZigzagOrder(true);
+
+    Clear();
+    SetLedColor(wTextMask, CRGB(mScrollTextColor & COLOR_RGB_MASK));
+    FastLED.show();
+
+    mScrollOffset++;
+}
+
+/**
+ * @brief Ends scrolling and switches to the time display.
+ */
+void Display::FinishScrollText(void)
+{
+    mpScrollTimer->stop();
+
+    mScrollText = "";
+    mStartupTextDone = true;
+    mState = STATE_TIME;
+
+    LOG(LOG_DEBUG, "Display::FinishScrollText() Switching to time display");
+
+    if (mDateTimeValid)
+    {
+        UpdateDisplay(true);
+    }
+    else
+    {
+        /* No time received yet (e.g. AP mode): keep intro until the first time update */
+        ShowIntro();
     }
 }
 
@@ -130,15 +335,17 @@ void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
 
 /**
  * @brief Updates the LED matrix display with the current scene.
+ *
+ * @param aForceRepaint Repaint the LEDs even if the scene is unchanged.
  */
-void Display::UpdateDisplay(void)
+void Display::UpdateDisplay(const bool aForceRepaint)
 {
     /* LOG */
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
     /* Prepare time scene */
-    bool wUpdated = DisplayTimeScene();
+    bool wUpdated = DisplayTimeScene(aForceRepaint);
 
     /* Display scene changed */
     if (wUpdated)
@@ -162,8 +369,10 @@ void Display::UpdateDisplay(void)
  * @details Reads display settings, creates the word groups for the current
  *          time, optionally logs the scene, then renders each enabled group
  *          using its configured color.
+ *
+ * @param aForceRepaint Repaint the LEDs even if the scene is unchanged.
  */
-bool Display::DisplayTimeScene(void)
+bool Display::DisplayTimeScene(const bool aForceRepaint)
 {
     bool wUpdated = false;
 
@@ -283,7 +492,7 @@ bool Display::DisplayTimeScene(void)
     }
 
     /* Store the display scene snapshot for the web UI */
-    wUpdated = mDisplaySceneSnapshot.Store(mDisplayScene);
+    wUpdated = mDisplaySceneSnapshot.Store(mDisplayScene) || aForceRepaint;
 
     if (wUpdated)
     {
