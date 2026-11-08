@@ -1,13 +1,10 @@
 (() => {
     function addFirmwareUploader() {
-        const settings = document.getElementById('settings');
-        if (!settings) return;
+        const heading = Array.from(document.querySelectorAll('.card h5')).find(element =>
+            ['Firmware Update', 'Firmware-Update'].includes(element.textContent.trim())
+        );
+        const card = heading && heading.closest('.card');
 
-        const card = Array.from(settings.children).find(element => {
-            if (!element.classList.contains('card')) return false;
-            const heading = element.querySelector('h5');
-            return heading && heading.textContent.trim() === 'Firmware Update';
-        });
         if (!card || document.getElementById('wordclock-ota-uploader')) return;
 
         const panel = document.createElement('div');
