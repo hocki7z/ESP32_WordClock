@@ -92,6 +92,7 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayClockMode             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x00);
     static const SettingsNS::tKey  mKeyDisplayClockItIs             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x01);
     static const SettingsNS::tKey  mKeyDisplayClockSingleMins       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x02);
+    static const SettingsNS::tKey  mKeyDisplayStartupText           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x03);
     //
     static const SettingsNS::tKey  mKeyDisplayColorTime             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x10);
     static const SettingsNS::tKey  mKeyDisplayColorBkgd             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x11);
@@ -124,6 +125,7 @@ namespace ConfigNS
     /* Default values for display settings */
     static constexpr bool     mDefaultDisplayClockItIs              = true;         // Show "It is" in the display
     static constexpr bool     mDefaultDisplayClockSingleMins        = true;         // Show single minutes in the display
+    static constexpr bool     mDefaultDisplayStartupText            = true;         // Scroll IP address after the intro
     static constexpr uint32_t mDefaultDisplayColorTime              = 0x00FF00;     // Green
     static constexpr uint32_t mDefaultDisplayColorTimeNight         = 0xFFA500;     // FastLED CRGB::Orange
     static constexpr uint32_t mDefaultDisplayColorBkgd              = 0x000000;     // Black

@@ -592,6 +592,11 @@ void WebSite::InitWebUIControls(void)
     mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
+    /* Switch for scrolling IP address at startup */
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show IP address at startup");
+    mWebUIControlID.mDisplayStartupText = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayStartupText, ConfigNS::mDefaultDisplayStartupText);
+
 
     /**
      * Tab LED Display / Group Color

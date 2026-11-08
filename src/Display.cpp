@@ -116,7 +116,16 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
         case mIntroTimerId:
             LOG(LOG_DEBUG, "Display::ProcessTimerEvent() Intro delay elapsed");
             mIntroElapsed = true;
-            TryStartScrollText();
+
+            if (Settings.GetValue<bool>(ConfigNS::mKeyDisplayStartupText, ConfigNS::mDefaultDisplayStartupText))
+            {
+                TryStartScrollText();
+            }
+            else
+            {
+                /* Startup text disabled: go directly to time display */
+                FinishScrollText();
+            }
             break;
 
         case mScrollTimerId:
