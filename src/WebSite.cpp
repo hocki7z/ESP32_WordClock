@@ -726,6 +726,18 @@ void WebSite::InitWebUIControls(void)
      * Tab Settings / Firmware Update Group
      */
     mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    AddLabelControl("", mWebUIControlID.mFirmwareUpdateGroup, "display:block;width:100%;",
+        "<form action='/update' method='post' enctype='multipart/form-data' target='ota-response' "
+        "style='display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;'>"
+        "<label style='display:block;width:100%;font-weight:300;'>Firmware image (.bin)"
+        "<input type='file' name='firmware' accept='.bin,application/octet-stream' required "
+        "style='display:block;width:100%;margin:6px 0;box-sizing:border-box;'></label>"
+        "<button type='submit' style='width:100%;margin:3px 0;box-sizing:border-box;'>"
+        "Upload and install</button>"
+        "<p style='margin:0;font-size:.9em;font-weight:300;'>"
+        "The device validates the image and restarts after accepting the update.</p></form>"
+        "<iframe name='ota-response' title='Firmware update status' "
+        "style='display:block;width:100%;height:54px;margin-top:8px;border:1px solid #808080;'></iframe>");
 
     /* Update the system information displayed on the web UI */
     UpdateSystemInfo();
@@ -754,9 +766,6 @@ void WebSite::StartWebServer(bool aIsWifiAPMode)
 
     /* Update WiFi settings controls */
     UpdateWiFiSettingsControls();
-
-    /* Set custom JavaScript for OTA update handling */
-    ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
 
     /* Start WEB UI */
     ESPUI.begin("Wordclock");

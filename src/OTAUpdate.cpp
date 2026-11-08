@@ -17,7 +17,6 @@
 #include "Global.h"
 #include "ProductInfo.h"
 
-#include "OTAUpdateCustomJs.h"      // Generated during the build
 #include "OTAUpdate.h"
 
 
@@ -343,21 +342,6 @@ static void HandleOtaUpload(AsyncWebServerRequest* apRequest, const String& arFi
             ? OtaUploadStatus::ReadyToBoot
             : OtaUploadStatus::Failed;
     }
-}
-
-/** @brief Return the custom JavaScript injected into the ESPUI page.
- *
- * @details
- * This function returns a pointer to the custom JavaScript code
- * that is injected into the ESPUI page for OTA update functionality.
- * The JavaScript code is generated during the build process and is
- * stored in the OTAUpdateCustomJs.h header file.
- *
- * @return A pointer to the custom JavaScript code as a null-terminated string.
-*/
-const char* CustomJavaScript(void)
-{
-    return OTAUpdateAssets::kCustomJavaScript;  // Return the generated JavaScript code
 }
 
 /** @brief Register OTA endpoints on the web server already started by ESPUI.
