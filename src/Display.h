@@ -49,18 +49,32 @@ private:
         STATE_INTRO,            // Intro is shown, waiting for intro delay and startup text
         STATE_SCROLL_TEXT,      // Text is scrolling
         STATE_TIME,             // Time is displayed
+        STATE_SCREEN_SAVER,     // Random words fade in/out
     };
+
+    /** @brief Word shown by the screen saver */
+    struct tSaverWord
+    {
+        tWord    mWord  = 0;    // 0 (WORD_END_OF_WORDS) = slot free
+        CRGB     mColor;
+        uint32_t mStart = 0;
+    };
+
+    /* Maximum number of words shown at once by the screen saver */
+    static constexpr uint8_t mcSaverMaxWords = 8;
 
     /* Timer IDs */
     static constexpr uint32_t mIntroTimerId  = 0x01;
     static constexpr uint32_t mScrollTimerId = 0x02;
     static constexpr uint32_t mFadeTimerId   = 0x03;
+    static constexpr uint32_t mSaverTimerId  = 0x04;
 
     /* Timers */
     ApplicationNS::tTaskTimerObjects mTimerObjects;
     ApplicationNS::TaskTimer* mpIntroTimer  = nullptr;
     ApplicationNS::TaskTimer* mpScrollTimer = nullptr;
     ApplicationNS::TaskTimer* mpFadeTimer   = nullptr;
+    ApplicationNS::TaskTimer* mpSaverTimer  = nullptr;
 
     /* Current display state */
     tDisplayState mState = STATE_INTRO;
@@ -90,6 +104,10 @@ private:
     /* LEDs of the word groups (old and new) that fade out to background and in again */
     BitMatrix mFadeMask{MATRIX_WIDTH, MATRIX_HEIGHT};
 
+    /* Screen saver words and time of the next word spawn */
+    tSaverWord mSaverWords[mcSaverMaxWords];
+    uint32_t   mSaverNextSpawn = 0;
+
     /* Display scene */
     DisplayScene mDisplayScene;
 
@@ -108,6 +126,12 @@ private:
     void TryStartScrollText(void);
     void ScrollTextStep(void);
     void FinishScrollText(void);
+
+    void StartScreenSaver(void);
+    void StopScreenSaver(void);
+    void ScreenSaverStep(void);
+    void SpawnSaverWord(const uint32_t aNow);
+    bool IsSaverWordFree(const tWord aWord) const;
 
     void Clear(void);
     void Fill(const CRGB aColor, const uint8_t aBrightness=100);

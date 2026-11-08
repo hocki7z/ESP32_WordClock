@@ -39,6 +39,17 @@ static constexpr uint32_t mcFadeInMs   = 2000;
 /* Delay between two fade steps */
 static constexpr uint32_t mcFadeStepMs = 20;
 
+/* Screen saver: word fade in, hold and fade out durations */
+static constexpr uint32_t mcSaverFadeInMs   = 2000;
+static constexpr uint32_t mcSaverHoldMs     = 1000;
+static constexpr uint32_t mcSaverFadeOutMs  = 2000;
+/* Screen saver: random pause between two spawns and words per spawn */
+static constexpr uint32_t mcSaverSpawnMinMs = 300;
+static constexpr uint32_t mcSaverSpawnMaxMs = 1500;
+static constexpr uint8_t  mcSaverSpawnMaxWords = 2;
+/* Screen saver: delay between two animation steps */
+static constexpr uint32_t mcSaverStepMs     = 20;
+
 
 /**
  * @brief Constructor
@@ -74,6 +85,13 @@ Display::~Display()
         delete mpFadeTimer;
         mpFadeTimer = nullptr;
     }
+
+    if (mpSaverTimer)
+    {
+        mpSaverTimer->stop();
+        delete mpSaverTimer;
+        mpSaverTimer = nullptr;
+    }
 }
 
 void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -93,6 +111,9 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     mpFadeTimer = new ApplicationNS::TaskTimer(mFadeTimerId, pdMS_TO_TICKS(mcFadeStepMs), true);
     mpFadeTimer->Init(&mTimerObjects);
+
+    mpSaverTimer = new ApplicationNS::TaskTimer(mSaverTimerId, pdMS_TO_TICKS(mcSaverStepMs), true);
+    mpSaverTimer->Init(&mTimerObjects);
 
     /* Initialize FastLED */
     // Initialize LEDs
@@ -152,6 +173,10 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
             FadeStep();
             break;
 
+        case mSaverTimerId:
+            ScreenSaverStep();
+            break;
+
         default:
             LOG(LOG_ERROR, "Display::ProcessTimerEvent() Unknown timer ID %08X", aTimerId);
             break;
@@ -192,7 +217,18 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Settings changed");
 
             /* Update display */
-            if ((mState == STATE_TIME) && mDateTimeValid)
+            const bool wScreenSaver = Settings.GetValue<bool>(
+                    ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver);
+
+            if (wScreenSaver && (mState == STATE_TIME))
+            {
+                StartScreenSaver();
+            }
+            else if (!wScreenSaver && (mState == STATE_SCREEN_SAVER))
+            {
+                StopScreenSaver();
+            }
+            else if ((mState == STATE_TIME) && mDateTimeValid)
             {
                 UpdateDisplay();
             }
@@ -329,7 +365,11 @@ void Display::FinishScrollText(void)
 
     LOG(LOG_DEBUG, "Display::FinishScrollText() Switching to time display");
 
-    if (mDateTimeValid)
+    if (Settings.GetValue<bool>(ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver))
+    {
+        StartScreenSaver();
+    }
+    else if (mDateTimeValid)
     {
         UpdateDisplay(true, true);
     }
@@ -338,6 +378,174 @@ void Display::FinishScrollText(void)
         /* No time received yet (e.g. AP mode): keep intro until the first time update */
         ShowIntro();
     }
+}
+
+/**
+ * @brief Starts the screen saver from a black screen.
+ */
+void Display::StartScreenSaver(void)
+{
+    LOG(LOG_DEBUG, "Display::StartScreenSaver()");
+
+    StopFade();
+    mState = STATE_SCREEN_SAVER;
+
+    for (tSaverWord& wSlot : mSaverWords)
+    {
+        wSlot.mWord = WORD_END_OF_WORDS;
+    }
+
+    Clear();
+    FastLED.show();
+
+    mSaverNextSpawn = millis();
+    mpSaverTimer->start();
+}
+
+/**
+ * @brief Stops the screen saver and fades the time in from a black screen.
+ */
+void Display::StopScreenSaver(void)
+{
+    LOG(LOG_DEBUG, "Display::StopScreenSaver()");
+
+    mpSaverTimer->stop();
+    mState = STATE_TIME;
+
+    /* Empty scene makes UpdateDisplay() fade in all parts from black */
+    mDisplayScene.Clear();
+
+    if (mDateTimeValid)
+    {
+        UpdateDisplay(true, true);
+    }
+    else
+    {
+        ShowIntro();
+    }
+}
+
+/**
+ * @brief Renders one screen saver frame and spawns new random words when due.
+ */
+void Display::ScreenSaverStep(void)
+{
+    if (mState != STATE_SCREEN_SAVER)
+    {
+        return;
+    }
+
+    const uint32_t wNow = millis();
+
+    if (static_cast<int32_t>(wNow - mSaverNextSpawn) >= 0)
+    {
+        const uint8_t wCount = random(1, mcSaverSpawnMaxWords + 1);
+
+        for (uint8_t wI = 0; wI < wCount; wI++)
+        {
+            SpawnSaverWord(wNow);
+        }
+
+        mSaverNextSpawn = wNow + random(mcSaverSpawnMinMs, mcSaverSpawnMaxMs + 1);
+    }
+
+    Clear();
+
+    for (tSaverWord& wSlot : mSaverWords)
+    {
+        if (wSlot.mWord == WORD_END_OF_WORDS)
+        {
+            continue;
+        }
+
+        const uint32_t wElapsed = wNow - wSlot.mStart;
+        uint8_t wAmount;
+
+        if (wElapsed < mcSaverFadeInMs)
+        {
+            wAmount = static_cast<uint8_t>((wElapsed * 255U) / mcSaverFadeInMs);
+        }
+        else if (wElapsed < (mcSaverFadeInMs + mcSaverHoldMs))
+        {
+            wAmount = 255;
+        }
+        else if (wElapsed < (mcSaverFadeInMs + mcSaverHoldMs + mcSaverFadeOutMs))
+        {
+            wAmount = 255 - static_cast<uint8_t>(((wElapsed - mcSaverFadeInMs - mcSaverHoldMs) * 255U) / mcSaverFadeOutMs);
+        }
+        else
+        {
+            wSlot.mWord = WORD_END_OF_WORDS;
+            continue;
+        }
+
+        CRGB wColor = wSlot.mColor;
+        wColor.nscale8(wAmount);
+
+        /* Direct LED indexing; even rows are mirrored like BitMatrix::SetZigzagOrder(true) */
+        const tWordData& wData = mcWordDataArray[wSlot.mWord];
+        for (uint8_t wC = wData.mColumn; wC < (wData.mColumn + wData.mLength); wC++)
+        {
+            const uint8_t wCol = ((wData.mRow % 2) == 0) ? (MATRIX_WIDTH - 1 - wC) : wC;
+            SetLedColor(static_cast<uint16_t>(wData.mRow * MATRIX_WIDTH + wCol), wColor);
+        }
+    }
+
+    FastLED.show();
+}
+
+/**
+ * @brief Places a random, non-overlapping word with a random color into a free slot.
+ *
+ * @param aNow Start time of the word's fade in.
+ */
+void Display::SpawnSaverWord(const uint32_t aNow)
+{
+    for (tSaverWord& wSlot : mSaverWords)
+    {
+        if (wSlot.mWord == WORD_END_OF_WORDS)
+        {
+            /* A few attempts to find a word not overlapping the visible ones */
+            for (uint8_t wTry = 0; wTry < 10; wTry++)
+            {
+                const tWord wWord = static_cast<tWord>(random(WORD_END_OF_WORDS + 1, WORD_MAX_NUMBER));
+
+                if (IsSaverWordFree(wWord))
+                {
+                    wSlot.mWord  = wWord;
+                    wSlot.mColor = CHSV(random8(), 255, 255);
+                    wSlot.mStart = aNow;
+                    break;
+                }
+            }
+            return;
+        }
+    }
+}
+
+/**
+ * @brief Checks that a word does not share LEDs with any visible screen saver word.
+ */
+bool Display::IsSaverWordFree(const tWord aWord) const
+{
+    const tWordData& wData = mcWordDataArray[aWord];
+
+    for (const tSaverWord& wSlot : mSaverWords)
+    {
+        if (wSlot.mWord != WORD_END_OF_WORDS)
+        {
+            const tWordData& wOther = mcWordDataArray[wSlot.mWord];
+
+            if ((wOther.mRow == wData.mRow) &&
+                (wData.mColumn  < (wOther.mColumn + wOther.mLength)) &&
+                (wOther.mColumn < (wData.mColumn  + wData.mLength)))
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 /**

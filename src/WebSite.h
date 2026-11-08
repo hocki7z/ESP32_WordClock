@@ -119,6 +119,7 @@ private:
         Control::ControlId_t mDisplayClockItIs;
         Control::ControlId_t mDisplayClockSingleMinutes;
         Control::ControlId_t mDisplayStartupText;
+        Control::ControlId_t mDisplayScreenSaver;
         //
         Control::ControlId_t mLedDisplayColorGroup;
         Control::ControlId_t mDisplayColorTime;

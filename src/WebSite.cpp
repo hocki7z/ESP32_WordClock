@@ -597,6 +597,11 @@ void WebSite::InitWebUIControls(void)
     mWebUIControlID.mDisplayStartupText = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayStartupText, ConfigNS::mDefaultDisplayStartupText);
 
+    /* Switch for screen saver */
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Screen saver");
+    mWebUIControlID.mDisplayScreenSaver = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver);
+
 
     /**
      * Tab LED Display / Group Color
