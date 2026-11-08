@@ -196,6 +196,9 @@ private:
     /** @brief SSID labels for the bounded option pool */
     std::array<std::array<char, SSID_NAME_SIZE>, mcMaxSsidCount> mWifiSsidLabels{};
 
+    /** @brief Stable backing buffer for ESPUI's non-owning Wi-Fi forget-button text pointer */
+    std::array<char, SSID_NAME_SIZE + 32> mWifiForgetButtonLabel{};
+
     /** @brief Flag indicating if WiFi is in AP mode */
     bool mIsWifiAPMode = true;
 

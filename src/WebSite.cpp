@@ -759,10 +759,8 @@ void WebSite::InitWebUIControls(void)
 
     mWebUIControlID.mWifiScanButton = AddButtonControl("", GetLocalizedText("Search for WiFi", "WLAN suchen"), mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiScanButton);
-    RegisterLocalizedControl(mWebUIControlID.mWifiScanButton, "Search for WiFi", "WLAN suchen", true);
     mWebUIControlID.mWifiForgetButton = AddButtonControl("", GetLocalizedText("Forget network", "Netzwerk vergessen"), mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiForgetButton);
-    RegisterLocalizedControl(mWebUIControlID.mWifiForgetButton, "Forget network", "Netzwerk vergessen", true);
 
 
     /**
@@ -1512,14 +1510,14 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     ESPUI.updateLabel(mWebUIControlID.mWifiScanButton,
         GetLocalizedText("Search for WiFi", "WLAN suchen"));
 
-    /* Update forget network button label: "Forget network" or "Forget network <SSID>" if selected SSID is not valid */
-    String wLabel = GetLocalizedText("Forget network", "Netzwerk vergessen");
-    if (!mIsWifiAPMode && wCurrentSsid.IsValid())
-    {
-        wLabel += " ";
-        wLabel += wCurrentSsid.mSsid;
-    }
-    ESPUI.updateLabel(mWebUIControlID.mWifiForgetButton, wLabel);
+    /* Keep this text in stable storage; ESPUI retains the supplied char pointer. */
+    const char* wpForgetLabel = GetLocalizedText("Forget network", "Netzwerk vergessen");
+    const char* wpSsidSuffix = (!mIsWifiAPMode && wCurrentSsid.IsValid())
+        ? wCurrentSsid.mSsid
+        : "";
+    snprintf(mWifiForgetButtonLabel.data(), mWifiForgetButtonLabel.size(), "%s%s%s",
+        wpForgetLabel, (wpSsidSuffix[0] != '\0') ? " " : "", wpSsidSuffix);
+    ESPUI.updateLabel(mWebUIControlID.mWifiForgetButton, mWifiForgetButtonLabel.data());
 
     /* Enable/disable controls based on current state */
     ESPUI.setEnabled(mWebUIControlID.mWifiSSIDs,            true);
