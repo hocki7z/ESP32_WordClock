@@ -245,6 +245,18 @@ void WebSite::ProcessUnknownNotification(uint32_t aNotificationValue)
  */
 void WebSite::HandleControlEvent(const ControlEvent& arEvent)
 {
+    if (arEvent.mControlParam.mHandler == ControlHandler::LanguageSelect)
+    {
+        const uint8_t wSelectedLanguage = static_cast<uint8_t>(arEvent.mPayload.mParameter.mValue);
+        if (wSelectedLanguage <= static_cast<uint8_t>(Language::German))
+        {
+            mLanguage = static_cast<Language>(wSelectedLanguage);
+            Settings.SetValue<uint8_t>(ConfigNS::mKeyWebUiLanguage, wSelectedLanguage);
+            ApplyLanguage();
+        }
+        return;
+    }
+
     /* Flag to indicate whether to send a message or not */
     bool wSendMessage = false;  // default - false
 
@@ -488,7 +500,8 @@ void WebSite::HandleWiFiControlEvent(const ControlEvent& arEvent)
                 LOG(LOG_DEBUG, "WebSite::HandleControl() WiFi scan button pressed");
 
                 /* Update scan button label with ongoing status */
-                ESPUI.updateLabel(mWebUIControlID.mWifiScanButton, "WiFi scan ongoing, please wait...");
+                ESPUI.updateLabel(mWebUIControlID.mWifiScanButton,
+                    GetLocalizedText("WiFi scan ongoing, please wait...", "WLAN-Suche läuft, bitte warten..."));
 
                 /* Disable WiFi settings controls during scanning */
                 ESPUI.setEnabled(mWebUIControlID.mWifiSSIDs,            false);
@@ -548,6 +561,17 @@ void WebSite::HandleWiFiControlEvent(const ControlEvent& arEvent)
  */
 void WebSite::InitWebUIControls(void)
 {
+    const uint8_t wSavedLanguage = Settings.GetValue<uint8_t>(ConfigNS::mKeyWebUiLanguage,
+        static_cast<uint8_t>(Language::English));
+    mLanguage = (wSavedLanguage <= static_cast<uint8_t>(Language::German))
+        ? static_cast<Language>(wSavedLanguage)
+        : Language::English;
+    if (wSavedLanguage > static_cast<uint8_t>(Language::German))
+    {
+        Settings.SetValue<uint8_t>(ConfigNS::mKeyWebUiLanguage,
+            static_cast<uint8_t>(Language::English));
+    }
+
     /* ESPUI log mode - turn on/off verbose debugging */
     ESPUI.setVerbosity((LOG_LEVEL == LOG_VERBOSE) ? Verbosity::Verbose : Verbosity::Quiet);
 
@@ -556,15 +580,22 @@ void WebSite::InitWebUIControls(void)
 
 
     /* Add the tabs for the web UI */
-    mWebUIControlID.mOverViewTab   = ESPUI.addControl(Control::Type::Tab, "overview",    "Overview",    TAB_CONTROL_COLOR);
-    mWebUIControlID.mLedDisplayTab = ESPUI.addControl(Control::Type::Tab, "led-display", "LED Display", TAB_CONTROL_COLOR);
-    mWebUIControlID.mSettingsTab   = ESPUI.addControl(Control::Type::Tab, "settings",    "Settings",    TAB_CONTROL_COLOR);
+    mWebUIControlID.mOverViewTab = ESPUI.addControl(Control::Type::Tab, "overview",
+        GetLocalizedText("Overview", "Übersicht"), TAB_CONTROL_COLOR);
+    RegisterLocalizedControl(mWebUIControlID.mOverViewTab, "Overview", "Übersicht", false);
+    mWebUIControlID.mLedDisplayTab = ESPUI.addControl(Control::Type::Tab, "led-display",
+        GetLocalizedText("LED Display", "LED-Anzeige"), TAB_CONTROL_COLOR);
+    RegisterLocalizedControl(mWebUIControlID.mLedDisplayTab, "LED Display", "LED-Anzeige", false);
+    mWebUIControlID.mSettingsTab = ESPUI.addControl(Control::Type::Tab, "settings",
+        GetLocalizedText("Settings", "Einstellungen"), TAB_CONTROL_COLOR);
+    RegisterLocalizedControl(mWebUIControlID.mSettingsTab, "Settings", "Einstellungen", false);
 
 
     /**
      * Tab Overview / Group Preview
      */
-    mWebUIControlID.mPreviewGroup = AddGroupHelper("Preview", mWebUIControlID.mOverViewTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mPreviewGroup = AddLocalizedGroupHelper("Preview", "Vorschau",
+        mWebUIControlID.mOverViewTab, GROUP_CONTROL_COLOR);
 
     /* Live preview of the word-clock LED matrix */
     mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mPreviewGroup, CSS_STYLE_PREVIEW,
@@ -574,21 +605,24 @@ void WebSite::InitWebUIControls(void)
     /**
      * Tab LED Display / Group Display
      */
-    mWebUIControlID.mLedDisplayDisplayGroup = AddGroupHelper("Display", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mLedDisplayDisplayGroup = AddLocalizedGroupHelper("Display", "Anzeige",
+        mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
 
     /* Clock mode */
-    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Clock mode");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Clock mode", "Uhrmodus");
     mWebUIControlID.mDisplayClockMode = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
             mcClockModeItems, WORDCLOCK_MODE_NUMBER,
             ConfigNS::mKeyDisplayClockMode, mcDefaultDisplayClockMode);
 
     /* Switcher for 'IT IS' words */
-    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show 'IT IS'");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL,
+        "Show 'IT IS'", "'ES IST' anzeigen");
     mWebUIControlID.mDisplayClockItIs = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockItIs, ConfigNS::mDefaultDisplayClockItIs);
 
     /* Switch for single minutes */
-    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show single minutes");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL,
+        "Show single minutes", "Einzelne Minuten anzeigen");
     mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
@@ -596,12 +630,14 @@ void WebSite::InitWebUIControls(void)
     /**
      * Tab LED Display / Group Color
      */
-    mWebUIControlID.mLedDisplayColorGroup = AddGroupHelper("Colors", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mLedDisplayColorGroup = AddLocalizedGroupHelper("Colors", "Farben",
+        mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
 
     /* Day time and background colors */
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Day");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Day", "Tag");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time", "Zeit");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF,
+        "background", "Hintergrund");
 
     mWebUIControlID.mDisplayColorTime = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
         ConfigNS::mKeyDisplayColorTime, ConfigNS::mDefaultDisplayColorTime);
@@ -612,9 +648,10 @@ void WebSite::InitWebUIControls(void)
     AddSeparator(mWebUIControlID.mLedDisplayColorGroup);
 
     /* Night time and background colors */
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Night");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time");
-    AddLabelControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "background");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL, "Night", "Nacht");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "time", "Zeit");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_LABEL_LIGHTER_HALF,
+        "background", "Hintergrund");
 
     mWebUIControlID.mDisplayColorTimeNight = AddColorControl("", mWebUIControlID.mLedDisplayColorGroup, CSS_STYLE_INPUT_HALF_WIDTH,
         ConfigNS::mKeyDisplayColorTimeNight, ConfigNS::mDefaultDisplayColorTimeNight);
@@ -625,17 +662,21 @@ void WebSite::InitWebUIControls(void)
     /**
      * Tab LED Display / Group Brightness
      */
-    mWebUIControlID.mLedDisplayBrightnessGroup = AddGroupHelper("Brightness", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mLedDisplayBrightnessGroup = AddLocalizedGroupHelper("Brightness", "Helligkeit",
+        mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
 
     /* Switcher for day/night mode activation */
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH_LABEL, "Use day/night mode");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH_LABEL,
+        "Use day/night mode", "Tag-/Nachtmodus verwenden");
     mWebUIControlID.mDisplayUseDayNightMode = AddSwitcherControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayUseDayNightMode, ConfigNS::mDefaultDisplayUseDayNightMode);
 
     /* Time input for day mode start/end */
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day mode");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "start time");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF, "end time");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day mode", "Tagesmodus");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF,
+        "start time", "Startzeit");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER_HALF,
+        "end time", "Endzeit");
     mWebUIControlID.mDisplayDayModeStartTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
             ConfigNS::mKeyDisplayDayModeStartTime, ConfigNS::mDefaultDisplayDayModeStartTime);
     mWebUIControlID.mDisplayDayModeEndTime = AddTimeControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_INPUT_HALF_WIDTH,
@@ -644,21 +685,23 @@ void WebSite::InitWebUIControls(void)
     AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup, true); // Draw a line separator
 
     /* Sliders for day time/background brightness */
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day", "Tag");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time", "Zeit");
     mWebUIControlID.mDisplayBrightnessTime = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
         ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime);
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER,
+        "background", "Hintergrund");
     mWebUIControlID.mDisplayBrightnessBkgd = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
             ConfigNS::mKeyDisplayBrightnessBkgd, ConfigNS::mDefaultDisplayBrightnessBkgd);
 
     AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup);
 
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Night");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Night", "Nacht");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time", "Zeit");
     mWebUIControlID.mDisplayBrightnessTimeNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
         ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTimeNight);
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
+    AddLocalizedLabelControl(mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER,
+        "background", "Hintergrund");
     mWebUIControlID.mDisplayBrightnessBkgdNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
         ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
 
@@ -666,15 +709,24 @@ void WebSite::InitWebUIControls(void)
     /**
      * Tab Settings / Group Time
      */
-    mWebUIControlID.mSettingsTimeGroup = AddGroupHelper("Time", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mSettingsLanguageGroup = AddLocalizedGroupHelper("General", "Allgemein",
+        mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    AddLocalizedLabelControl(mWebUIControlID.mSettingsLanguageGroup, CSS_STYLE_LABEL, "Language", "Sprache");
+    static constexpr const char* wLanguageItems[] = {"English", "Deutsch"};
+    mWebUIControlID.mLanguageSelect = AddSelectControl("", mWebUIControlID.mSettingsLanguageGroup,
+        CSS_STYLE_INPUT, wLanguageItems, 2, ConfigNS::mKeyWebUiLanguage,
+        static_cast<uint8_t>(mLanguage), ControlHandler::LanguageSelect);
+
+    mWebUIControlID.mSettingsTimeGroup = AddLocalizedGroupHelper("Time", "Zeit",
+        mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
 
     /* NTP server selection */
-    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "NTP server");
+    AddLocalizedLabelControl(mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "NTP server", "NTP-Server");
     mWebUIControlID.mDatetimeNtpServer = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
             ConfigNS::mcNtpServerItems, ConfigNS::mcNtpServerItemsCount,
             ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
     /* Timezone selection */
-    AddLabelControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "Time zone");
+    AddLocalizedLabelControl(mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_LABEL, "Time zone", "Zeitzone");
     mWebUIControlID.mDatetimeTimeZone = AddSelectControl("", mWebUIControlID.mSettingsTimeGroup, CSS_STYLE_INPUT,
             ConfigNS::mcTimezoneNames, ConfigNS::mcTimezoneItemsCount,
             ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
@@ -683,35 +735,41 @@ void WebSite::InitWebUIControls(void)
     /**
      * Tab Settings / Group WiFi
      */
-    mWebUIControlID.mSettingsWiFiGroup = AddGroupHelper("WiFi Access Point Credentials", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mSettingsWiFiGroup = AddLocalizedGroupHelper("WiFi Access Point Credentials", "WLAN-Zugangsdaten",
+        mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
 
     /* WiFi settings controls here (e.g., SSID, password, etc.) */
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID");
+    AddLocalizedLabelControl(mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "SSID", "WLAN-Name (SSID)");
     mWebUIControlID.mWifiSSIDs = AddSelectControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT,
         nullptr, 0, ConfigNS::mInvalidKey, 0, ControlHandler::WifiSsidSelect);
 
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password");
+    AddLocalizedLabelControl(mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_LABEL, "Password", "Passwort");
     mWebUIControlID.mWifiPassword = AddPasswordControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_INPUT,
         ConfigNS::mInvalidKey, ControlHandler::WifiPassword);
 
-    AddLabelControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL, "Show/Hide Password");
+    AddLocalizedLabelControl(mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH_LABEL,
+        "Show/Hide Password", "Passwort anzeigen/ausblenden");
     mWebUIControlID.mWifiPasswordShowHide = AddSwitcherControl("", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_SWITCH,
         ConfigNS::mInvalidKey, false, ControlHandler::WifiPasswordShowHide);
 
     /* Add buttons for scanning WiFi networks and connecting to the selected network */
-    mWebUIControlID.mWifiConnectButton = AddButtonControl("", "Save & Connect", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+    mWebUIControlID.mWifiConnectButton = AddButtonControl("", GetLocalizedText("Save & Connect", "Speichern & verbinden"), mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiConnectButton);
+    RegisterLocalizedControl(mWebUIControlID.mWifiConnectButton, "Save & Connect", "Speichern & verbinden", true);
 
-    mWebUIControlID.mWifiScanButton = AddButtonControl("", "Search for WiFi", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+    mWebUIControlID.mWifiScanButton = AddButtonControl("", GetLocalizedText("Search for WiFi", "WLAN suchen"), mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiScanButton);
-    mWebUIControlID.mWifiForgetButton = AddButtonControl("", "Forget network", mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
+    RegisterLocalizedControl(mWebUIControlID.mWifiScanButton, "Search for WiFi", "WLAN suchen", true);
+    mWebUIControlID.mWifiForgetButton = AddButtonControl("", GetLocalizedText("Forget network", "Netzwerk vergessen"), mWebUIControlID.mSettingsWiFiGroup, CSS_STYLE_BUTTON,
         ControlHandler::WifiForgetButton);
+    RegisterLocalizedControl(mWebUIControlID.mWifiForgetButton, "Forget network", "Netzwerk vergessen", true);
 
 
     /**
      * Tab Settings / Group System Information
      */
-    mWebUIControlID.mSystemInfoGroup = AddGroupHelper("System Informations", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mSystemInfoGroup = AddLocalizedGroupHelper("System Information", "Systeminformationen",
+        mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
 
     mWebUIControlID.mProductInfoLabel = AddLabelControl("", mWebUIControlID.mSystemInfoGroup, CSS_STYLE_LABEL "display:block;white-space:normal",
         "");    // Placeholder for product information, will be updated in UpdateProductInfo()
@@ -725,7 +783,8 @@ void WebSite::InitWebUIControls(void)
     /**
      * Tab Settings / Firmware Update Group
      */
-    mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    mWebUIControlID.mFirmwareUpdateGroup = AddLocalizedGroupHelper("Firmware Update", "Firmware-Update",
+        mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
 
     /* Update the system information displayed on the web UI */
     UpdateSystemInfo();
@@ -799,6 +858,15 @@ Control::ControlId_t WebSite::AddGroupHelper(const char * apLabel, Control::Cont
     return wControlId;
 }
 
+Control::ControlId_t WebSite::AddLocalizedGroupHelper(const char* apEnglish, const char* apGerman,
+    Control::ControlId_t aParent, Control::Color aColor)
+{
+    const Control::ControlId_t wControlId = AddGroupHelper(
+        GetLocalizedText(apEnglish, apGerman), aParent, aColor);
+    RegisterLocalizedControl(wControlId, apEnglish, apGerman, false);
+    return wControlId;
+}
+
 /**
  * @brief Helper function to add a label control to the web UI
  * @param apLabel The label for the control
@@ -814,6 +882,45 @@ Control::ControlId_t WebSite::AddLabelControl(const char* apLabel, Control::Cont
     ESPUI.setElementStyle(wControlId, aElementStyle);
 
     return wControlId;
+}
+
+Control::ControlId_t WebSite::AddLocalizedLabelControl(Control::ControlId_t aParent, const char* aElementStyle,
+    const char* apEnglish, const char* apGerman)
+{
+    const Control::ControlId_t wControlId = AddLabelControl("", aParent, aElementStyle,
+        GetLocalizedText(apEnglish, apGerman));
+    RegisterLocalizedControl(wControlId, apEnglish, apGerman, true);
+    return wControlId;
+}
+
+const char* WebSite::GetLocalizedText(const char* apEnglish, const char* apGerman) const
+{
+    return (mLanguage == Language::German) ? apGerman : apEnglish;
+}
+
+void WebSite::RegisterLocalizedControl(Control::ControlId_t aControlId, const char* apEnglish,
+    const char* apGerman, bool aIsValue)
+{
+    mLocalizedControls.push_back({aControlId, apEnglish, apGerman, aIsValue});
+}
+
+void WebSite::ApplyLanguage(void)
+{
+    for (const tLocalizedControl& wControl : mLocalizedControls)
+    {
+        const char* wpText = GetLocalizedText(wControl.mpEnglish, wControl.mpGerman);
+        if (wControl.mIsValue)
+        {
+            ESPUI.updateLabel(wControl.mControlId, wpText);
+        }
+        else
+        {
+            ESPUI.updateControlLabel(wControl.mControlId, wpText);
+        }
+    }
+
+    UpdateWiFiSettingsControls();
+    UpdateSystemInfo(true);
 }
 
 /**
@@ -1030,7 +1137,17 @@ Control::ControlId_t WebSite::AddSelectControl(const char* apLabel, Control::Con
     {
         for (uint8_t wI = 0; wI < aItemsCount; wI++)
         {
-            ESPUI.addControl(Control::Type::Option, apItems[wI], static_cast<long>(wI), Control::Color::None, wControlId);
+            const bool wIsTimezoneSelect = (aSettingsKey == ConfigNS::mKeyTimeZone) &&
+                (wI < ConfigNS::mcTimezoneItemsCount);
+            const char* wpGermanLabel = wIsTimezoneSelect
+                ? ConfigNS::mcTimezoneNamesGerman[wI]
+                : apItems[wI];
+            const auto wOptionId = ESPUI.addControl(Control::Type::Option,
+                GetLocalizedText(apItems[wI], wpGermanLabel), static_cast<long>(wI), Control::Color::None, wControlId);
+            if (wIsTimezoneSelect)
+            {
+                RegisterLocalizedControl(wOptionId, apItems[wI], wpGermanLabel, false);
+            }
         }
     }
 
@@ -1392,10 +1509,11 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
     ESPUI.updateText(mWebUIControlID.mWifiPassword, wCurrentSsid.mPassword);
 
     /* Restore scan button label */
-    ESPUI.updateLabel(mWebUIControlID.mWifiScanButton, "Search for WiFi");
+    ESPUI.updateLabel(mWebUIControlID.mWifiScanButton,
+        GetLocalizedText("Search for WiFi", "WLAN suchen"));
 
     /* Update forget network button label: "Forget network" or "Forget network <SSID>" if selected SSID is not valid */
-    String wLabel = "Forget network";
+    String wLabel = GetLocalizedText("Forget network", "Netzwerk vergessen");
     if (!mIsWifiAPMode && wCurrentSsid.IsValid())
     {
         wLabel += " ";
@@ -1425,19 +1543,19 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
  * branch, and commit hash from the configuration and updates the corresponding controls
  * on the web UI. If any of the information is unavailable, default values are used.
  */
-void WebSite::UpdateSystemInfo(void)
+void WebSite::UpdateSystemInfo(bool aForceUpdate)
 {
     /* Update product information */
     {
         static bool wProductInfoInitialized = false;
 
-        if (!wProductInfoInitialized)
+        if (!wProductInfoInitialized || aForceUpdate)
         {
             /* Initialize product information on the web UI */
             wProductInfoInitialized = true;
 
-            String wSoftwareVersion = "Unknown";
-            String wBuildDateTime   = "Unavailable";
+            String wSoftwareVersion = GetLocalizedText("Unknown", "Unbekannt");
+            String wBuildDateTime   = GetLocalizedText("Unavailable", "Nicht verfügbar");
 
             /* Retrieve product information record */
             ProductInfoNS::Record wProductInfo = ProductInfoNS::GetProductInfoRecord();
@@ -1459,7 +1577,8 @@ void WebSite::UpdateSystemInfo(void)
             }
 
             const std::array<const char*, 2> wProductInfoNames = {
-                "Software version", "Build date/time"
+                GetLocalizedText("Software version", "Softwareversion"),
+                GetLocalizedText("Build date/time", "Build-Datum/-Uhrzeit")
             };
 
             /* Update the product information label on the web UI with the constructed HTML table */
@@ -1476,7 +1595,7 @@ void WebSite::UpdateSystemInfo(void)
 
         DateTimeNS::tUptime wUptime = DateTimeNS::GetUptime();
 
-        if ((!wRuntimeInitialized) ||
+        if (aForceUpdate || (!wRuntimeInitialized) ||
             ((wUptime.ToWord()         & MASK_UPTIME_WITHOUT_SECONDS) !=    // Ignore the six least-significant second bits
              (wPreviousUptime.ToWord() & MASK_UPTIME_WITHOUT_SECONDS)))     //  when comparing uptime words
         {
@@ -1485,22 +1604,39 @@ void WebSite::UpdateSystemInfo(void)
             /* Update previous uptime for future comparisons */
             wPreviousUptime = wUptime;
 
-            char wUptimeText[15]{};     // Longest output: '32767d 23h 59m' (14 characters plus NUL)
-            snprintf(wUptimeText, sizeof(wUptimeText), "%ud %02uh %02um",
-                static_cast<unsigned>(wUptime.wDays),
-                static_cast<unsigned>(wUptime.wHours),
+            char wUptimeText[24]{};
+            const char* wpUptimeFormat = (mLanguage == Language::German)
+                ? "%uT %02uStd %02uMin"
+                : "%ud %02uh %02um";
+            snprintf(wUptimeText, sizeof(wUptimeText), wpUptimeFormat,
+                static_cast<unsigned>(wUptime.wDays), static_cast<unsigned>(wUptime.wHours),
                 static_cast<unsigned>(wUptime.wMinutes));
 
-            String wRestartReason = RestartReasonNS::ToString(
-                                            RestartReasonNS::GetRestartReason());
+            const RestartReasonNS::Type wRestartReasonType = RestartReasonNS::GetRestartReason();
+            const char* wpRestartReason = RestartReasonNS::ToString(wRestartReasonType);
+            if (mLanguage == Language::German)
+            {
+                switch (wRestartReasonType)
+                {
+                    case RestartReasonNS::Type::Unknown:        wpRestartReason = "Unbekannt"; break;
+                    case RestartReasonNS::Type::PowerOn:        wpRestartReason = "Einschalten"; break;
+                    case RestartReasonNS::Type::Software:       wpRestartReason = "Softwareanforderung"; break;
+                    case RestartReasonNS::Type::Watchdog:       wpRestartReason = "Watchdog-Zeitüberschreitung"; break;
+                    case RestartReasonNS::Type::Panic:          wpRestartReason = "Panik"; break;
+                    case RestartReasonNS::Type::Brownout:       wpRestartReason = "Unterspannungserkennung"; break;
+                    case RestartReasonNS::Type::FirmwareUpdate: wpRestartReason = "Firmware-Update"; break;
+                    default:                                    wpRestartReason = "Ungültiger Grund"; break;
+                }
+            }
 
             const std::array<const char*, 2> wRuntimeInfoNames = {
-                "Runtime", "Restart reason"
+                GetLocalizedText("Runtime", "Laufzeit"),
+                GetLocalizedText("Restart reason", "Neustartgrund")
             };
 
             /* Update the runtime information label on the web UI. */
             ESPUI.updateLabel(mWebUIControlID.mRuntimeInfoLabel,
-                BuildHtmlTable(wRuntimeInfoNames, {wUptimeText, wRestartReason.c_str()}));
+                BuildHtmlTable(wRuntimeInfoNames, {wUptimeText, wpRestartReason}));
         }
     }
 
@@ -1526,21 +1662,21 @@ void WebSite::UpdateSystemInfo(void)
         };
 
         /* Reformat and update the device information only when a raw metric changes. */
-        if (!wDeviceInfoInitialized || (wDeviceMetrics != wPreviousDeviceMetrics))
+        if (aForceUpdate || !wDeviceInfoInitialized || (wDeviceMetrics != wPreviousDeviceMetrics))
         {
             wDeviceInfoInitialized = true;
 
             /* Update previous device metrics for future comparisons */
             wPreviousDeviceMetrics = wDeviceMetrics;
 
-            String wFlashUsage = "Unavailable";
+            String wFlashUsage = GetLocalizedText("Unavailable", "Nicht verfügbar");
             if (wPartitionSize > 0)
             {
                 /* Calculate flash usage percentage */
                 wFlashUsage = String(wSketchSize * 100.0f / wPartitionSize, 2) + "%";
             }
 
-            String wHeapUsage = "Unavailable";
+            String wHeapUsage = GetLocalizedText("Unavailable", "Nicht verfügbar");
             if ((wHeapSize > 0) && (wFreeHeap <= wHeapSize))
             {
                 /* Calculate heap usage percentage */
@@ -1553,7 +1689,10 @@ void WebSite::UpdateSystemInfo(void)
 
             const std::array<const char*, 4> wDeviceInfoNames = {
             // "Flash",            "Heap",           "Max block",        "Min free"
-                "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap"
+                GetLocalizedText("ESP Flash usage", "ESP-Flash-Auslastung"),
+                GetLocalizedText("ESP Heap usage", "ESP-Heap-Auslastung"),
+                GetLocalizedText("ESP MaxAllocHeap", "ESP maximaler Heap-Block"),
+                GetLocalizedText("ESP MinFreeHeap", "ESP minimaler freier Heap")
             };
 
             ESPUI.updateLabel(mWebUIControlID.mDeviceInfoLabel,
@@ -1660,6 +1799,7 @@ void WebSite::ControlCallback(BasicControl* apSender, int aType , void* apParam)
             /* Handle other control types that do not require additional data copying */
             case ControlHandler::Switcher:
             case ControlHandler::Select:
+            case ControlHandler::LanguageSelect:
             case ControlHandler::Slider:
             default:
                 // nothing to do here

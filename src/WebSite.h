@@ -9,6 +9,7 @@
 #include <Arduino.h>
 #include <array>
 #include <type_traits>
+#include <vector>
 
 #include <ESPUI.h>
 
@@ -45,6 +46,7 @@ private:
         Switcher,
         Select,
         Slider,
+        LanguageSelect,
 
         /* Special handlers for WiFi settings */
         WifiSsidSelect,
@@ -102,12 +104,30 @@ private:
     /** @brief Type alias for the control event queue */
     using ControlEventQueue = FreeRTOScpp::Queue<ControlEvent, mControlEventQueueLength>;
 
+    enum class Language : uint8_t
+    {
+        English = 0,
+        German = 1,
+    };
+
+    struct tLocalizedControl
+    {
+        Control::ControlId_t mControlId;
+        const char* mpEnglish;
+        const char* mpGerman;
+        bool mIsValue;
+    };
+
     struct tWebUIControlID
     {
         /* Top-level tabs */
         Control::ControlId_t mOverViewTab;
         Control::ControlId_t mLedDisplayTab;
         Control::ControlId_t mSettingsTab;
+
+        /* Settings language control */
+        Control::ControlId_t mSettingsLanguageGroup;
+        Control::ControlId_t mLanguageSelect;
 
         /* Overview tab controls */
         Control::ControlId_t mPreviewGroup;
@@ -164,6 +184,12 @@ private:
     /** @brief Web UI control IDs */
     tWebUIControlID mWebUIControlID;
 
+    /** @brief Current language used to create and update web UI labels */
+    Language mLanguage = Language::English;
+
+    /** @brief UI controls whose displayed text changes with the selected language */
+    std::vector<tLocalizedControl> mLocalizedControls;
+
     /** @brief Bounded option pool; labels must outlive ESPUI controls. */
     static constexpr size_t mcMaxSsidCount = 64;
 
@@ -201,8 +227,19 @@ private:
     Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None,
         const bool aExpandable = false, const bool aExpanded = false);
 
+    Control::ControlId_t AddLocalizedGroupHelper(const char* apEnglish, const char* apGerman,
+        Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None);
+
     Control::ControlId_t AddLabelControl(const char* apLabel, Control::ControlId_t aParent = Control::noParent, const char* aElementStyle = "",
         const String& arValue = emptyString);
+
+    Control::ControlId_t AddLocalizedLabelControl(Control::ControlId_t aParent, const char* aElementStyle,
+        const char* apEnglish, const char* apGerman);
+
+    const char* GetLocalizedText(const char* apEnglish, const char* apGerman) const;
+    void RegisterLocalizedControl(Control::ControlId_t aControlId, const char* apEnglish,
+        const char* apGerman, bool aIsValue);
+    void ApplyLanguage(void);
 
     Control::ControlId_t AddSeparator(Control::ControlId_t aParent, bool aDrawLine = false);
 
@@ -246,7 +283,7 @@ private:
     void UpdateDisplayPreview(const MessageNS::Message& arMessage);
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
-    void UpdateSystemInfo(void);
+    void UpdateSystemInfo(bool aForceUpdate = false);
 
     static void ControlCallback(BasicControl* apSender, int aType, void* apParam = nullptr);
 };

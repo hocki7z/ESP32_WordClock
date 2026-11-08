@@ -86,6 +86,8 @@ namespace ConfigNS
 
     /* One-shot flag marking the next reboot as a firmware update */
     static const SettingsNS::tKey mKeyPendingFirmwareUpdate         = SettingsNS::tKey(mParamsConfig, mApplicationGroup, 0x00);
+    /* Selected language for the web UI (0 = English, 1 = German) */
+    static const SettingsNS::tKey mKeyWebUiLanguage                = SettingsNS::tKey(mParamsConfig, mApplicationGroup, 0x01);
 
 
     /* Keys for display settings */
@@ -192,6 +194,25 @@ namespace ConfigNS
         /* PST  */  "Pacific Standard Time (DTS)",
         /* WAT  */  "West Africa Time",
         /* WET  */  "Western European Time (DTS)",
+    };
+
+    static constexpr const char* mcTimezoneNamesGerman[mcTimezoneItemsCount] = {
+        /* AEST */  "Australische Ostküstenzeit",
+        /* ACST */  "Australische Zentralzeit",
+        /* AFT  */  "Afghanistan-Zeit",
+        /* AKST */  "Alaska-Zeit (Sommerzeit)",
+        /* AST  */  "Atlantische Standardzeit",
+        /* CAT  */  "Zentralafrikanische Zeit",
+        /* CET  */  "Mitteleuropäische Zeit (Sommerzeit)",
+        /* CST  */  "Nordamerikanische Zentralzeit (Sommerzeit)",
+        /* EAT  */  "Ostafrikanische Zeit",
+        /* EET  */  "Osteuropäische Zeit (Sommerzeit)",
+        /* EST  */  "Nordamerikanische Ostküstenzeit (Sommerzeit)",
+        /* MSK  */  "Moskauer Standardzeit",
+        /* MST  */  "Rocky-Mountain-Zeit (Sommerzeit)",
+        /* PST  */  "Pazifische Zeit (Sommerzeit)",
+        /* WAT  */  "Westafrikanische Zeit",
+        /* WET  */  "Westeuropäische Zeit (Sommerzeit)",
     };
 
     static constexpr const char* mcTimezones[mcTimezoneItemsCount] = {
