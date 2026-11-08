@@ -756,7 +756,7 @@ void WebSite::StartWebServer(bool aIsWifiAPMode)
     UpdateWiFiSettingsControls();
 
     /* Set custom JavaScript for OTA update handling */
-    ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
+    ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript("de"));
 
     /* Start WEB UI */
     ESPUI.begin("Wordclock");

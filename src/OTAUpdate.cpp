@@ -50,6 +50,8 @@ static OtaUploadStatus mOtaStatus = OtaUploadStatus::Idle;
 static esp_err_t mOtaError = ESP_OK;
 /** @brief Reason for OTA failure */
 static String mOtaFailureReason;
+/** @brief Persistent custom JavaScript with the selected UI language prefix */
+static String mCustomJavaScript;
 
 
 /** @brief Abort the ongoing OTA upload.
@@ -355,9 +357,17 @@ static void HandleOtaUpload(AsyncWebServerRequest* apRequest, const String& arFi
  *
  * @return A pointer to the custom JavaScript code as a null-terminated string.
 */
-const char* CustomJavaScript(void)
+const char* CustomJavaScript(const char* language)
 {
-    return OTAUpdateAssets::kCustomJavaScript;  // Return the generated JavaScript code
+    String requestedLanguage = language ? language : "en";
+    requestedLanguage.toLowerCase();
+    const char* selectedLanguage = requestedLanguage.startsWith("de") ? "de" : "en";
+
+    mCustomJavaScript = "window.wordclockUiLanguage='";
+    mCustomJavaScript += selectedLanguage;
+    mCustomJavaScript += "';\n";
+    mCustomJavaScript += OTAUpdateAssets::kCustomJavaScript;
+    return mCustomJavaScript.c_str();
 }
 
 /** @brief Register OTA endpoints on the web server already started by ESPUI.

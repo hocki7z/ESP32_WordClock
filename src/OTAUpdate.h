@@ -36,7 +36,7 @@ namespace OTAUpdateNS
         virtual void OnOtaUploadStatusChanged(OtaUploadStatus aStatus, esp_err_t aError, const String& arFailureReason) = 0;
     };
 
-    const char* CustomJavaScript(void);
+    const char* CustomJavaScript(const char* language = "en");
 
     void RegisterRoutes(AsyncWebServer* apServer, OTAUpdateCallback* apCallback = nullptr);
 }
