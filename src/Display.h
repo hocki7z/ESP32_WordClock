@@ -54,11 +54,13 @@ private:
     /* Timer IDs */
     static constexpr uint32_t mIntroTimerId  = 0x01;
     static constexpr uint32_t mScrollTimerId = 0x02;
+    static constexpr uint32_t mFadeTimerId   = 0x03;
 
     /* Timers */
     ApplicationNS::tTaskTimerObjects mTimerObjects;
     ApplicationNS::TaskTimer* mpIntroTimer  = nullptr;
     ApplicationNS::TaskTimer* mpScrollTimer = nullptr;
+    ApplicationNS::TaskTimer* mpFadeTimer   = nullptr;
 
     /* Current display state */
     tDisplayState mState = STATE_INTRO;
@@ -76,6 +78,15 @@ private:
 
     /* Leds */
     CRGB mLeds[LED_NUMBER];
+
+    /* Fade transition: start frame, target frame, background and start time */
+    CRGB     mFadeFrom[LED_NUMBER];
+    CRGB     mFadeTo[LED_NUMBER];
+    CRGB     mFadeBkgd;
+    uint32_t mFadeStart  = 0;
+    bool     mFadeActive = false;
+    /* LEDs of the time and extra-minute words (old and new) that always fade */
+    BitMatrix mFadeMask{MATRIX_WIDTH, MATRIX_HEIGHT};
 
     /* Display scene */
     DisplayScene mDisplayScene;
@@ -99,7 +110,12 @@ private:
     void Clear(void);
     void Fill(const CRGB aColor, const uint8_t aBrightness=100);
 
-    void UpdateDisplay(const bool aForceRepaint = false);
+    void UpdateDisplay(const bool aForceRepaint = false, const bool aFade = false);
+
+    void StartFade(void);
+    void FadeStep(void);
+    bool StopFade(void);
+    void AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const;
 
     bool DisplayTimeScene(const bool aForceRepaint);
 

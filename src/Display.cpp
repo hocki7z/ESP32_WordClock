@@ -33,6 +33,12 @@ static constexpr uint8_t mcScrollTextRow = (MATRIX_HEIGHT - Font5x7NS::mGlyphHei
 /* Width of one character including spacing */
 static constexpr int32_t mcScrollCharWidth = Font5x7NS::mGlyphWidth + Font5x7NS::mGlyphSpacing;
 
+/* Time change: fade out old time to background, then fade in new time */
+static constexpr uint32_t mcFadeOutMs  = 2000;
+static constexpr uint32_t mcFadeInMs   = 2000;
+/* Delay between two fade steps */
+static constexpr uint32_t mcFadeStepMs = 20;
+
 
 /**
  * @brief Constructor
@@ -61,6 +67,13 @@ Display::~Display()
         delete mpScrollTimer;
         mpScrollTimer = nullptr;
     }
+
+    if (mpFadeTimer)
+    {
+        mpFadeTimer->stop();
+        delete mpFadeTimer;
+        mpFadeTimer = nullptr;
+    }
 }
 
 void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -77,6 +90,9 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     mpScrollTimer = new ApplicationNS::TaskTimer(mScrollTimerId, pdMS_TO_TICKS(mcScrollStepMs), true);
     mpScrollTimer->Init(&mTimerObjects);
+
+    mpFadeTimer = new ApplicationNS::TaskTimer(mFadeTimerId, pdMS_TO_TICKS(mcFadeStepMs), true);
+    mpFadeTimer->Init(&mTimerObjects);
 
     /* Initialize FastLED */
     // Initialize LEDs
@@ -132,6 +148,10 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
             ScrollTextStep();
             break;
 
+        case mFadeTimerId:
+            FadeStep();
+            break;
+
         default:
             LOG(LOG_ERROR, "Display::ProcessTimerEvent() Unknown timer ID %08X", aTimerId);
             break;
@@ -160,7 +180,7 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 /* Update display (time is shown only after the startup sequence) */
                 if (mState == STATE_TIME)
                 {
-                    UpdateDisplay();
+                    UpdateDisplay(false, true);
                 }
             }
         }
@@ -346,21 +366,46 @@ void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
  * @brief Updates the LED matrix display with the current scene.
  *
  * @param aForceRepaint Repaint the LEDs even if the scene is unchanged.
+ * @param aFade Fade from the current frame to the new scene instead of switching at once.
  */
-void Display::UpdateDisplay(const bool aForceRepaint)
+void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
 {
     /* LOG */
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
+    /* An interrupted fade leaves an intermediate frame, so the scene must be repainted */
+    const bool wFadeInterrupted = StopFade();
+
+    if (aFade)
+    {
+        memcpy(mFadeFrom, mLeds, sizeof(mLeds));
+
+        /* Old time words still in mDisplayScene */
+        mFadeMask.ClearAll();
+        AddGroupToMask(mFadeMask, mDisplayScene.mTime);
+        AddGroupToMask(mFadeMask, mDisplayScene.mExtraMinutes);
+    }
+
     /* Prepare time scene */
-    bool wUpdated = DisplayTimeScene(aForceRepaint);
+    bool wUpdated = DisplayTimeScene(aForceRepaint || wFadeInterrupted);
 
     /* Display scene changed */
     if (wUpdated)
     {
-        /* Show new data on the LED matrix */
-        FastLED.show();
+        if (aFade)
+        {
+            AddGroupToMask(mFadeMask, mDisplayScene.mTime);
+            AddGroupToMask(mFadeMask, mDisplayScene.mExtraMinutes);
+            mFadeMask.SetZigzagOrder(true);
+
+            StartFade();
+        }
+        else
+        {
+            /* Show new data on the LED matrix */
+            FastLED.show();
+        }
 
         /* Publish a compact snapshot for the web UI */
         MessageNS::Message wMessage{};
@@ -369,6 +414,105 @@ void Display::UpdateDisplay(const bool aForceRepaint)
         wMessage.mId = MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY;
 
         SendMessage(wMessage);
+    }
+}
+
+/**
+ * @brief Starts the fade from mFadeFrom to the freshly rendered scene in mLeds.
+ */
+void Display::StartFade(void)
+{
+    memcpy(mFadeTo, mLeds, sizeof(mLeds));
+    memcpy(mLeds, mFadeFrom, sizeof(mLeds));
+
+    mFadeBkgd   = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
+    mFadeStart  = millis();
+    mFadeActive = true;
+
+    mpFadeTimer->start();
+}
+
+/**
+ * @brief Renders one fade frame.
+ *
+ * @details Time and extra-minute words (old and new) plus any other changed LEDs are faded:
+ *          first old color -> background, then background -> new color.
+ */
+void Display::FadeStep(void)
+{
+    if (!mFadeActive)
+    {
+        return;
+    }
+
+    const uint32_t wElapsed = millis() - mFadeStart;
+
+    if (wElapsed >= (mcFadeOutMs + mcFadeInMs))
+    {
+        memcpy(mLeds, mFadeTo, sizeof(mLeds));
+        StopFade();
+    }
+    else if (wElapsed < mcFadeOutMs)
+    {
+        const fract8 wAmount = static_cast<fract8>((wElapsed * 255U) / mcFadeOutMs);
+
+        for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+        {
+            if (mFadeMask.IsBitSet(wI) || (mFadeFrom[wI] != mFadeTo[wI]))
+            {
+                mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
+            }
+        }
+    }
+    else
+    {
+        const fract8 wAmount = static_cast<fract8>(((wElapsed - mcFadeOutMs) * 255U) / mcFadeInMs);
+
+        for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+        {
+            if (mFadeMask.IsBitSet(wI) || (mFadeFrom[wI] != mFadeTo[wI]))
+            {
+                mLeds[wI] = blend(mFadeBkgd, mFadeTo[wI], wAmount);
+            }
+        }
+    }
+
+    FastLED.show();
+}
+
+/**
+ * @brief Stops a running fade.
+ *
+ * @return true if a fade was running.
+ */
+bool Display::StopFade(void)
+{
+    const bool wWasActive = mFadeActive;
+
+    mpFadeTimer->stop();
+    mFadeActive = false;
+
+    return wWasActive;
+}
+
+/**
+ * @brief Adds the LEDs of an enabled word group to a logical (non-zigzag) mask.
+ */
+void Display::AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const
+{
+    if (arGroup.IsEnabled())
+    {
+        for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
+        {
+            const tWord wWord = arGroup.mWords[wI];
+
+            if ((wWord > WORD_END_OF_WORDS) &&
+                (wWord < WORD_MAX_NUMBER))
+            {
+                const tWordData& wData = mcWordDataArray[wWord];
+                arMask.SetLine(wData.mRow, wData.mColumn, wData.mLength);
+            }
+        }
     }
 }
 
