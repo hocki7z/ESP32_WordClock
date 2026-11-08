@@ -84,8 +84,10 @@ private:
     CRGB     mFadeTo[LED_NUMBER];
     CRGB     mFadeBkgd;
     uint32_t mFadeStart  = 0;
+    uint32_t mFadeOutDurationMs = 0;
+    uint32_t mFadeInDurationMs  = 0;
     bool     mFadeActive = false;
-    /* LEDs of the time and extra-minute words (old and new) that always fade */
+    /* LEDs of the word groups (old and new) that fade out to background and in again */
     BitMatrix mFadeMask{MATRIX_WIDTH, MATRIX_HEIGHT};
 
     /* Display scene */
@@ -112,7 +114,7 @@ private:
 
     void UpdateDisplay(const bool aForceRepaint = false, const bool aFade = false);
 
-    void StartFade(void);
+    void StartFade(const uint32_t aOutDurationMs, const uint32_t aInDurationMs);
     void FadeStep(void);
     bool StopFade(void);
     void AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const;

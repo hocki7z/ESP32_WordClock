@@ -331,7 +331,7 @@ void Display::FinishScrollText(void)
 
     if (mDateTimeValid)
     {
-        UpdateDisplay(true);
+        UpdateDisplay(true, true);
     }
     else
     {
@@ -377,14 +377,20 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
     /* An interrupted fade leaves an intermediate frame, so the scene must be repainted */
     const bool wFadeInterrupted = StopFade();
 
+    /* No word group shown yet (after intro or scrolling text) */
+    const DisplayScene wOldScene = mDisplayScene;
+    const bool wInitial = !wOldScene.mItIs.IsEnabled() &&
+                          !wOldScene.mTime.IsEnabled() &&
+                          !wOldScene.mExtraMinutes.IsEnabled();
+
     if (aFade)
     {
-        memcpy(mFadeFrom, mLeds, sizeof(mLeds));
+        if (wInitial)
+        {
+            Clear();
+        }
 
-        /* Old time words still in mDisplayScene */
-        mFadeMask.ClearAll();
-        AddGroupToMask(mFadeMask, mDisplayScene.mTime);
-        AddGroupToMask(mFadeMask, mDisplayScene.mExtraMinutes);
+        memcpy(mFadeFrom, mLeds, sizeof(mLeds));
     }
 
     /* Prepare time scene */
@@ -395,11 +401,33 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
     {
         if (aFade)
         {
-            AddGroupToMask(mFadeMask, mDisplayScene.mTime);
-            AddGroupToMask(mFadeMask, mDisplayScene.mExtraMinutes);
+            /* Changed time words imply new extra minutes too */
+            const bool wItIsChanged  = (wOldScene.mItIs != mDisplayScene.mItIs);
+            const bool wTimeChanged  = (wOldScene.mTime != mDisplayScene.mTime);
+            const bool wExtraChanged = wTimeChanged || (wOldScene.mExtraMinutes != mDisplayScene.mExtraMinutes);
+
+            auto wAddGroups = [this](const WordGroup& arOld, const WordGroup& arNew)
+            {
+                AddGroupToMask(mFadeMask, arOld);
+                AddGroupToMask(mFadeMask, arNew);
+            };
+
+            mFadeMask.ClearAll();
+            if (wItIsChanged)
+            {
+                wAddGroups(wOldScene.mItIs, mDisplayScene.mItIs);
+            }
+            if (wTimeChanged)
+            {
+                wAddGroups(wOldScene.mTime, mDisplayScene.mTime);
+            }
+            if (wExtraChanged)
+            {
+                wAddGroups(wOldScene.mExtraMinutes, mDisplayScene.mExtraMinutes);
+            }
             mFadeMask.SetZigzagOrder(true);
 
-            StartFade();
+            StartFade(wInitial ? 0 : mcFadeOutMs, mcFadeInMs);
         }
         else
         {
@@ -419,13 +447,18 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
 
 /**
  * @brief Starts the fade from mFadeFrom to the freshly rendered scene in mLeds.
+ *
+ * @param aOutDurationMs Fade-out duration (0 = fade in directly from the current frame).
+ * @param aInDurationMs  Fade-in duration.
  */
-void Display::StartFade(void)
+void Display::StartFade(const uint32_t aOutDurationMs, const uint32_t aInDurationMs)
 {
     memcpy(mFadeTo, mLeds, sizeof(mLeds));
     memcpy(mLeds, mFadeFrom, sizeof(mLeds));
 
     mFadeBkgd   = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
+    mFadeOutDurationMs = aOutDurationMs;
+    mFadeInDurationMs  = aInDurationMs;
     mFadeStart  = millis();
     mFadeActive = true;
 
@@ -435,8 +468,8 @@ void Display::StartFade(void)
 /**
  * @brief Renders one fade frame.
  *
- * @details Time and extra-minute words (old and new) plus any other changed LEDs are faded:
- *          first old color -> background, then background -> new color.
+ * @details Masked LEDs fade old color -> background, then background -> new color.
+ *          Other changed LEDs (e.g. background) blend old -> new during fade-in.
  */
 void Display::FadeStep(void)
 {
@@ -447,18 +480,18 @@ void Display::FadeStep(void)
 
     const uint32_t wElapsed = millis() - mFadeStart;
 
-    if (wElapsed >= (mcFadeOutMs + mcFadeInMs))
+    if (wElapsed >= (mFadeOutDurationMs + mFadeInDurationMs))
     {
         memcpy(mLeds, mFadeTo, sizeof(mLeds));
         StopFade();
     }
-    else if (wElapsed < mcFadeOutMs)
+    else if (wElapsed < mFadeOutDurationMs)
     {
-        const fract8 wAmount = static_cast<fract8>((wElapsed * 255U) / mcFadeOutMs);
+        const fract8 wAmount = static_cast<fract8>((wElapsed * 255U) / mFadeOutDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
-            if (mFadeMask.IsBitSet(wI) || (mFadeFrom[wI] != mFadeTo[wI]))
+            if (mFadeMask.IsBitSet(wI))
             {
                 mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
             }
@@ -466,13 +499,18 @@ void Display::FadeStep(void)
     }
     else
     {
-        const fract8 wAmount = static_cast<fract8>(((wElapsed - mcFadeOutMs) * 255U) / mcFadeInMs);
+        const fract8 wAmount = static_cast<fract8>(((wElapsed - mFadeOutDurationMs) * 255U) / mFadeInDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
-            if (mFadeMask.IsBitSet(wI) || (mFadeFrom[wI] != mFadeTo[wI]))
+            if (mFadeMask.IsBitSet(wI))
             {
-                mLeds[wI] = blend(mFadeBkgd, mFadeTo[wI], wAmount);
+                const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
+                mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
+            }
+            else if (mFadeFrom[wI] != mFadeTo[wI])
+            {
+                mLeds[wI] = blend(mFadeFrom[wI], mFadeTo[wI], wAmount);
             }
         }
     }
