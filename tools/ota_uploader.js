@@ -48,7 +48,7 @@
     let uploaderElements = null;
 
     function translatedServerMessage(message, strings) {
-        if (language !== 'de') return message;
+        if (language !== 'de' || typeof message !== 'string') return message || '';
 
         const exactMessages = {
             'Firmware accepted. The device is restarting now.': strings.success,
@@ -130,7 +130,8 @@
             ['Firmware Update', 'Firmware-Update'].includes(element.textContent.trim())
         );
         const card = heading && heading.closest('.card');
-        if (!card || document.getElementById('wordclock-ota-uploader')) return;
+        if (document.getElementById('wordclock-ota-uploader')) return true;
+        if (!card) return false;
 
         const panel = document.createElement('div');
         panel.id = 'wordclock-ota-uploader';
@@ -230,9 +231,12 @@
 
         panel.append(fileLabel, fileField, picker, button, progress, status);
         card.appendChild(panel);
+        return true;
     }
 
-    const observer = new MutationObserver(addFirmwareUploader);
+    const observer = new MutationObserver(() => {
+        if (addFirmwareUploader()) observer.disconnect();
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
-    addFirmwareUploader();
+    if (addFirmwareUploader()) observer.disconnect();
 })();
