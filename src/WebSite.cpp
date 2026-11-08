@@ -726,12 +726,13 @@ void WebSite::InitWebUIControls(void)
      * Tab Settings / Firmware Update Group
      */
     mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
-    AddLabelControl("", mWebUIControlID.mFirmwareUpdateGroup, "display:block;width:100%;",
+    AddLabelControl("", mWebUIControlID.mFirmwareUpdateGroup, "display:block;width:100%;background-color:#34495e;",
         "<form action='/update' method='post' enctype='multipart/form-data' target='ota-response' "
-        "style='display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;'>"
+        "style='display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;"
+        "background-color:#34495e;color:#fff;padding:8px;box-sizing:border-box;border-radius:4px;'>"
         "<label style='display:block;width:100%;font-weight:300;'>Firmware image (.bin)"
         "<input type='file' name='firmware' accept='.bin,application/octet-stream' required "
-        "style='display:block;width:100%;margin:6px 0;box-sizing:border-box;'></label>"
+        "style='color:black;display:block;width:100%;margin:6px 0;box-sizing:border-box;'></label>"
         "<button type='submit' style='width:100%;margin:3px 0;box-sizing:border-box;'>"
         "Upload and install</button>"
         "<p style='margin:0;font-size:.9em;font-weight:300;'>"
