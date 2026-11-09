@@ -50,7 +50,7 @@ private:
         STATE_INTRO,            // Intro is shown, waiting for intro delay and startup text
         STATE_SCROLL_TEXT,      // Text is scrolling
         STATE_TIME,             // Time is displayed
-        STATE_SCREEN_SAVER,     // Random words fade in/out
+        STATE_SCREEN_SAVER,     // Random words or separate letters fade in/out
         STATE_EFFECT,           // LED effect selected in the web UI
     };
 
@@ -113,6 +113,9 @@ private:
     CRGBPalette16 mSaverPalette = RainbowColors_p;
     uint8_t mSaverSpeed = 128;
     uint8_t mSaverIntensity = 128;
+    bool mSaverSeparateLetters = false;
+    /* Letter colors live in mLeds; each letter has its own fade direction. */
+    bool mSaverLetterFadeUp[LED_NUMBER] = {};
 
     /* LED effect engine and output brightness (0-255) */
     EffectsNS::Engine mEffects;
@@ -143,6 +146,7 @@ private:
     void StartScreenSaver(void);
     void LoadScreenSaverSettings(void);
     void ScreenSaverStep(void);
+    void ScreenSaverLettersStep(void);
     void SpawnSaverWord(void);
     bool IsSaverWordFree(const tWord aWord) const;
 

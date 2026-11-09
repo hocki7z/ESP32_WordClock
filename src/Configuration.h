@@ -106,6 +106,7 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayScreenSaverPalette    = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0E);
     static const SettingsNS::tKey  mKeyDisplayScreenSaverSpeed      = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x30);
     static const SettingsNS::tKey  mKeyDisplayScreenSaverIntensity  = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x31);
+    static const SettingsNS::tKey  mKeyDisplayScreenSaverPresentation = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x32);
     //
     static const SettingsNS::tKey  mKeyDisplayColorTime             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x10);
     static const SettingsNS::tKey  mKeyDisplayColorBkgd             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x11);
@@ -143,6 +144,11 @@ namespace ConfigNS
     static constexpr uint8_t  mDefaultDisplayScreenSaverPalette     = 1;            // Rainbow; independent of effect palette
     static constexpr uint8_t  mDefaultDisplayScreenSaverSpeed       = 50;           // Percentage (0-100)
     static constexpr uint8_t  mDefaultDisplayScreenSaverIntensity   = 50;           // Percentage (0-100)
+    static constexpr uint8_t  mDefaultDisplayScreenSaverPresentation = 0;          // Words
+    static constexpr uint8_t  mcScreenSaverPresentationCount = 2;
+    static constexpr const char* mcScreenSaverPresentationItems[mcScreenSaverPresentationCount] = {
+        "Words", "Separate letters"
+    };
     static constexpr bool     mDefaultDisplayEffectMode             = false;        // Show LED effect instead of time
     static constexpr uint8_t  mDefaultDisplayEffect                 = 0;            // First effect
     static constexpr uint8_t  mDefaultDisplayEffectSpeed            = 50;           // Percentage (0-100)

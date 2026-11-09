@@ -603,6 +603,11 @@ void WebSite::InitWebUIControls(void)
     mWebUIControlID.mDisplayScreenSaver = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver);
 
+        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver presentation");
+        mWebUIControlID.mDisplayScreenSaverPresentation = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
+            ConfigNS::mcScreenSaverPresentationItems, ConfigNS::mcScreenSaverPresentationCount,
+            ConfigNS::mKeyDisplayScreenSaverPresentation, ConfigNS::mDefaultDisplayScreenSaverPresentation);
+
         AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver palette");
         mWebUIControlID.mDisplayScreenSaverPalette = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
             EffectsNS::GetPaletteNames(), EffectsNS::GetPaletteCount(),

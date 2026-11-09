@@ -45,6 +45,24 @@ static constexpr uint32_t mcFadeStepMs = 20;
  */
 static constexpr uint32_t mcSaverStepMs     = 24;
 
+/** @brief Shared Colortwinkles envelope for one word or letter (WLED-MM, EUPL-1.2). */
+static void StepSaverColor(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed)
+{
+    if (arFadeUp)
+    {
+        const CRGB wPrev = arColor;
+        CRGB wInc = arColor;
+        wInc.nscale8_video(8 + (aSpeed >> 2));
+        arColor += wInc;
+        if ((arColor.r == 255) || (arColor.g == 255) || (arColor.b == 255)) arFadeUp = false;
+        if (arColor == wPrev) arColor += wPrev;
+    }
+    else
+    {
+        arColor.nscale8(255 - (8 + (aSpeed >> 3)));
+    }
+}
+
 /* Effects: delay between two frames */
 static constexpr uint32_t mcEffectStepMs    = 25;
 
@@ -564,6 +582,7 @@ void Display::StartScreenSaver(void)
     FastLED.show();
 
     LoadScreenSaverSettings();
+    for (bool& wFadeUp : mSaverLetterFadeUp) wFadeUp = false;
     mpSaverTimer->start();
 }
 
@@ -572,6 +591,17 @@ void Display::StartScreenSaver(void)
  */
 void Display::LoadScreenSaverSettings(void)
 {
+    const uint8_t wPresentation = Settings.GetValue<uint8_t>(
+        ConfigNS::mKeyDisplayScreenSaverPresentation, ConfigNS::mDefaultDisplayScreenSaverPresentation);
+    const bool wLetters = (wPresentation == 1);
+    if (wLetters != mSaverSeparateLetters)
+    {
+        mSaverSeparateLetters = wLetters;
+        for (tSaverWord& wSlot : mSaverWords) wSlot.mWord = WORD_END_OF_WORDS;
+        for (bool& wFadeUp : mSaverLetterFadeUp) wFadeUp = false;
+        Clear();
+    }
+
     const uint8_t wSpeed = Settings.GetValue<uint8_t>(
         ConfigNS::mKeyDisplayScreenSaverSpeed, ConfigNS::mDefaultDisplayScreenSaverSpeed);
     const uint8_t wIntensity = Settings.GetValue<uint8_t>(
@@ -589,7 +619,7 @@ void Display::LoadScreenSaverSettings(void)
 }
 
 /**
- * @brief Applies the Colortwinkles envelope independently to each whole word.
+ * @brief Applies the saver envelope to whole words or separate letters.
  */
 void Display::ScreenSaverStep(void)
 {
@@ -598,8 +628,11 @@ void Display::ScreenSaverStep(void)
         return;
     }
 
-    const fract8 wUp   = 8 + (mSaverSpeed >> 2);
-    const fract8 wDown = 8 + (mSaverSpeed >> 3);
+    if (mSaverSeparateLetters)
+    {
+        ScreenSaverLettersStep();
+        return;
+    }
 
     for (tSaverWord& wSlot : mSaverWords)
     {
@@ -608,23 +641,8 @@ void Display::ScreenSaverStep(void)
             continue;
         }
 
-        if (wSlot.mFadeUp)
-        {
-            const CRGB wPrev = wSlot.mColor;
-            CRGB wInc = wSlot.mColor;
-            wInc.nscale8_video(wUp);
-            wSlot.mColor += wInc;
-            if ((wSlot.mColor.r == 255) || (wSlot.mColor.g == 255) || (wSlot.mColor.b == 255))
-            {
-                wSlot.mFadeUp = false;
-            }
-            if (wSlot.mColor == wPrev) wSlot.mColor += wPrev;
-        }
-        else
-        {
-            wSlot.mColor.nscale8(255 - wDown);
-            if (wSlot.mColor == CRGB(CRGB::Black)) wSlot.mWord = WORD_END_OF_WORDS;
-        }
+        StepSaverColor(wSlot.mColor, wSlot.mFadeUp, mSaverSpeed);
+        if (wSlot.mColor == CRGB(CRGB::Black)) wSlot.mWord = WORD_END_OF_WORDS;
     }
 
     /* As with Colortwinkles on a short strip: one random ignition trial/frame.
@@ -646,6 +664,34 @@ void Display::ScreenSaverStep(void)
         }
     }
 
+    FastLED.show();
+}
+
+/**
+ * @brief Twinkles individual letters without invoking the effects engine.
+ */
+void Display::ScreenSaverLettersStep(void)
+{
+    for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+    {
+        StepSaverColor(mLeds[wI], mSaverLetterFadeUp[wI], mSaverSpeed);
+    }
+
+    /* Colortwinkles scales ignition attempts with the number of pixels. */
+    for (uint16_t wTrial = 0; wTrial <= LED_NUMBER / 50; wTrial++)
+    {
+        if (random8() > mSaverIntensity) continue;
+        for (uint8_t wAttempt = 0; wAttempt < 5; wAttempt++)
+        {
+            const uint16_t wIndex = random16(LED_NUMBER);
+            if (mLeds[wIndex] != CRGB(CRGB::Black)) continue;
+            const CRGB wColor = ColorFromPalette(mSaverPalette, random8(), 64, NOBLEND);
+            if (wColor == CRGB(CRGB::Black)) continue;
+            mLeds[wIndex] = wColor;
+            mSaverLetterFadeUp[wIndex] = true;
+            break;
+        }
+    }
     FastLED.show();
 }
 
