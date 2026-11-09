@@ -17,6 +17,7 @@
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
 #include "OTAUpdate.h"
+#include "IdleCpuUsage.h"
 
 #include "WebSite.h"
 
@@ -1508,7 +1509,7 @@ void WebSite::UpdateSystemInfo(void)
     {
         /* Static variables to track initialization and previous device metrics */
         static bool wDeviceInfoInitialized = false;
-        static std::array<uint32_t, 6> wPreviousDeviceMetrics{};
+        static std::array<uint32_t, 7> wPreviousDeviceMetrics{};
 
         /* Retrieve device metrics */
         const esp_partition_t* wpRunningPartition = esp_ota_get_running_partition();
@@ -1519,10 +1520,13 @@ void WebSite::UpdateSystemInfo(void)
         const uint32_t wFreeHeap = ESP.getFreeHeap();
         const uint32_t wMaxAllocHeapBytes = ESP.getMaxAllocHeap();
         const uint32_t wMinFreeHeapBytes = ESP.getMinFreeHeap();
+        uint8_t wCpuUsagePercent = 0;
+        const bool wCpuUsageAvailable = IdleCpuUsageNS::GetUsagePercent(wCpuUsagePercent);
 
-        const std::array<uint32_t, 6> wDeviceMetrics = {
+        const std::array<uint32_t, 7> wDeviceMetrics = {
             wPartitionSize, wSketchSize, wHeapSize, wFreeHeap,
-            wMaxAllocHeapBytes, wMinFreeHeapBytes
+            wMaxAllocHeapBytes, wMinFreeHeapBytes,
+            wCpuUsageAvailable ? wCpuUsagePercent : UINT32_MAX
         };
 
         /* Reformat and update the device information only when a raw metric changes. */
@@ -1550,16 +1554,17 @@ void WebSite::UpdateSystemInfo(void)
             /* Convert maximum allocatable and minimum free heap to kilobytes. */
             String wMaxAllocHeap = String(wMaxAllocHeapBytes / 1000.0f, 2) + " kB";
             String wMinFreeHeap  = String(wMinFreeHeapBytes  / 1000.0f, 2) + " kB";
+            String wCpuUsage = wCpuUsageAvailable ? String(wCpuUsagePercent) + "%" : "Unavailable";
 
-            const std::array<const char*, 4> wDeviceInfoNames = {
-            // "Flash",            "Heap",           "Max block",        "Min free"
-                "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap"
+            const std::array<const char*, 5> wDeviceInfoNames = {
+            // "Flash",            "Heap",           "Max block",        "Min free",         "CPU"
+                "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap", "CPU usage (est.)"
             };
 
             ESPUI.updateLabel(mWebUIControlID.mDeviceInfoLabel,
                 BuildHtmlTable(wDeviceInfoNames, {
                     wFlashUsage.c_str(), wHeapUsage.c_str(),
-                    wMaxAllocHeap.c_str(), wMinFreeHeap.c_str()}));
+                    wMaxAllocHeap.c_str(), wMinFreeHeap.c_str(), wCpuUsage.c_str()}));
         }
     }
 
