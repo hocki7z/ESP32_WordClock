@@ -48,6 +48,9 @@ static constexpr uint32_t mcSaverSpawnMs    = 1000;
 /* Screen saver: delay between two animation steps */
 static constexpr uint32_t mcSaverStepMs     = 20;
 
+/* Effects: delay between two frames */
+static constexpr uint32_t mcEffectStepMs    = 25;
+
 
 /**
  * @brief Constructor
@@ -90,6 +93,13 @@ Display::~Display()
         delete mpSaverTimer;
         mpSaverTimer = nullptr;
     }
+
+    if (mpEffectTimer)
+    {
+        mpEffectTimer->stop();
+        delete mpEffectTimer;
+        mpEffectTimer = nullptr;
+    }
 }
 
 void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -112,6 +122,9 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     mpSaverTimer = new ApplicationNS::TaskTimer(mSaverTimerId, pdMS_TO_TICKS(mcSaverStepMs), true);
     mpSaverTimer->Init(&mTimerObjects);
+
+    mpEffectTimer = new ApplicationNS::TaskTimer(mEffectTimerId, pdMS_TO_TICKS(mcEffectStepMs), true);
+    mpEffectTimer->Init(&mTimerObjects);
 
     /* Initialize FastLED */
     // Initialize LEDs
@@ -175,6 +188,10 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
             ScreenSaverStep();
             break;
 
+        case mEffectTimerId:
+            EffectStep();
+            break;
+
         default:
             LOG(LOG_ERROR, "Display::ProcessTimerEvent() Unknown timer ID %08X", aTimerId);
             break;
@@ -205,6 +222,12 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 {
                     UpdateDisplay(false, true);
                 }
+                else if (mState == STATE_EFFECT)
+                {
+                    /* Time text and day/night brightness may have changed */
+                    UpdateEffectText();
+                    LoadEffectSettings();
+                }
             }
         }
             break;
@@ -214,21 +237,10 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             // Settings changed, re-read settings if needed
             LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Settings changed");
 
-            /* Update display */
-            const bool wScreenSaver = Settings.GetValue<bool>(
-                    ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver);
-
-            if (wScreenSaver && (mState == STATE_TIME))
+            /* Switch mode or update the current one (not during the startup sequence) */
+            if ((mState == STATE_TIME) || (mState == STATE_SCREEN_SAVER) || (mState == STATE_EFFECT))
             {
-                StartScreenSaver();
-            }
-            else if (!wScreenSaver && (mState == STATE_SCREEN_SAVER))
-            {
-                StopScreenSaver();
-            }
-            else if ((mState == STATE_TIME) && mDateTimeValid)
-            {
-                UpdateDisplay();
+                SwitchMode();
             }
         }
             break;
@@ -359,23 +371,170 @@ void Display::FinishScrollText(void)
 
     mScrollText = "";
     mStartupTextDone = true;
-    mState = STATE_TIME;
 
-    LOG(LOG_DEBUG, "Display::FinishScrollText() Switching to time display");
+    LOG(LOG_DEBUG, "Display::FinishScrollText() Startup sequence finished");
 
+    /* Current state is intro or scroll text, so the requested mode is always entered */
+    SwitchMode();
+}
+
+/**
+ * @brief Returns the display mode selected in the settings.
+ */
+Display::tDisplayState Display::GetRequestedMode(void) const
+{
+    if (Settings.GetValue<bool>(ConfigNS::mKeyDisplayEffectMode, ConfigNS::mDefaultDisplayEffectMode))
+    {
+        return STATE_EFFECT;
+    }
     if (Settings.GetValue<bool>(ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver))
     {
-        StartScreenSaver();
+        return STATE_SCREEN_SAVER;
     }
-    else if (mDateTimeValid)
+    return STATE_TIME;
+}
+
+/**
+ * @brief Enters the requested display mode, or refreshes the current one if unchanged.
+ */
+void Display::SwitchMode(void)
+{
+    const tDisplayState wTarget = GetRequestedMode();
+
+    if (wTarget == mState)
     {
-        UpdateDisplay(true, true);
+        if ((mState == STATE_TIME) && mDateTimeValid)
+        {
+            UpdateDisplay();
+        }
+        else if (mState == STATE_EFFECT)
+        {
+            LoadEffectSettings();
+        }
+        return;
+    }
+
+    LOG(LOG_DEBUG, "Display::SwitchMode() %d -> %d", mState, wTarget);
+
+    StopFade();
+    mpSaverTimer->stop();
+    mpEffectTimer->stop();
+
+    switch (wTarget)
+    {
+        case STATE_SCREEN_SAVER:
+            StartScreenSaver();
+            break;
+
+        case STATE_EFFECT:
+            StartEffect();
+            break;
+
+        default:
+            mState = STATE_TIME;
+            /* Empty scene makes UpdateDisplay() fade in all parts from black */
+            mDisplayScene.Clear();
+            if (mDateTimeValid)
+            {
+                UpdateDisplay(true, true);
+            }
+            else
+            {
+                /* No time received yet (e.g. AP mode): keep intro until the first time update */
+                ShowIntro();
+            }
+            break;
+    }
+}
+
+/**
+ * @brief Starts the selected LED effect from a black screen.
+ */
+void Display::StartEffect(void)
+{
+    mState = STATE_EFFECT;
+
+    Clear();
+    FastLED.show();
+
+    mEffects.Start(Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect));
+    LoadEffectSettings();
+    UpdateEffectText();
+
+    mpEffectTimer->start();
+}
+
+/**
+ * @brief Applies effect selection, speed, intensity, palette and brightness from the settings.
+ */
+void Display::LoadEffectSettings(void)
+{
+    const uint8_t wEffect = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect);
+    if (wEffect != mEffects.GetEffect())
+    {
+        mEffects.Start(wEffect);
+    }
+
+    const uint8_t wSpeed     = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectSpeed, ConfigNS::mDefaultDisplayEffectSpeed);
+    const uint8_t wIntensity = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectIntensity, ConfigNS::mDefaultDisplayEffectIntensity);
+    const uint8_t wPalette   = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectPalette, ConfigNS::mDefaultDisplayEffectPalette);
+
+    /* UI sliders are percentages */
+    mEffects.SetParams(map(std::min<uint8_t>(wSpeed, 100), 0, 100, 0, 255),
+                       map(std::min<uint8_t>(wIntensity, 100), 0, 100, 0, 255),
+                       wPalette);
+
+    /* Effects use the time brightness of the current day/night mode */
+    const uint8_t wBrightness = IsDayMode()
+        ? Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime)
+        : Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTimeNight);
+    mEffectBrightness = map(std::min<uint8_t>(wBrightness, 100), 0, 100, 0, 255);
+}
+
+/**
+ * @brief Sets the current time as text for the scrolling text effect.
+ */
+void Display::UpdateEffectText(void)
+{
+    char wText[8];
+
+    if (mDateTimeValid)
+    {
+        snprintf(wText, sizeof(wText), "%02u:%02u", mDateTime.mTime.mHour, mDateTime.mTime.mMinute);
     }
     else
     {
-        /* No time received yet (e.g. AP mode): keep intro until the first time update */
-        ShowIntro();
+        snprintf(wText, sizeof(wText), "--:--");
     }
+    mEffects.SetText(wText);
+}
+
+/**
+ * @brief Renders one effect frame and shows it on the LED matrix.
+ */
+void Display::EffectStep(void)
+{
+    if (mState != STATE_EFFECT)
+    {
+        return;
+    }
+
+    mEffects.Render(millis());
+
+    for (int wY = 0; wY < MATRIX_HEIGHT; wY++)
+    {
+        for (int wX = 0; wX < MATRIX_WIDTH; wX++)
+        {
+            CRGB wColor = mEffects.GetPixel(wX, wY);
+            wColor.nscale8_video(mEffectBrightness);
+
+            /* Even rows are mirrored like BitMatrix::SetZigzagOrder(true) */
+            const int wCol = ((wY % 2) == 0) ? (MATRIX_WIDTH - 1 - wX) : wX;
+            mLeds[wY * MATRIX_WIDTH + wCol] = wColor;
+        }
+    }
+
+    FastLED.show();
 }
 
 /**
@@ -398,29 +557,6 @@ void Display::StartScreenSaver(void)
 
     mSaverNextSpawn = millis();
     mpSaverTimer->start();
-}
-
-/**
- * @brief Stops the screen saver and fades the time in from a black screen.
- */
-void Display::StopScreenSaver(void)
-{
-    LOG(LOG_DEBUG, "Display::StopScreenSaver()");
-
-    mpSaverTimer->stop();
-    mState = STATE_TIME;
-
-    /* Empty scene makes UpdateDisplay() fade in all parts from black */
-    mDisplayScene.Clear();
-
-    if (mDateTimeValid)
-    {
-        UpdateDisplay(true, true);
-    }
-    else
-    {
-        ShowIntro();
-    }
 }
 
 /**

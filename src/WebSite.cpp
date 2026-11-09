@@ -16,6 +16,7 @@
 #include "DateTime.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
+#include "Effects.h"
 #include "OTAUpdate.h"
 
 #include "WebSite.h"
@@ -601,6 +602,34 @@ void WebSite::InitWebUIControls(void)
     AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Screen saver");
     mWebUIControlID.mDisplayScreenSaver = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver);
+
+
+    /**
+     * Tab LED Display / Group Effects
+     */
+    mWebUIControlID.mLedDisplayEffectGroup = AddGroupHelper("Effects", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SWITCH_LABEL, "Effect mode");
+    mWebUIControlID.mDisplayEffectMode = AddSwitcherControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayEffectMode, ConfigNS::mDefaultDisplayEffectMode);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Effect");
+    mWebUIControlID.mDisplayEffect = AddSelectControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT,
+            EffectsNS::GetEffectNames(), EffectsNS::GetEffectCount(),
+            ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Palette");
+    mWebUIControlID.mDisplayEffectPalette = AddSelectControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT,
+            EffectsNS::GetPaletteNames(), EffectsNS::GetPaletteCount(),
+            ConfigNS::mKeyDisplayEffectPalette, ConfigNS::mDefaultDisplayEffectPalette);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Speed");
+    mWebUIControlID.mDisplayEffectSpeed = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SLIDER,
+            ConfigNS::mKeyDisplayEffectSpeed, ConfigNS::mDefaultDisplayEffectSpeed);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Intensity");
+    mWebUIControlID.mDisplayEffectIntensity = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SLIDER,
+            ConfigNS::mKeyDisplayEffectIntensity, ConfigNS::mDefaultDisplayEffectIntensity);
 
 
     /**

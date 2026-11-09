@@ -94,6 +94,11 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayClockSingleMins       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x02);
     static const SettingsNS::tKey  mKeyDisplayStartupText           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x03);
     static const SettingsNS::tKey  mKeyDisplayScreenSaver           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x04);
+    static const SettingsNS::tKey  mKeyDisplayEffectMode            = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x05);
+    static const SettingsNS::tKey  mKeyDisplayEffect                = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x06);
+    static const SettingsNS::tKey  mKeyDisplayEffectSpeed           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x07);
+    static const SettingsNS::tKey  mKeyDisplayEffectIntensity       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x08);
+    static const SettingsNS::tKey  mKeyDisplayEffectPalette         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x09);
     //
     static const SettingsNS::tKey  mKeyDisplayColorTime             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x10);
     static const SettingsNS::tKey  mKeyDisplayColorBkgd             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x11);
@@ -128,6 +133,11 @@ namespace ConfigNS
     static constexpr bool     mDefaultDisplayClockSingleMins        = true;         // Show single minutes in the display
     static constexpr bool     mDefaultDisplayStartupText            = true;         // Scroll IP address after the intro
     static constexpr bool     mDefaultDisplayScreenSaver            = false;        // Show screen saver instead of time
+    static constexpr bool     mDefaultDisplayEffectMode             = false;        // Show LED effect instead of time
+    static constexpr uint8_t  mDefaultDisplayEffect                 = 0;            // First effect
+    static constexpr uint8_t  mDefaultDisplayEffectSpeed            = 50;           // Percentage (0-100)
+    static constexpr uint8_t  mDefaultDisplayEffectIntensity        = 50;           // Percentage (0-100)
+    static constexpr uint8_t  mDefaultDisplayEffectPalette          = 0;            // Effect default palette
     static constexpr uint32_t mDefaultDisplayColorTime              = 0x00FF00;     // Green
     static constexpr uint32_t mDefaultDisplayColorTimeNight         = 0xFFA500;     // FastLED CRGB::Orange
     static constexpr uint32_t mDefaultDisplayColorBkgd              = 0x000000;     // Black
