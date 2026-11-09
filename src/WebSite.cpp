@@ -603,6 +603,21 @@ void WebSite::InitWebUIControls(void)
     mWebUIControlID.mDisplayScreenSaver = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver);
 
+        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver palette");
+        mWebUIControlID.mDisplayScreenSaverPalette = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
+            EffectsNS::GetPaletteNames(), EffectsNS::GetPaletteCount(),
+            ConfigNS::mKeyDisplayScreenSaverPalette, ConfigNS::mDefaultDisplayScreenSaverPalette);
+        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL,
+            "Custom palettes use Colors 1-3 from Effects.");
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver speed");
+    mWebUIControlID.mDisplayScreenSaverSpeed = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SLIDER,
+            ConfigNS::mKeyDisplayScreenSaverSpeed, ConfigNS::mDefaultDisplayScreenSaverSpeed);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver intensity");
+    mWebUIControlID.mDisplayScreenSaverIntensity = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SLIDER,
+            ConfigNS::mKeyDisplayScreenSaverIntensity, ConfigNS::mDefaultDisplayScreenSaverIntensity);
+
 
     /**
      * Tab LED Display / Group Effects

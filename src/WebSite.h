@@ -120,6 +120,9 @@ private:
         Control::ControlId_t mDisplayClockSingleMinutes;
         Control::ControlId_t mDisplayStartupText;
         Control::ControlId_t mDisplayScreenSaver;
+        Control::ControlId_t mDisplayScreenSaverPalette;
+        Control::ControlId_t mDisplayScreenSaverSpeed;
+        Control::ControlId_t mDisplayScreenSaverIntensity;
         //
         Control::ControlId_t mLedDisplayEffectGroup;
         Control::ControlId_t mDisplayEffectMode;

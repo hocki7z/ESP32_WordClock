@@ -59,7 +59,7 @@ private:
     {
         tWord    mWord  = 0;    // 0 (WORD_END_OF_WORDS) = slot free
         CRGB     mColor;
-        uint32_t mStart = 0;
+        bool     mFadeUp = true;
     };
 
     /* Maximum number of words shown at once by the screen saver */
@@ -108,9 +108,11 @@ private:
     /* LEDs of the word groups (old and new) that fade out to background and in again */
     BitMatrix mFadeMask{MATRIX_WIDTH, MATRIX_HEIGHT};
 
-    /* Screen saver words and time of the next word spawn */
+    /* Screen saver words with independent Colortwinkles envelopes */
     tSaverWord mSaverWords[mcSaverMaxWords];
-    uint32_t   mSaverNextSpawn = 0;
+    CRGBPalette16 mSaverPalette = RainbowColors_p;
+    uint8_t mSaverSpeed = 128;
+    uint8_t mSaverIntensity = 128;
 
     /* LED effect engine and output brightness (0-255) */
     EffectsNS::Engine mEffects;
@@ -139,8 +141,9 @@ private:
     void SwitchMode(void);
 
     void StartScreenSaver(void);
+    void LoadScreenSaverSettings(void);
     void ScreenSaverStep(void);
-    void SpawnSaverWord(const uint32_t aNow);
+    void SpawnSaverWord(void);
     bool IsSaverWordFree(const tWord aWord) const;
 
     void StartEffect(void);

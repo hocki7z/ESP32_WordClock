@@ -39,14 +39,11 @@ static constexpr uint32_t mcFadeInMs   = 2000;
 /* Delay between two fade steps */
 static constexpr uint32_t mcFadeStepMs = 20;
 
-/* Screen saver: word fade in, hold and fade out durations */
-static constexpr uint32_t mcSaverFadeInMs   = 2000;
-static constexpr uint32_t mcSaverHoldMs     = 1000;
-static constexpr uint32_t mcSaverFadeOutMs  = 2000;
-/* Screen saver: fixed delay before the next word starts fading in */
-static constexpr uint32_t mcSaverSpawnMs    = 1000;
-/* Screen saver: delay between two animation steps */
-static constexpr uint32_t mcSaverStepMs     = 20;
+/* Colortwinkles timing with independent saver speed/intensity, applied to whole words.
+ * No fixed hold: brighten to saturation, decay to black, then randomly restart.
+ * WLED-MM / Effects1D.cpp (EUPL-1.2) uses a 24 ms frame time.
+ */
+static constexpr uint32_t mcSaverStepMs     = 24;
 
 /* Effects: delay between two frames */
 static constexpr uint32_t mcEffectStepMs    = 25;
@@ -411,6 +408,10 @@ void Display::SwitchMode(void)
         {
             LoadEffectSettings();
         }
+        else if (mState == STATE_SCREEN_SAVER)
+        {
+            LoadScreenSaverSettings();
+        }
         return;
     }
 
@@ -562,12 +563,33 @@ void Display::StartScreenSaver(void)
     Clear();
     FastLED.show();
 
-    mSaverNextSpawn = millis();
+    LoadScreenSaverSettings();
     mpSaverTimer->start();
 }
 
 /**
- * @brief Renders one screen saver frame and spawns new random words when due.
+ * @brief Loads saver speed, intensity and palette, sharing custom colors with effects.
+ */
+void Display::LoadScreenSaverSettings(void)
+{
+    const uint8_t wSpeed = Settings.GetValue<uint8_t>(
+        ConfigNS::mKeyDisplayScreenSaverSpeed, ConfigNS::mDefaultDisplayScreenSaverSpeed);
+    const uint8_t wIntensity = Settings.GetValue<uint8_t>(
+        ConfigNS::mKeyDisplayScreenSaverIntensity, ConfigNS::mDefaultDisplayScreenSaverIntensity);
+    mSaverSpeed = map(std::min<uint8_t>(wSpeed, 100), 0, 100, 0, 255);
+    mSaverIntensity = map(std::min<uint8_t>(wIntensity, 100), 0, 100, 0, 255);
+
+    const CRGB wColors[3] = {
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor1, ConfigNS::mDefaultDisplayEffectColor1) & COLOR_RGB_MASK),
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor2, ConfigNS::mDefaultDisplayEffectColor2) & COLOR_RGB_MASK),
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor3, ConfigNS::mDefaultDisplayEffectColor3) & COLOR_RGB_MASK)
+    };
+    mSaverPalette = EffectsNS::GetPalette(
+        Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayScreenSaverPalette, ConfigNS::mDefaultDisplayScreenSaverPalette), wColors);
+}
+
+/**
+ * @brief Applies the Colortwinkles envelope independently to each whole word.
  */
 void Display::ScreenSaverStep(void)
 {
@@ -576,15 +598,8 @@ void Display::ScreenSaverStep(void)
         return;
     }
 
-    const uint32_t wNow = millis();
-
-    if (static_cast<int32_t>(wNow - mSaverNextSpawn) >= 0)
-    {
-        SpawnSaverWord(wNow);
-        mSaverNextSpawn = wNow + mcSaverSpawnMs;
-    }
-
-    Clear();
+    const fract8 wUp   = 8 + (mSaverSpeed >> 2);
+    const fract8 wDown = 8 + (mSaverSpeed >> 3);
 
     for (tSaverWord& wSlot : mSaverWords)
     {
@@ -593,36 +608,41 @@ void Display::ScreenSaverStep(void)
             continue;
         }
 
-        const uint32_t wElapsed = wNow - wSlot.mStart;
-        uint8_t wAmount;
-
-        if (wElapsed < mcSaverFadeInMs)
+        if (wSlot.mFadeUp)
         {
-            wAmount = static_cast<uint8_t>((wElapsed * 255U) / mcSaverFadeInMs);
-        }
-        else if (wElapsed < (mcSaverFadeInMs + mcSaverHoldMs))
-        {
-            wAmount = 255;
-        }
-        else if (wElapsed < (mcSaverFadeInMs + mcSaverHoldMs + mcSaverFadeOutMs))
-        {
-            wAmount = 255 - static_cast<uint8_t>(((wElapsed - mcSaverFadeInMs - mcSaverHoldMs) * 255U) / mcSaverFadeOutMs);
+            const CRGB wPrev = wSlot.mColor;
+            CRGB wInc = wSlot.mColor;
+            wInc.nscale8_video(wUp);
+            wSlot.mColor += wInc;
+            if ((wSlot.mColor.r == 255) || (wSlot.mColor.g == 255) || (wSlot.mColor.b == 255))
+            {
+                wSlot.mFadeUp = false;
+            }
+            if (wSlot.mColor == wPrev) wSlot.mColor += wPrev;
         }
         else
         {
-            wSlot.mWord = WORD_END_OF_WORDS;
-            continue;
+            wSlot.mColor.nscale8(255 - wDown);
+            if (wSlot.mColor == CRGB(CRGB::Black)) wSlot.mWord = WORD_END_OF_WORDS;
         }
+    }
 
-        CRGB wColor = wSlot.mColor;
-        wColor.nscale8(wAmount);
+    /* As with Colortwinkles on a short strip: one random ignition trial/frame.
+     * Only one word can start in a frame; occupied slots remain untouched.
+     */
+    if (random8() <= mSaverIntensity) SpawnSaverWord();
+
+    Clear();
+    for (const tSaverWord& wSlot : mSaverWords)
+    {
+        if (wSlot.mWord == WORD_END_OF_WORDS) continue;
 
         /* Direct LED indexing; even rows are mirrored like BitMatrix::SetZigzagOrder(true) */
         const tWordData& wData = mcWordDataArray[wSlot.mWord];
         for (uint8_t wC = wData.mColumn; wC < (wData.mColumn + wData.mLength); wC++)
         {
             const uint8_t wCol = ((wData.mRow % 2) == 0) ? (MATRIX_WIDTH - 1 - wC) : wC;
-            SetLedColor(static_cast<uint16_t>(wData.mRow * MATRIX_WIDTH + wCol), wColor);
+            SetLedColor(static_cast<uint16_t>(wData.mRow * MATRIX_WIDTH + wCol), wSlot.mColor);
         }
     }
 
@@ -631,13 +651,15 @@ void Display::ScreenSaverStep(void)
 
 /**
  * @brief Places a random, non-overlapping word with a random color into a free slot.
- *
- * @param aNow Start time of the word's fade in.
  */
-void Display::SpawnSaverWord(const uint32_t aNow)
+void Display::SpawnSaverWord(void)
 {
-    for (tSaverWord& wSlot : mSaverWords)
+    /* Like Colortwinkles, sample up to five random positions for an off slot.
+     * This supplies random off time rather than a fixed spawn interval.
+     */
+    for (uint8_t wAttempt = 0; wAttempt < 5; wAttempt++)
     {
+        tSaverWord& wSlot = mSaverWords[random8(mcSaverMaxWords)];
         if (wSlot.mWord == WORD_END_OF_WORDS)
         {
             /* A few attempts to find a word not overlapping the visible ones */
@@ -647,9 +669,11 @@ void Display::SpawnSaverWord(const uint32_t aNow)
 
                 if (IsSaverWordFree(wWord))
                 {
+                    const CRGB wColor = ColorFromPalette(mSaverPalette, random8(), 64, NOBLEND);
+                    if (wColor == CRGB(CRGB::Black)) continue;
                     wSlot.mWord  = wWord;
-                    wSlot.mColor = CHSV(random8(), 255, 255);
-                    wSlot.mStart = aNow;
+                    wSlot.mColor = wColor;
+                    wSlot.mFadeUp = true;
                     break;
                 }
             }

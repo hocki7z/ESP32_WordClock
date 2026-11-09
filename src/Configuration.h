@@ -103,6 +103,9 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayEffectColor2          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0B);
     static const SettingsNS::tKey  mKeyDisplayEffectColor3          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0C);
     static const SettingsNS::tKey  mKeyDisplayEffectMapping         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0D);
+    static const SettingsNS::tKey  mKeyDisplayScreenSaverPalette    = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0E);
+    static const SettingsNS::tKey  mKeyDisplayScreenSaverSpeed      = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x30);
+    static const SettingsNS::tKey  mKeyDisplayScreenSaverIntensity  = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x31);
     //
     static const SettingsNS::tKey  mKeyDisplayColorTime             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x10);
     static const SettingsNS::tKey  mKeyDisplayColorBkgd             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x11);
@@ -137,6 +140,9 @@ namespace ConfigNS
     static constexpr bool     mDefaultDisplayClockSingleMins        = true;         // Show single minutes in the display
     static constexpr bool     mDefaultDisplayStartupText            = true;         // Scroll IP address after the intro
     static constexpr bool     mDefaultDisplayScreenSaver            = false;        // Show screen saver instead of time
+    static constexpr uint8_t  mDefaultDisplayScreenSaverPalette     = 1;            // Rainbow; independent of effect palette
+    static constexpr uint8_t  mDefaultDisplayScreenSaverSpeed       = 50;           // Percentage (0-100)
+    static constexpr uint8_t  mDefaultDisplayScreenSaverIntensity   = 50;           // Percentage (0-100)
     static constexpr bool     mDefaultDisplayEffectMode             = false;        // Show LED effect instead of time
     static constexpr uint8_t  mDefaultDisplayEffect                 = 0;            // First effect
     static constexpr uint8_t  mDefaultDisplayEffectSpeed            = 50;           // Percentage (0-100)

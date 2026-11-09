@@ -1679,7 +1679,7 @@ static const tEffectInfo* GetEffectInfo(uint8_t aIndex)
     return (aIndex < wCount1D) ? &wEffects1D[aIndex] : nullptr;
 }
 
-static CRGBPalette16 GetPalette(uint8_t aIndex, const CRGB* apColors)
+CRGBPalette16 GetPalette(uint8_t aIndex, const CRGB* apColors)
 {
     switch (aIndex)
     {

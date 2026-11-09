@@ -25,6 +25,8 @@ namespace EffectsNS
     /** @brief Number and names of the available palettes (for the web UI) */
     uint8_t GetPaletteCount(void);
     const char* const* GetPaletteNames(void);
+    /** @brief Resolves a palette; apColors points to three user colors. */
+    CRGBPalette16 GetPalette(uint8_t aIndex, const CRGB* apColors);
 
     /** @brief Number and names of the 1D-to-2D mappings (for the web UI); 0 = effect default */
     uint8_t GetMappingCount(void);
