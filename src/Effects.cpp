@@ -6,6 +6,7 @@
  *
  *  2D matrix effects ported from WLED-MM (https://github.com/MoonModules/WLED-MM, wled00/FX.cpp, EUPL-1.2).
  *  Original authors are named at each effect. Sound-reactive and particle-system effects are not included.
+ *  1D effects are in Effects1D.cpp.
  */
 
 #include <Arduino.h>
@@ -48,12 +49,138 @@ void Fx::FadeXY(int aX, int aY, uint8_t aScale)
 
 void Fx::Fill(const CRGB& arColor)
 {
-    fill_solid(mLeds, mCols * mRows, arColor);
+    fill_solid(Buf(), BufLen(), arColor);
 }
 
 void Fx::FadeAll(uint8_t aAmount)
 {
-    fadeToBlackBy(mLeds, mCols * mRows, aAmount);
+    fadeToBlackBy(Buf(), BufLen(), aAmount);
+}
+
+void Fx::FadeOut(uint8_t aRate)
+{
+    const float wRate = float((255 - aRate) >> 1) + 1.1f;
+    const CRGB  wT    = mColors[1];
+    CRGB*       wBuf  = Buf();
+
+    auto wStep = [wRate](uint8_t aFrom, uint8_t aTo) -> uint8_t
+    {
+        int wDelta = (int(aTo) - int(aFrom)) / wRate;
+        wDelta += (aTo == aFrom) ? 0 : ((aTo > aFrom) ? 1 : -1);
+        return static_cast<uint8_t>(aFrom + wDelta);
+    };
+
+    for (int wI = 0; wI < BufLen(); wI++)
+    {
+        CRGB& wC = wBuf[wI];
+        if (wC == wT) continue;
+        wC = CRGB(wStep(wC.r, wT.r), wStep(wC.g, wT.g), wStep(wC.b, wT.b));
+    }
+}
+
+void Fx::SetPixel(int aIndex, const CRGB& arColor)
+{
+    if (aIndex < 0) return;
+    const int wIdx   = aIndex & 0xFFFF;
+    const int wStrip = aIndex >> 16;
+
+    if (mType == TYPE_1D)
+    {
+        if (wIdx < mLen) mStrip[wIdx] = arColor;
+    }
+    else if (mType == TYPE_1D_COLS)
+    {
+        if (wIdx >= mRows) return;
+        if (wStrip == 0) for (int wX = 0; wX < mCols; wX++) mLeds[XY(wX, mRows - 1 - wIdx)] = arColor;
+        else             SetXY(wStrip - 1, mRows - 1 - wIdx, arColor);
+    }
+    else
+    {
+        if (wIdx < mCols * mRows) mLeds[wIdx] = arColor;
+    }
+}
+
+CRGB Fx::GetPixel(int aIndex) const
+{
+    if (aIndex < 0) return CRGB::Black;
+    const int wIdx   = aIndex & 0xFFFF;
+    const int wStrip = aIndex >> 16;
+
+    if (mType == TYPE_1D)            return (wIdx < mLen) ? mStrip[wIdx] : CRGB(CRGB::Black);
+    else if (mType == TYPE_1D_COLS)  return GetXY((wStrip > 0) ? (wStrip - 1) : 0, mRows - 1 - wIdx);
+    else                             return (wIdx < mCols * mRows) ? mLeds[wIdx] : CRGB(CRGB::Black);
+}
+
+void Fx::AddPixel(int aIndex, const CRGB& arColor)
+{
+    SetPixel(aIndex, GetPixel(aIndex) + arColor);
+}
+
+void Fx::BlendPixel(int aIndex, const CRGB& arColor, uint8_t aAmount)
+{
+    SetPixel(aIndex, blend(GetPixel(aIndex), arColor, aAmount));
+}
+
+CRGB Fx::ColorFromPal(uint32_t aIndex, bool aMapping, bool aWrap, uint8_t aColorSlot, uint8_t aBrightness) const
+{
+    if ((mPaletteIndex == 0) && (aColorSlot < 3))
+    {
+        CRGB wColor = mColors[aColorSlot];
+        if (aBrightness != 255) wColor.nscale8_video(aBrightness);
+        return wColor;
+    }
+
+    uint8_t wIndex = aIndex;
+    if (aMapping && (mLen > 1)) wIndex = (aIndex * 255) / (mLen - 1);
+    if (!aWrap) wIndex = scale8(wIndex, 240);
+    return ColorFromPalette(mPalette, wIndex, aBrightness, LINEARBLEND);
+}
+
+CRGB Fx::Wheel(uint8_t aPos) const
+{
+    if (mPaletteIndex != 0) return ColorFromPal(aPos, false, true, 0);
+
+    aPos = 255 - aPos;
+    if (aPos < 85)  return CRGB(255 - aPos * 3, 0, aPos * 3);
+    if (aPos < 170) { aPos -= 85; return CRGB(0, aPos * 3, 255 - aPos * 3); }
+    aPos -= 170;
+    return CRGB(aPos * 3, 255 - aPos * 3, 0);
+}
+
+uint8_t Fx::RandomWheelIndex(uint8_t aPos) const
+{
+    uint8_t wR = 0, wD = 0;
+    while (wD < 42)
+    {
+        wR = random8();
+        const uint8_t wX = abs(int(aPos) - int(wR));
+        wD = std::min<uint8_t>(wX, 255 - wX);
+    }
+    return wR;
+}
+
+void Fx::Project(void)
+{
+    if (mType != TYPE_1D) return;
+
+    const float wCx = (mCols - 1) / 2.0f;
+    const float wCy = (mRows - 1) / 2.0f;
+
+    for (int wY = 0; wY < mRows; wY++)
+    {
+        for (int wX = 0; wX < mCols; wX++)
+        {
+            int wIdx;
+            switch (mMapping)
+            {
+                case MAP_BAR:    wIdx = mRows - 1 - wY; break;
+                case MAP_CIRCLE: wIdx = int(sqrtf((wX - wCx) * (wX - wCx) + (wY - wCy) * (wY - wCy))); break;
+                case MAP_CORNER: wIdx = std::max(wX, wY); break;
+                default:         wIdx = XY(wX, wY); break;
+            }
+            mLeds[XY(wX, wY)] = (wIdx < mLen) ? mStrip[wIdx] : CRGB(CRGB::Black);
+        }
+    }
 }
 
 CRGB Fx::Pal(uint8_t aIndex, uint8_t aBrightness) const
@@ -61,7 +188,7 @@ CRGB Fx::Pal(uint8_t aIndex, uint8_t aBrightness) const
     return ColorFromPalette(mPalette, aIndex, aBrightness, LINEARBLEND);
 }
 
-void Fx::BlurLine(int aStart, int aStride, int aCount, uint8_t aAmount)
+void Fx::BlurLine(CRGB* apBuf, int aStart, int aStride, int aCount, uint8_t aAmount)
 {
     if (aAmount == 0) return;
 
@@ -71,24 +198,26 @@ void Fx::BlurLine(int aStart, int aStride, int aCount, uint8_t aAmount)
 
     for (int wI = 0; wI < aCount; wI++)
     {
-        CRGB& wCur  = mLeds[aStart + wI * aStride];
+        CRGB& wCur  = apBuf[aStart + wI * aStride];
         CRGB  wPart = wCur;
         wPart.nscale8(wSeep);
         wCur.nscale8(wKeep);
         wCur += wCarry;
-        if (wI > 0) mLeds[aStart + (wI - 1) * aStride] += wPart;
+        if (wI > 0) apBuf[aStart + (wI - 1) * aStride] += wPart;
         wCarry = wPart;
     }
 }
 
 void Fx::BlurRows(uint8_t aAmount)
 {
-    for (int wY = 0; wY < mRows; wY++) BlurLine(wY * mCols, 1, mCols, aAmount);
+    if (mType == TYPE_1D) { BlurLine(mStrip, 0, 1, mLen, aAmount); return; }
+    for (int wY = 0; wY < mRows; wY++) BlurLine(mLeds, wY * mCols, 1, mCols, aAmount);
 }
 
 void Fx::BlurCols(uint8_t aAmount)
 {
-    for (int wX = 0; wX < mCols; wX++) BlurLine(wX, mCols, mRows, aAmount);
+    if (mType == TYPE_1D) return;
+    for (int wX = 0; wX < mCols; wX++) BlurLine(mLeds, wX, mCols, mRows, aAmount);
 }
 
 void Fx::Blur(uint8_t aAmount)
@@ -110,6 +239,21 @@ void Fx::DrawLine(int aX0, int aY0, int aX1, int aY1, const CRGB& arColor)
         const int wE2 = 2 * wErr;
         if (wE2 >= wDy) { wErr += wDy; aX0 += wSx; }
         if (wE2 <= wDx) { wErr += wDx; aY0 += wSy; }
+    }
+}
+
+void Fx::DrawCircle(int aCx, int aCy, int aRadius, const CRGB& arColor)
+{
+    int wX = aRadius, wY = 0, wErr = 1 - aRadius;
+    while (wX >= wY)
+    {
+        SetXY(aCx + wX, aCy + wY, arColor); SetXY(aCx - wX, aCy + wY, arColor);
+        SetXY(aCx + wX, aCy - wY, arColor); SetXY(aCx - wX, aCy - wY, arColor);
+        SetXY(aCx + wY, aCy + wX, arColor); SetXY(aCx - wY, aCy + wX, arColor);
+        SetXY(aCx + wY, aCy - wX, arColor); SetXY(aCx - wY, aCy - wX, arColor);
+        wY++;
+        if (wErr < 0) wErr += 2 * wY + 1;
+        else          { wX--; wErr += 2 * (wY - wX) + 1; }
     }
 }
 
@@ -144,33 +288,43 @@ void Fx::WuPixel(uint32_t aX, uint32_t aY, const CRGB& arColor)
     }
 }
 
-void Fx::MoveX(int aDelta)
+void Fx::MoveX(int aDelta, bool aWrap)
 {
     if (aDelta == 0) return;
     for (int wY = 0; wY < mRows; wY++)
     {
-        if (aDelta > 0) for (int wX = 0; wX < mCols; wX++)       mLeds[XY(wX, wY)] = GetXY(wX + aDelta, wY);
-        else            for (int wX = mCols - 1; wX >= 0; wX--)  mLeds[XY(wX, wY)] = GetXY(wX + aDelta, wY);
+        CRGB wRow[mCols];
+        for (int wX = 0; wX < mCols; wX++)
+        {
+            const int wSx = wX + aDelta;
+            wRow[wX] = aWrap ? mLeds[XY(((wSx % mCols) + mCols) % mCols, wY)] : GetXY(wSx, wY);
+        }
+        for (int wX = 0; wX < mCols; wX++) mLeds[XY(wX, wY)] = wRow[wX];
     }
 }
 
-void Fx::MoveY(int aDelta)
+void Fx::MoveY(int aDelta, bool aWrap)
 {
     if (aDelta == 0) return;
     for (int wX = 0; wX < mCols; wX++)
     {
-        if (aDelta > 0) for (int wY = 0; wY < mRows; wY++)       mLeds[XY(wX, wY)] = GetXY(wX, wY + aDelta);
-        else            for (int wY = mRows - 1; wY >= 0; wY--)  mLeds[XY(wX, wY)] = GetXY(wX, wY + aDelta);
+        CRGB wCol[mRows];
+        for (int wY = 0; wY < mRows; wY++)
+        {
+            const int wSy = wY + aDelta;
+            wCol[wY] = aWrap ? mLeds[XY(wX, ((wSy % mRows) + mRows) % mRows)] : GetXY(wX, wSy);
+        }
+        for (int wY = 0; wY < mRows; wY++) mLeds[XY(wX, wY)] = wCol[wY];
     }
 }
 
-void Fx::Move(uint8_t aDirection, uint8_t aDelta)
+void Fx::Move(uint8_t aDirection, uint8_t aDelta, bool aWrap)
 {
     static const int8_t wcDx[8] = { 1, 1, 0, -1, -1, -1,  0,  1 };
     static const int8_t wcDy[8] = { 0, 1, 1,  1,  0, -1, -1, -1 };
 
-    MoveX(wcDx[aDirection & 7] * aDelta);
-    MoveY(wcDy[aDirection & 7] * aDelta);
+    MoveX(wcDx[aDirection & 7] * aDelta, aWrap);
+    MoveY(wcDy[aDirection & 7] * aDelta, aWrap);
 }
 
 
@@ -1445,61 +1599,63 @@ static void FxSnowFall(Fx& f)
 /***************************************************************************************************
   Effect table
  **************************************************************************************************/
-using tEffectFn = void (*)(Fx&);
-
-struct tEffectInfo
-{
-    const char* mName;
-    tEffectFn   mFn;
-    uint8_t     mCustom1, mCustom2, mCustom3;
-    bool        mCheck1, mCheck2, mCheck3;
-};
-
 /* Default custom values and options as in WLED-MM */
-static const tEffectInfo mcEffects[] =
+static const tEffectInfo mcEffects2D[] =
 {
-    { "Black Hole",       FxBlackHole,       128, 128, 16, false, false, false },
-    { "Blobs",            FxBlobs,             8, 128, 16, false, false, false },
-    { "Colored Bursts",   FxColoredBursts,   128, 128, 16, false, false, false },
-    { "Crazy Bees",       FxCrazyBees,       128, 128, 16, false, false, false },
-    { "Distortion Waves", FxDistortionWaves, 128, 128, 16, false, false, false },
-    { "DNA",              FxDna,             128, 128, 16, false, false, false },
-    { "DNA Spiral",       FxDnaSpiral,       128, 128, 16, false, false, false },
-    { "Drift",            FxDrift,           128, 128, 16, false, false, false },
-    { "Drift Rose",       FxDriftRose,       128, 128, 16, false, false, false },
-    { "Firenoise",        FxFirenoise,       128, 128, 16, false, false, false },
-    { "Frizzles",         FxFrizzles,        128, 128, 16, false, false, false },
-    { "Game Of Life",     FxGameOfLife,      128, 128, 16, false, false, true  },
-    { "Ghost Rider",      FxGhostRider,      128, 128, 16, false, false, false },
-    { "Hiphotic",         FxHiphotic,        128, 128, 16, false, false, false },
-    { "Julia",            FxJulia,           128, 128, 16, false, false, false },
-    { "Lissajous",        FxLissajous,       128, 128, 15, false, false, false },
-    { "Matrix",           FxMatrix,          128, 128, 16, false, false, false },
-    { "Metaballs",        FxMetaballs,       128, 128, 16, false, false, false },
-    { "Noise2D",          FxNoise2D,         128, 128, 16, false, false, false },
-    { "Octopus",          FxOctopus,         128, 128, 16, false, false, false },
-    { "Plasma Ball",      FxPlasmaBall,      128, 128, 16, false, false, false },
-    { "Polar Lights",     FxPolarLights,     128, 128, 16, false, false, false },
-    { "Pulser",           FxPulser,          128, 128, 16, false, false, false },
-    { "Scrolling Text",   FxScrollingText,     0, 128, 16, false, false, false },
-    { "Sindots",          FxSindots,         128, 128, 16, false, false, false },
-    { "Snow Fall",        FxSnowFall,         17,   0,  0, false, false, true  },
-    { "Soap",             FxSoap,            128, 128, 16, false, false, false },
-    { "Spaceships",       FxSpaceships,      128, 128, 16, false, false, false },
-    { "Squared Swirl",    FxSquaredSwirl,    128, 128, 16, false, false, false },
-    { "Sun Radiation",    FxSunRadiation,    128, 128, 16, false, false, false },
-    { "Tartan",           FxTartan,          128, 128, 16, false, false, false },
-    { "Waving Cell",      FxWavingCell,      128, 128, 16, false, false, false },
+    { "Black Hole",       FxBlackHole,       TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Blobs",            FxBlobs,           TYPE_2D, MAP_PIXELS, 0,   8, 128, 16, false, false, false },
+    { "Colored Bursts",   FxColoredBursts,   TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Crazy Bees",       FxCrazyBees,       TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Distortion Waves", FxDistortionWaves, TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "DNA",              FxDna,             TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "DNA Spiral",       FxDnaSpiral,       TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Drift",            FxDrift,           TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Drift Rose",       FxDriftRose,       TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Firenoise",        FxFirenoise,       TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Frizzles",         FxFrizzles,        TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Game Of Life",     FxGameOfLife,      TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, true  },
+    { "Ghost Rider",      FxGhostRider,      TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Hiphotic",         FxHiphotic,        TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Julia",            FxJulia,           TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Lissajous",        FxLissajous,       TYPE_2D, MAP_PIXELS, 0, 128, 128, 15, false, false, false },
+    { "Matrix",           FxMatrix,          TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Metaballs",        FxMetaballs,       TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Noise2D",          FxNoise2D,         TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Octopus",          FxOctopus,         TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Plasma Ball",      FxPlasmaBall,      TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Polar Lights",     FxPolarLights,     TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Pulser",           FxPulser,          TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Scrolling Text",   FxScrollingText,   TYPE_2D, MAP_PIXELS, 0,   0, 128, 16, false, false, false },
+    { "Sindots",          FxSindots,         TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Snow Fall",        FxSnowFall,        TYPE_2D, MAP_PIXELS, 0,  17,   0,  0, false, false, true  },
+    { "Soap",             FxSoap,            TYPE_2D, MAP_PIXELS, 1, 128, 128, 16, false, false, false },
+    { "Spaceships",       FxSpaceships,      TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Squared Swirl",    FxSquaredSwirl,    TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Sun Radiation",    FxSunRadiation,    TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Tartan",           FxTartan,          TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
+    { "Waving Cell",      FxWavingCell,      TYPE_2D, MAP_PIXELS, 0, 128, 128, 16, false, false, false },
 };
 
-static constexpr uint8_t mcEffectCount = sizeof(mcEffects) / sizeof(mcEffects[0]);
+static constexpr uint8_t mcEffects2DCount = sizeof(mcEffects2D) / sizeof(mcEffects2D[0]);
+
+/* Maximum number of effects (2D + 1D) and name length including the 1D/2D mark */
+static constexpr uint8_t mcMaxEffects = 200;
+static constexpr size_t  mcNameLength = 32;
 
 static const char* const mcPaletteNames[] =
 {
-    "Default", "Rainbow", "Party", "Ocean", "Forest", "Lava", "Heat", "Cloud", "Rainbow Stripes"
+    "Default", "Rainbow", "Party", "Ocean", "Forest", "Lava", "Heat", "Cloud", "Rainbow Stripes",
+    "Colors 1&2", "Colors 1-3"
 };
 
 static constexpr uint8_t mcPaletteCount = sizeof(mcPaletteNames) / sizeof(mcPaletteNames[0]);
+
+static const char* const mcMappingNames[] =
+{
+    "Effect default", "Pixels", "Bar", "Circle", "Corner"
+};
+
+static constexpr uint8_t mcMappingCount = sizeof(mcMappingNames) / sizeof(mcMappingNames[0]);
 
 /* Per-effect state must fit into the data buffer */
 static_assert(sizeof(tGhost)  <= mcDataSize, "Effects: data buffer too small (Ghost Rider)");
@@ -1510,33 +1666,56 @@ static_assert(sizeof(tOctoMap) * mcCols * mcRows + 2 <= mcDataSize, "Effects: da
 static_assert(2 * mcCols * mcRows + 2 * sizeof(uint32_t) <= mcDataSize, "Effects: data buffer too small (Game Of Life)");
 static_assert((mcCols + 2) * (mcRows + 2) <= mcDataSize, "Effects: data buffer too small (Sun Radiation)");
 
-static CRGBPalette16 GetPalette(uint8_t aIndex)
+/**
+ * @brief Returns the description of an effect; 2D effects first, then 1D effects.
+ */
+static const tEffectInfo* GetEffectInfo(uint8_t aIndex)
+{
+    if (aIndex < mcEffects2DCount) return &mcEffects2D[aIndex];
+
+    uint8_t wCount1D = 0;
+    const tEffectInfo* wEffects1D = GetEffects1D(wCount1D);
+    aIndex -= mcEffects2DCount;
+    return (aIndex < wCount1D) ? &wEffects1D[aIndex] : nullptr;
+}
+
+static CRGBPalette16 GetPalette(uint8_t aIndex, const CRGB* apColors)
 {
     switch (aIndex)
     {
-        case 2:  return PartyColors_p;
+        case 1:  return RainbowColors_p;
         case 3:  return OceanColors_p;
         case 4:  return ForestColors_p;
         case 5:  return LavaColors_p;
         case 6:  return HeatColors_p;
         case 7:  return CloudColors_p;
         case 8:  return RainbowStripeColors_p;
-        default: return RainbowColors_p;
+        case 9:  return CRGBPalette16(apColors[0], apColors[1]);
+        case 10: return CRGBPalette16(apColors[0], apColors[1], apColors[2]);
+        default: return PartyColors_p;          // WLED "Default" palette
     }
 }
 
 uint8_t GetEffectCount(void)
 {
-    return mcEffectCount;
+    uint8_t wCount1D = 0;
+    GetEffects1D(wCount1D);
+    return std::min<int>(mcEffects2DCount + wCount1D, mcMaxEffects);
 }
 
 const char* const* GetEffectNames(void)
 {
-    static const char* wNames[mcEffectCount] = {};
+    static char        wBuffer[mcMaxEffects][mcNameLength];
+    static const char* wNames[mcMaxEffects] = {};
 
     if (wNames[0] == nullptr)
     {
-        for (uint8_t wI = 0; wI < mcEffectCount; wI++) wNames[wI] = mcEffects[wI].mName;
+        for (uint8_t wI = 0; wI < GetEffectCount(); wI++)
+        {
+            const tEffectInfo* wInfo = GetEffectInfo(wI);
+            snprintf(wBuffer[wI], mcNameLength, "%s (%s)", wInfo->mName, (wInfo->mType == TYPE_2D) ? "2D" : "1D");
+            wNames[wI] = wBuffer[wI];
+        }
     }
     return wNames;
 }
@@ -1551,31 +1730,74 @@ const char* const* GetPaletteNames(void)
     return mcPaletteNames;
 }
 
+uint8_t GetMappingCount(void)
+{
+    return mcMappingCount;
+}
+
+const char* const* GetMappingNames(void)
+{
+    return mcMappingNames;
+}
+
 
 /***************************************************************************************************
   Engine
  **************************************************************************************************/
 /**
- * @brief Selects an effect and resets its state.
+ * @brief Selects an effect and 1D mapping (0 = effect default) and resets the effect state.
  */
-void Engine::Start(uint8_t aEffect)
+void Engine::Start(uint8_t aEffect, uint8_t aMapping)
 {
-    mEffect = (aEffect < mcEffectCount) ? aEffect : 0;
+    mEffect         = (aEffect < GetEffectCount()) ? aEffect : 0;
+    mMappingSetting = (aMapping < mcMappingCount) ? aMapping : 0;
 
-    const tEffectInfo& wInfo = mcEffects[mEffect];
-    mFx.mCustom1 = wInfo.mCustom1;
-    mFx.mCustom2 = wInfo.mCustom2;
-    mFx.mCustom3 = wInfo.mCustom3;
-    mFx.mCheck1  = wInfo.mCheck1;
-    mFx.mCheck2  = wInfo.mCheck2;
-    mFx.mCheck3  = wInfo.mCheck3;
+    const tEffectInfo* wInfo = GetEffectInfo(mEffect);
+    mFx.mCustom1 = wInfo->mCustom1;
+    mFx.mCustom2 = wInfo->mCustom2;
+    mFx.mCustom3 = wInfo->mCustom3;
+    mFx.mCheck1  = wInfo->mCheck1;
+    mFx.mCheck2  = wInfo->mCheck2;
+    mFx.mCheck3  = wInfo->mCheck3;
 
-    mFx.mCall = 0;
-    mFx.mStep = 0;
-    mFx.mAux0 = 0;
-    mFx.mAux1 = 0;
+    mFx.mType    = wInfo->mType;
+    mFx.mMapping = (mMappingSetting == 0) ? wInfo->mMapping : static_cast<tMapping>(mMappingSetting - 1);
+
+    switch (mFx.mType)
+    {
+        case TYPE_1D:
+            switch (mFx.mMapping)
+            {
+                case MAP_BAR:    mFx.mLen = Fx::mRows; break;
+                case MAP_CIRCLE: mFx.mLen = int(sqrtf(float(Fx::mCols * Fx::mCols + Fx::mRows * Fx::mRows)) / 2.0f) + 1; break;
+                case MAP_CORNER: mFx.mLen = std::max<int>(Fx::mCols, Fx::mRows); break;
+                default:         mFx.mLen = Fx::mCols * Fx::mRows; break;
+            }
+            mFx.mStrips = 1;
+            break;
+
+        case TYPE_1D_COLS:
+            mFx.mLen    = Fx::mRows;
+            mFx.mStrips = Fx::mCols;
+            break;
+
+        default:
+            mFx.mLen    = Fx::mCols * Fx::mRows;
+            mFx.mStrips = 1;
+            break;
+    }
+
+    mFx.mCall  = 0;
+    mFx.mStep  = 0;
+    mFx.mAux0  = 0;
+    mFx.mAux1  = 0;
+    mFx.mDelay = 0;
+    mNextFrame = 0;
     memset(mFx.mData, 0, sizeof(mFx.mData));
-    mFx.Fill(CRGB::Black);
+    fill_solid(mFx.mStrip, Fx::mCols * Fx::mRows, CRGB::Black);
+    fill_solid(mFx.mLeds,  Fx::mCols * Fx::mRows, CRGB::Black);
+
+    ApplyPalette();
 }
 
 /**
@@ -1583,10 +1805,33 @@ void Engine::Start(uint8_t aEffect)
  */
 void Engine::SetParams(uint8_t aSpeed, uint8_t aIntensity, uint8_t aPalette)
 {
-    mFx.mSpeed        = aSpeed;
-    mFx.mIntensity    = aIntensity;
-    mFx.mPaletteIndex = (aPalette < mcPaletteCount) ? aPalette : 0;
-    mFx.mPalette      = GetPalette(mFx.mPaletteIndex);
+    mFx.mSpeed     = aSpeed;
+    mFx.mIntensity = aIntensity;
+    mUserPalette   = (aPalette < mcPaletteCount) ? aPalette : 0;
+    ApplyPalette();
+}
+
+/**
+ * @brief Sets the three effect colors (WLED primary, secondary, tertiary).
+ */
+void Engine::SetColors(const CRGB& arColor1, const CRGB& arColor2, const CRGB& arColor3)
+{
+    mFx.mColors[0] = arColor1;
+    mFx.mColors[1] = arColor2;
+    mFx.mColors[2] = arColor3;
+    ApplyPalette();
+}
+
+/**
+ * @brief Resolves "Default" to the effect's default palette and loads it.
+ */
+void Engine::ApplyPalette(void)
+{
+    const tEffectInfo* wInfo = GetEffectInfo(mEffect);
+    const uint8_t wDefault = (wInfo != nullptr) ? wInfo->mPalette : 0;
+
+    mFx.mPaletteIndex = (mUserPalette != 0) ? mUserPalette : wDefault;
+    mFx.mPalette      = GetPalette(mFx.mPaletteIndex, mFx.mColors);
 }
 
 /**
@@ -1599,16 +1844,20 @@ void Engine::SetText(const char* apText)
 }
 
 /**
- * @brief Renders the next frame of the selected effect.
+ * @brief Renders the next frame of the selected effect (unless it requested a longer frame delay).
  */
 void Engine::Render(uint32_t aNow)
 {
-    if (mEffect < mcEffectCount)
-    {
-        mFx.mNow = aNow;
-        mcEffects[mEffect].mFn(mFx);
-        mFx.mCall++;
-    }
+    const tEffectInfo* wInfo = GetEffectInfo(mEffect);
+    if ((wInfo == nullptr) || (static_cast<int32_t>(aNow - mNextFrame) < 0)) return;
+
+    mFx.mNow   = aNow;
+    mFx.mDelay = 0;
+    wInfo->mFn(mFx);
+    mFx.mCall++;
+    mNextFrame = aNow + mFx.mDelay;
+
+    mFx.Project();
 }
 
 }; /* end of namespace EffectsNS */

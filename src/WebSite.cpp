@@ -623,6 +623,19 @@ void WebSite::InitWebUIControls(void)
             EffectsNS::GetPaletteNames(), EffectsNS::GetPaletteCount(),
             ConfigNS::mKeyDisplayEffectPalette, ConfigNS::mDefaultDisplayEffectPalette);
 
+    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "1D mapping");
+    mWebUIControlID.mDisplayEffectMapping = AddSelectControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT,
+            EffectsNS::GetMappingNames(), EffectsNS::GetMappingCount(),
+            ConfigNS::mKeyDisplayEffectMapping, ConfigNS::mDefaultDisplayEffectMapping);
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Colors");
+    mWebUIControlID.mDisplayEffectColor1 = AddColorControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayEffectColor1, ConfigNS::mDefaultDisplayEffectColor1);
+    mWebUIControlID.mDisplayEffectColor2 = AddColorControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayEffectColor2, ConfigNS::mDefaultDisplayEffectColor2);
+    mWebUIControlID.mDisplayEffectColor3 = AddColorControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayEffectColor3, ConfigNS::mDefaultDisplayEffectColor3);
+
     AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Speed");
     mWebUIControlID.mDisplayEffectSpeed = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SLIDER,
             ConfigNS::mKeyDisplayEffectSpeed, ConfigNS::mDefaultDisplayEffectSpeed);

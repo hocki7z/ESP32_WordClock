@@ -457,7 +457,8 @@ void Display::StartEffect(void)
     Clear();
     FastLED.show();
 
-    mEffects.Start(Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect));
+    mEffects.Start(Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect),
+                   Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectMapping, ConfigNS::mDefaultDisplayEffectMapping));
     LoadEffectSettings();
     UpdateEffectText();
 
@@ -469,11 +470,17 @@ void Display::StartEffect(void)
  */
 void Display::LoadEffectSettings(void)
 {
-    const uint8_t wEffect = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect);
-    if (wEffect != mEffects.GetEffect())
+    const uint8_t wEffect  = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect);
+    const uint8_t wMapping = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectMapping, ConfigNS::mDefaultDisplayEffectMapping);
+    if ((wEffect != mEffects.GetEffect()) || (wMapping != mEffects.GetMapping()))
     {
-        mEffects.Start(wEffect);
+        mEffects.Start(wEffect, wMapping);
     }
+
+    mEffects.SetColors(
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor1, ConfigNS::mDefaultDisplayEffectColor1) & COLOR_RGB_MASK),
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor2, ConfigNS::mDefaultDisplayEffectColor2) & COLOR_RGB_MASK),
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor3, ConfigNS::mDefaultDisplayEffectColor3) & COLOR_RGB_MASK));
 
     const uint8_t wSpeed     = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectSpeed, ConfigNS::mDefaultDisplayEffectSpeed);
     const uint8_t wIntensity = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectIntensity, ConfigNS::mDefaultDisplayEffectIntensity);

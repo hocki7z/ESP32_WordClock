@@ -127,6 +127,10 @@ private:
         Control::ControlId_t mDisplayEffectSpeed;
         Control::ControlId_t mDisplayEffectIntensity;
         Control::ControlId_t mDisplayEffectPalette;
+        Control::ControlId_t mDisplayEffectMapping;
+        Control::ControlId_t mDisplayEffectColor1;
+        Control::ControlId_t mDisplayEffectColor2;
+        Control::ControlId_t mDisplayEffectColor3;
         //
         Control::ControlId_t mLedDisplayColorGroup;
         Control::ControlId_t mDisplayColorTime;

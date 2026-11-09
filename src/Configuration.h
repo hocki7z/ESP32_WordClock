@@ -99,6 +99,10 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayEffectSpeed           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x07);
     static const SettingsNS::tKey  mKeyDisplayEffectIntensity       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x08);
     static const SettingsNS::tKey  mKeyDisplayEffectPalette         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x09);
+    static const SettingsNS::tKey  mKeyDisplayEffectColor1          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0A);
+    static const SettingsNS::tKey  mKeyDisplayEffectColor2          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0B);
+    static const SettingsNS::tKey  mKeyDisplayEffectColor3          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0C);
+    static const SettingsNS::tKey  mKeyDisplayEffectMapping         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0D);
     //
     static const SettingsNS::tKey  mKeyDisplayColorTime             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x10);
     static const SettingsNS::tKey  mKeyDisplayColorBkgd             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x11);
@@ -138,6 +142,10 @@ namespace ConfigNS
     static constexpr uint8_t  mDefaultDisplayEffectSpeed            = 50;           // Percentage (0-100)
     static constexpr uint8_t  mDefaultDisplayEffectIntensity        = 50;           // Percentage (0-100)
     static constexpr uint8_t  mDefaultDisplayEffectPalette          = 0;            // Effect default palette
+    static constexpr uint32_t mDefaultDisplayEffectColor1           = 0xFFAA00;     // WLED default primary color
+    static constexpr uint32_t mDefaultDisplayEffectColor2           = 0x000000;
+    static constexpr uint32_t mDefaultDisplayEffectColor3           = 0x000000;
+    static constexpr uint8_t  mDefaultDisplayEffectMapping          = 0;            // Effect default 1D mapping
     static constexpr uint32_t mDefaultDisplayColorTime              = 0x00FF00;     // Green
     static constexpr uint32_t mDefaultDisplayColorTimeNight         = 0xFFA500;     // FastLED CRGB::Orange
     static constexpr uint32_t mDefaultDisplayColorBkgd              = 0x000000;     // Black
