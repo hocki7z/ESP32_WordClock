@@ -1,3 +1,5 @@
+# Matches the Arduino package directory selected by the pinned runstats environment.
+
 idf_component_register(
     SRCS
         "Application.cpp"
@@ -17,7 +19,7 @@ idf_component_register(
     INCLUDE_DIRS
         "."
     REQUIRES
-        arduino
+        framework-arduinoespressif32-3.20017.0
         app_update
         driver
         esp_event
