@@ -123,10 +123,11 @@ namespace SerializeNS
     inline uint32_t DeserializeData(const uint8_t* const apByteArray, uint16_t* const apData, uint32_t aOffset = 0)
     {
         /* Retrieve data from byte array as little endian */
-        *apData = (apByteArray[aOffset++] <<  0) |
-                  (apByteArray[aOffset++] <<  8);
+        *apData = static_cast<uint16_t>(
+            (static_cast<uint32_t>(apByteArray[aOffset    ]) <<  0) |
+            (static_cast<uint32_t>(apByteArray[aOffset + 1]) <<  8));
 
-        return aOffset;
+        return aOffset + 2;
     }
 
     /**
@@ -141,12 +142,12 @@ namespace SerializeNS
     inline uint32_t DeserializeData(const uint8_t* const apByteArray, uint32_t* const apData, uint32_t aOffset = 0)
     {
         /* Retrieve data from byte array as little endian */
-        *apData = (apByteArray[aOffset++] <<  0) |
-                  (apByteArray[aOffset++] <<  8) |
-                  (apByteArray[aOffset++] << 16) |
-                  (apByteArray[aOffset++] << 24);
+        *apData = (static_cast<uint32_t>(apByteArray[aOffset    ]) <<  0) |
+                  (static_cast<uint32_t>(apByteArray[aOffset + 1]) <<  8) |
+                  (static_cast<uint32_t>(apByteArray[aOffset + 2]) << 16) |
+                  (static_cast<uint32_t>(apByteArray[aOffset + 3]) << 24);
 
-        return aOffset;
+        return aOffset + 4;
     }
 
     /**
@@ -168,15 +169,15 @@ namespace SerializeNS
         };
 
         /* Retrieve data from byte array as little endian */
-        wRawData = (apByteArray[aOffset++] <<  0) |
-                   (apByteArray[aOffset++] <<  8) |
-                   (apByteArray[aOffset++] << 16) |
-                   (apByteArray[aOffset++] << 24);
+        wRawData = (static_cast<uint32_t>(apByteArray[aOffset    ]) <<  0) |
+               (static_cast<uint32_t>(apByteArray[aOffset + 1]) <<  8) |
+               (static_cast<uint32_t>(apByteArray[aOffset + 2]) << 16) |
+               (static_cast<uint32_t>(apByteArray[aOffset + 3]) << 24);
 
         /* Set float value */
         *apData = wFloating;
 
-        return aOffset;
+        return aOffset + 4;
     }
 
 }; /* end of namespace SerializeNS */

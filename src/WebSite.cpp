@@ -940,7 +940,12 @@ Control::ControlId_t WebSite::AddTimeControl(const char* apLabel, Control::Contr
         DateTimeNS::tDateTime wDateTime = DateTimeNS::DwordToDateTime(wTimeInt);
 
         /* Convert time to string format HH:MM */
-        sprintf(wTimeStr, "%02u:%02u", wDateTime.mTime.mHour, wDateTime.mTime.mMinute);
+        if ((wDateTime.mTime.mHour <= 23) && (wDateTime.mTime.mMinute <= 59))
+        {
+            snprintf(wTimeStr, sizeof(wTimeStr), "%02u:%02u",
+                static_cast<unsigned>(wDateTime.mTime.mHour),
+                static_cast<unsigned>(wDateTime.mTime.mMinute));
+        }
     }
 
     Control::ControlId_t wControlId = AddTextControl(apLabel, aParent, aElementStyle, String(wTimeStr), aSettingsKey, aHandler);

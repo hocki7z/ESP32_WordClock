@@ -184,7 +184,10 @@ void TimeManager::SetLocalTimeFromNTP(void)
     if (mNtpTimeSynced)
     {
         DateTimeNS::tDateTime wNTPTime = GetNtpTime();
-        SetLocalTime(wNTPTime);
+        if (wNTPTime.mDate.mMonth != 0)
+        {
+            SetLocalTime(wNTPTime);
+        }
     }
 }
 
@@ -212,7 +215,8 @@ void TimeManager::SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, 
 
     /* Make new local time */
     time_t  wNewTime = mktime(wpLocalTime);
-    timeval wNewTimeval = { .tv_sec = wNewTime };
+    timeval wNewTimeval{};
+    wNewTimeval.tv_sec = wNewTime;
 
     /* Set new local time */
     settimeofday(&wNewTimeval, nullptr);
@@ -241,28 +245,45 @@ DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
 
 DateTimeNS::tDateTime TimeManager::GetNtpTime(void)
 {
-    DateTimeNS::tDateTime wDateTime;
+    DateTimeNS::tDateTime wDateTime{};
 
     /* Check if NTP sync ever happened */
     if (NTP.getLastNTPSync() != 0)
     {
-        uint8_t wHour, wMinute, wSecond;
-        uint8_t wDay,  wMonth;
-        uint16_t wYear;
+        int wHour = 0, wMinute = 0, wSecond = 0;
+        int wDay = 0, wMonth = 0, wYear = 0;
+        char wTrailing = '\0';
 
-        /* Parse time string and date strings */
-        if ((sscanf(NTP.getTimeStr(), "%d:%d:%d", &wHour, &wMinute, &wSecond) == 3) &&      // 'HH:MM:SS'  , e.g. 00:23:56
-            (sscanf(NTP.getDateStr(), "%d/%d/%d", &wDay,  &wMonth,  &wYear)   == 3))        // 'DD/MM/YYYY', e.g. 25/12/2023
+        /* Bound conversions, reject trailing data, and match %d with int pointers. */
+        if ((sscanf(NTP.getTimeStr(), "%2d:%2d:%2d%c", &wHour, &wMinute, &wSecond, &wTrailing) == 3) &&
+            (sscanf(NTP.getDateStr(), "%2d/%2d/%4d%c", &wDay, &wMonth, &wYear, &wTrailing) == 3) &&
+            (wHour >= 0) && (wHour <= 23) &&
+            (wMinute >= 0) && (wMinute <= 59) &&
+            (wSecond >= 0) && (wSecond <= 59) &&
+            (wMonth >= 1) && (wMonth <= 12) &&
+            (wYear >= 1970) && (wYear <= 9999))
         {
+            static constexpr uint8_t wcDaysPerMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+            int wMaxDay = wcDaysPerMonth[wMonth - 1];
+            if ((wMonth == 2) && (wYear % 4 == 0) &&
+                ((wYear % 100 != 0) || (wYear % 400 == 0)))
+            {
+                ++wMaxDay;
+            }
+            if ((wDay < 1) || (wDay > wMaxDay))
+            {
+                return wDateTime;
+            }
+
             /* Set date */
-            wDateTime.mDate.mDay    = wDay;
-            wDateTime.mDate.mMonth  = wMonth;
-            wDateTime.mDate.mYear   = wYear;
+            wDateTime.mDate.mDay    = static_cast<uint8_t>(wDay);
+            wDateTime.mDate.mMonth  = static_cast<uint8_t>(wMonth);
+            wDateTime.mDate.mYear   = static_cast<uint16_t>(wYear);
 
             /* Set time */
-            wDateTime.mTime.mHour   = wHour;
-            wDateTime.mTime.mMinute = wMinute;
-            wDateTime.mTime.mSecond = wSecond;
+            wDateTime.mTime.mHour   = static_cast<uint8_t>(wHour);
+            wDateTime.mTime.mMinute = static_cast<uint8_t>(wMinute);
+            wDateTime.mTime.mSecond = static_cast<uint8_t>(wSecond);
         }
     }
     else

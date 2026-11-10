@@ -111,9 +111,8 @@
         tDateTime wDateTime;
 
         /* Find month index (1-12) */
-        char wCompMonth[4];
-        strncpy(wCompMonth, __DATE__, 3);
-        wCompMonth[3] = '\0';
+        char wCompMonth[4]{};
+        memcpy(wCompMonth, __DATE__, 3);
         const char* wpMonthStr = strstr(mMonthsStr, wCompMonth);
 
         /* Parse __DATE__ ("Mmm dd yyyy") */
