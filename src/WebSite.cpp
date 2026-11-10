@@ -828,6 +828,7 @@ void WebSite::WebSocketCallback(AsyncWebSocket* apServer, AsyncWebSocketClient* 
 {
     /* Our client sends a single small text frame: wcview:<visible>:<tab-id>. */
     bool wViewMessage = false;
+    bool wGuiTransferAcknowledged = false;
     auto wTabId = Control::noParent;
     bool wVisible = false;
     if ((aType == WS_EVT_DATA) && apArg && apData)
@@ -836,6 +837,29 @@ void WebSite::WebSocketCallback(AsyncWebSocket* apServer, AsyncWebSocketClient* 
         constexpr size_t wPrefixLength = sizeof("wcview:") - 1;
         wViewMessage = (wpFrame->opcode == WS_TEXT) && (aLength >= wPrefixLength) &&
             (std::memcmp(apData, "wcview:", wPrefixLength) == 0);
+        /* ESPUI uses totalcontrols=65535 on the wire and finishes silently on
+         * the final uiok:<index>. Detect that ACK before ESPUI parses the buffer. */
+        constexpr size_t wAckPrefixLength = sizeof("uiok:") - 1;
+        if ((wpFrame->opcode == WS_TEXT) && wpFrame->final && !wpFrame->index &&
+            (wpFrame->len == aLength) && (aLength > wAckPrefixLength) &&
+            (aLength <= wAckPrefixLength + 5) &&
+            (std::memcmp(apData, "uiok:", wAckPrefixLength) == 0))
+        {
+            uint32_t wAcknowledgedIndex = 0;
+            bool wValid = true;
+            for (size_t wI = wAckPrefixLength; wI < aLength; ++wI)
+            {
+                if ((apData[wI] < '0') || (apData[wI] > '9'))
+                {
+                    wValid = false;
+                    break;
+                }
+                wAcknowledgedIndex = wAcknowledgedIndex * 10 + (apData[wI] - '0');
+            }
+            wGuiTransferAcknowledged = wValid &&
+                (wAcknowledgedIndex >= ESPUIcontrolMgr.GetControlCount()) &&
+                (wAcknowledgedIndex < Control::noParent);
+        }
         if (wViewMessage)
         {
             /* Reject fragmented, oversized or malformed application messages. */
@@ -857,6 +881,14 @@ void WebSite::WebSocketCallback(AsyncWebSocket* apServer, AsyncWebSocketClient* 
 
     /* Replacing onEvent must not swallow ESPUI's connect/data/ACK handling. */
     if (!wViewMessage) ESPUI.onWsEvent(apServer, apClient, aType, apArg, apData, aLength);
+
+    if (wGuiTransferAcknowledged)
+    {
+        /* An empty, terminal UI_EXTEND_GUI packet is harmless to ESPUI's own
+         * browser handler (no extra ACK), and explicitly releases our reporter. */
+        apClient->text("{\"type\":210,\"startindex\":1,\"totalcontrols\":0,"
+            "\"controls\":[],\"wcGuiComplete\":true}");
+    }
 
     auto* wpSite = mpWebSiteInstance;
     if (wpSite && (wViewMessage || (aType == WS_EVT_CONNECT) || (aType == WS_EVT_DISCONNECT)))

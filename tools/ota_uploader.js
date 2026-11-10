@@ -5,7 +5,7 @@
     let lastView = '';
     let lastViewSent = 0;
     function reportClientView() {
-        if (typeof websock === 'undefined' || websock.readyState !== WebSocket.OPEN) return;
+        if (typeof websock === 'undefined' || !websock) return;
         if (viewSocket !== websock) {
             viewSocket = websock;
             guiComplete = false;
@@ -21,13 +21,14 @@
                     guiComplete = false;
                     lastView = '';
                 }
-                if (packet.type === UI_INITIAL_GUI || packet.type === UI_EXTEND_GUI) {
-                    guiComplete = Array.isArray(packet.controls) &&
-                        (packet.startindex || 0) + packet.controls.length - 1 >= packet.totalcontrols;
-                }
+                // This ESPUI fork advertises totalcontrols=65535 and silently
+                // finishes after the final uiok. The server observer supplies
+                // an explicit completion marker; later updates must not reset it.
+                if (packet.wcGuiComplete === true) guiComplete = true;
                 reportClientView();
             });
         }
+        if (websock.readyState !== WebSocket.OPEN) return;
         if (!guiComplete) return;
         // A final chunk may still contain an asynchronously assembled control.
         if (typeof controlAssemblyArray !== 'undefined' && controlAssemblyArray.some(Boolean)) return;
@@ -54,6 +55,7 @@
         childList: true, subtree: true, attributes: true, attributeFilter: ['class']
     });
     document.addEventListener('visibilitychange', reportClientView);
+    window.addEventListener('load', reportClientView);
     setInterval(reportClientView, 2000); // Retry if the device's event queue was full.
 
     function addFirmwareUploader() {

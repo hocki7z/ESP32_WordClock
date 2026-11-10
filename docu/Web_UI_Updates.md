@@ -21,7 +21,13 @@ when a connected browser needs them.
 The existing custom JavaScript bundle also reports the selected ESPUI tab and
 document visibility over the current WebSocket (`wcview:<visible>:<tab-id>`).
 Reporting waits for the current connection's complete GUI transfer and outstanding
-control fragments. DOM observation covers default/hash selection, mouse, keyboard,
+control fragments. This ESPUI fork sends `totalcontrols=65535` as a sentinel,
+including its last data chunk. After forwarding the final `uiok:<index>` ACK,
+the WebSocket observer compares the acknowledged index with ESPUI's actual control
+count and sends an empty terminal type-210 packet with `wcGuiComplete: true`.
+That packet requires no further ACK and gives the reporter an explicit completion
+signal. Ordinary incremental packets never revoke readiness; a new initial-GUI
+packet or socket does. DOM observation covers default/hash selection, mouse, keyboard,
 programmatic changes and rebuilds. Visibility changes are reported immediately;
 a two-second heartbeat also retries the latest view.
 
