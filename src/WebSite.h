@@ -91,9 +91,6 @@ private:
     static_assert(std::is_trivially_copyable<ControlEvent>::value,
         "ControlEvent must remain byte-copyable for the FreeRTOS queue");
 
-    /* Periodical task timer ID */
-    static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
-
     /** @brief Task notification value for control events */
     static constexpr uint32_t mTaskNotificationControlEvent = 0x82;     //binary: 00000000 00000000 00000000 10000010
     /** @brief Length of the control event queue */
@@ -173,10 +170,6 @@ private:
     /** @brief Flag indicating if WiFi is in AP mode */
     bool mIsWifiAPMode = true;
 
-    /** @brief Periodical timer for this task */
-    ApplicationNS::tTaskTimerObjects mTimerObjects;
-    ApplicationNS::TaskTimer* mpTimer = nullptr;
-
     /** @brief Flag indicating whether Web UI updates are enabled */
     bool mIsWebUIUpdateEnabled = true;
 
@@ -184,12 +177,12 @@ private:
     ControlEventQueue* mpControlEventQueue = nullptr;
     TaskNotification*  mpControlEventNotification = nullptr;
 
-    /* ApplicationNS::Task::ProcessTimerEvent() */
+    /* Override ApplicationNS::Task::ProcessTimerEvent() */
     void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
 
-    /* ApplicationNS::Task::ProcessIncomingMessage() */
+    /* Override ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
-    /* ApplicationNS::Task::ProcessUnknownNotification() */
+    /* Override ApplicationNS::Task::ProcessUnknownNotification() */
     void ProcessUnknownNotification(uint32_t aNotificationValue) override;
 
     void HandleControlEvent(const ControlEvent& arEvent);

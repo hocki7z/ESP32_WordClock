@@ -78,16 +78,6 @@ WebSite::WebSite(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 WebSite::~WebSite()
 {
-    /* Clean up task timers */
-    if (mpTimer)
-    {
-        /* Stop running timer */
-        mpTimer->stop();
-        /*    and destroy it */
-        delete mpTimer;
-        mpTimer = nullptr;
-    }
-
     /* Delete the control event queue and notification */
     delete mpControlEventQueue;
     delete mpControlEventNotification;
@@ -118,11 +108,9 @@ void WebSite::Init(ApplicationNS::tTaskObjects* apTaskObjects)
         LOG(LOG_ERROR, "WebSite::Init() Failed to create control event notification");
     }
 
-    /* Create periodical timer */
-    mTimerObjects.mTaskHandle = this->getTaskHandle();
-    mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
-    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, PERIODICAL_TIMER_PERIOD, true);
-    mpTimer->Init(&mTimerObjects);
+    /* Create task timer */
+    mpTaskTimer = new ApplicationNS::TaskTimer(ApplicationNS::Task::mcTaskTimerId, PERIODICAL_TIMER_PERIOD, true);
+    mpTaskTimer->Init(&mTaskTimerObjects);
 
     /* Initialize WEB UI but do not start it yet */
     InitWebUIControls();
@@ -153,7 +141,7 @@ void WebSite::ProcessTimerEvent(const uint32_t aTimerId)
 {
     LOG(LOG_VERBOSE, "WebSite::ProcessTimerEvent() Timer ID: %d", aTimerId);
 
-    if (aTimerId == mPeriodicalTaskTimerId)
+    if (aTimerId == ApplicationNS::Task::mcTaskTimerId)
     {
         /* Update the system information only if web UI updates are enabled */
         if (mIsWebUIUpdateEnabled)
@@ -764,8 +752,8 @@ void WebSite::StartWebServer(bool aIsWifiAPMode)
     /* Register OTA update routes */
     OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
 
-    /* Start notification timer for this task */
-    mpTimer->start();
+    /* Start task timer */
+    mpTaskTimer->start();
 }
 
 /**

@@ -171,13 +171,23 @@ void TaskTimer::Init(tTaskTimerObjects* apTaskTimerObjects)
             mpTaskTimerObjects->mTaskHandle, mTaskNotificationMsgQueue);
 }
 
+/** @brief Returns the timer identifier
+ *
+ * @return The timer identifier associated with this TaskTimer instance.
+*/
+uint32_t TaskTimer::GetTimerId(void) const
+{
+    return mTimerId;
+}
+
 /**
- * @brief Timer callback function for TaskTimer.
+ * @brief Callback function invoked when the timer expires.
  *
  * @details
- * This function is called when the timer expires. It creates a timeout message, serializes
- * the timer ID into the message payload, adds the message to the task's message queue, and
- * notifies the associated task. If serialization fails, error handling should be implemented.
+ * This is final override of the FreeRTOScpp::TimerClass::timer function.
+ * It is called when the timer expires. The function creates a timeout
+ * message, serializes the timer ID into the message payload, adds the
+ * message to the task's message queue, and notifies the associated task.
  */
 void TaskTimer::timer(void)
 {
@@ -204,22 +214,47 @@ void TaskTimer::timer(void)
         }
         else
         {
-            //TODO handle serialization error
+            LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_APPLICATION_NS,
+                "%s::TaskTimer::timer() Error serializing timer ID %d into message payload",
+                pcTaskGetName(NULL), mTimerId);
         }
-
     }
 }
 
 
 /**
+ * @brief Implementation of the ApplicationNS::Task class
  *
- * Implementation of the ApplicationNS::Task class
+ * @details
+ * This class represents a FreeRTOS task that processes messages
+ * and timer events. It inherits from FreeRTOScpp::TaskClassS<0>
+ * and provides mechanisms for initializing task objects, handling
+ * incoming messages, processing timer events, and managing notifications.
  *
+ * @param apName The name of the task.
+ * @param aPriority The priority of the task.
+ * @param aStackSize The stack size for the task.
  */
 Task::Task(char const* apName, tTaskPriority aPriority, const uint32_t aStackSize)
     : FreeRTOScpp::TaskClassS<0>(apName, aPriority, aStackSize)
 {
     // do nothing
+}
+
+/**
+ * @brief Destructor for the Task class.
+ */
+Task::~Task(void)
+{
+    /* Destgroy task timer if it exists */
+    if (mpTaskTimer != nullptr)
+    {
+        /* Stop running timer */
+        mpTaskTimer->stop();
+        /*    and destroy it */
+        delete mpTaskTimer;
+        mpTaskTimer = nullptr;
+    }
 }
 
 /**
@@ -240,6 +275,32 @@ void Task::Init(tTaskObjects* apTaskObjects)
 
     /* Store task objects pointer */
     mpTaskObjects = apTaskObjects;
+
+    /**
+     * Init task timer
+     *
+     * The task timer will be created and initialized in the derived class,
+     * as the timer period and reload behavior may vary based on specific task requirements.
+     *
+     * Example: Create a timer with a 1-second period and auto-reload behavior:
+     *      mpTaskTimer = new TaskTimer(mTaskTimerId, pdMS_TO_TICKS(1000), true);
+     *      mpTaskTimer->Init(&mTaskTimerObjects);
+     */
+    mTaskTimerObjects.mTaskHandle = this->getTaskHandle();
+    mTaskTimerObjects.mpTaskMessagesQueue = mpTaskObjects->mpMessageQueue;
+}
+
+/**
+ * @brief Wrapper for the FreeRTOScpp::TaskClassS<0>::task function.
+ *
+ * @details
+ * This is final override of the task function from FreeRTOScpp::TaskClassS<0>.
+ * It calls the ProcessTask method. Derived classes should implement the
+ * ProcessTask method to define specific task behavior.
+ */
+void Task::task(void)
+{
+    ProcessTask();
 }
 
 /**
@@ -250,10 +311,16 @@ void Task::Init(tTaskObjects* apTaskObjects)
  * processes messages from the queue, distinguishes between timer and regular messages,
  * and handles unknown notifications. The loop runs indefinitely.
  */
-void Task::task(void)
+void Task::ProcessTask(void)
 {
     uint32_t wNotificationValue;
     MessageNS::Message wMessage;
+
+    /* Start task timer if it exists */
+    if (mpTaskTimer != nullptr)
+    {
+        mpTaskTimer->start();
+    }
 
     /* Task execution code */
     for (;;)
@@ -307,12 +374,13 @@ void Task::task(void)
  */
 void Task::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 {
+    /* To be implemented by derived class */
+
 #if (LOG_LEVEL_APPLI_NS == LOG_VERBOSE)
     LOG_WITH_REF(LOG_VERBOSE, LOG_LEVEL_APPLICATION_NS,
             "%s::ProcessIncomingMessage() message from %s module",
             pcTaskGetName(NULL), MessageNS::AddressToString(arMessage.mSource));
 #endif
-    // to be implemented by derived class
 }
 
 /**
@@ -336,7 +404,6 @@ void Task::ProcessIncomingTimerMessage(const MessageNS::Message &arMessage)
         }
         else
         {
-            //TODO handle serialization error
             LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_APPLICATION_NS,
                     "%s::task() Error deserializing timer ID from message payload",
                     pcTaskGetName(NULL));
@@ -344,7 +411,6 @@ void Task::ProcessIncomingTimerMessage(const MessageNS::Message &arMessage)
     }
     else
     {
-        //TODO handle unknown timer message ID
         LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_APPLICATION_NS,
                 "%s::task() Unknown timer message ID %d",
                 pcTaskGetName(NULL), static_cast<int>(arMessage.mId));
@@ -363,12 +429,13 @@ void Task::ProcessIncomingTimerMessage(const MessageNS::Message &arMessage)
  */
 void Task::ProcessTimerEvent(const uint32_t aTimerId)
 {
+    /* To be implemented by derived class */
+
 #if (LOG_LEVEL_APPLI_NS == LOG_VERBOSE)
     LOG_WITH_REF(LOG_VERBOSE, LOG_LEVEL_APPLICATION_NS,
             "%s::ProcessTimerEvent() Timer id %d",
             pcTaskGetName(NULL), aTimerId);
 #endif
-    // to be implemented by derived class
 }
 
 /**

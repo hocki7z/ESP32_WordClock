@@ -48,10 +48,6 @@ private:
 //        STATE_OFF,
     } tState;
 
-    /* Periodical timer for this task */
-    ApplicationNS::tTaskTimerObjects mTimerObjects;
-    ApplicationNS::TaskTimer* mpTimer = nullptr;
-
     /* Frequent timer used to service captive-portal DNS while the AP is active. */
     ApplicationNS::tTaskTimerObjects mDnsTimerObjects;
     ApplicationNS::TaskTimer* mpDnsTimer = nullptr;
@@ -61,9 +57,10 @@ private:
     /** @brief Current WiFi manager status */
     tState mState  = STATE_IDLE;
 
-    /* Periodical task timer ID */
-    static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
-    static constexpr uint32_t mDnsTaskTimerId = 0x02;
+    /* Timer ID for DNS timer */
+    static constexpr uint32_t mcDnsTimerId = 0x02;
+    /* Ensure that the DNS timer ID does not conflict with the task timer ID */
+    static_assert(mcDnsTimerId != ApplicationNS::Task::mcTaskTimerId, "DNS timer ID conflicts with task timer ID");
 
     /** @brief Timeout used for WiFi STA connection */
     static constexpr uint32_t mConnectionTimeout = 30000U;  // 30 seconds
@@ -80,12 +77,10 @@ private:
     /** @brief Flag to indicate if WiFi scan has been run once */
     bool mWifiScanRunOnce = false;
 
-    /* ApplicationNS::Task::task() */
-    void task(void) override;
-    /* ApplicationNS::Task::ProcessTimerEvent() */
+    /* Override ApplicationNS::Task::ProcessTimerEvent() */
     void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
 
-    /* ApplicationNS::Task::ProcessIncomingMessage() */
+    /* Override ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     void ProcessState(const WiFiEvent_t aEvent = ARDUINO_EVENT_MAX);

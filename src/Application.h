@@ -147,6 +147,8 @@ namespace ApplicationNS
 
         void Init(tTaskTimerObjects* apTaskTimerObjects);
 
+        uint32_t GetTimerId(void) const;
+
     private:
         /** @brief Timer identifier */
         uint32_t mTimerId;
@@ -154,7 +156,8 @@ namespace ApplicationNS
         tTaskTimerObjects* mpTaskTimerObjects = nullptr;
         TaskNotification*  mpTaskNotification = nullptr;
 
-        void timer(void) override;
+        /* Override FreeRTOScpp::TimerClass::timer */
+        void timer(void) override final;
     };
 
 
@@ -187,20 +190,34 @@ namespace ApplicationNS
     {
     public:
         Task(char const* apName, tTaskPriority aPriority, const uint32_t aStackSize);
+        virtual ~Task(void);
+
         virtual void Init(tTaskObjects* apTaskObjects);
 
     protected:
+        /** @brief Task timer ID */
+        static constexpr uint32_t mcTaskTimerId = 0x01;  // binary: 00000000 00000000 00000000 00000001
+
+        /** @brief Task objects */
         tTaskObjects* mpTaskObjects;
 
-        /* FreeRTOScpp::TaskClassS<0>::task */
-        virtual void task(void) override;
+        /** @brief Task timer objects */
+        tTaskTimerObjects mTaskTimerObjects;
+        /** @brief Task timer instance */
+        TaskTimer* mpTaskTimer = nullptr;
 
+        virtual void ProcessTask(void);
         virtual void ProcessIncomingMessage(const MessageNS::Message &arMessage);
-        virtual void ProcessIncomingTimerMessage(const MessageNS::Message &arMessage);
-        virtual void ProcessTimerEvent(const uint32_t aTimerId = 0);
+        virtual void ProcessTimerEvent(const uint32_t aTimerId);
         virtual void ProcessUnknownNotification(const uint32_t aNotificationValue);
 
         void SendMessage(const MessageNS::Message &arMessage);
+
+    private:
+        /* Override FreeRTOScpp::TaskClassS<0>::task */
+        void task(void) override final;
+
+        void ProcessIncomingTimerMessage(const MessageNS::Message &arMessage);
     };
 
      /** @brief Task management structure */

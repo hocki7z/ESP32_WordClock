@@ -24,10 +24,6 @@ public:
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
-	/* Periodical timer for this task */
-	ApplicationNS::tTaskTimerObjects mTimerObjects;
-    ApplicationNS::TaskTimer* mpTimer;
-
     /* Last sent datatime */
     DateTimeNS::tDateTime mSentTime;
 
@@ -37,11 +33,9 @@ private:
     uint8_t mNtpServer;
     uint8_t mTimeZone;
 
-    /* ApplicationNS::Task::task() */
-    void task(void) override;
-    /* ApplicationNS::Task::ProcessTimerEvent() */
+    /* Override ApplicationNS::Task::ProcessTimerEvent() */
     void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
-    /* ApplicationNS::Task::ProcessIncomingMessage() */
+    /* Override ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
     DateTimeNS::tDateTime GetLocalTime(void);

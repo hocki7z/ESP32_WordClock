@@ -55,16 +55,6 @@ WiFiManager::WiFiManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 WiFiManager::~WiFiManager()
 {
-    /* Clean up task timers */
-    if (mpTimer)
-    {
-        /* Stop running timer */
-        mpTimer->stop();
-        /*    and destroy it */
-        delete mpTimer;
-        mpTimer = nullptr;
-    }
-
     if (mpDnsTimer)
     {
         /* Stop running timer */
@@ -83,16 +73,14 @@ void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize global SSIDs list */
     mSSIDList.Clear();
 
-    /* Create periodical timer */
-    mTimerObjects.mTaskHandle = this->getTaskHandle();
-    mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
-    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, 10000, true);    // Period 10 seconds
-    mpTimer->Init(&mTimerObjects);
+    /* Create task timer */
+    mpTaskTimer = new ApplicationNS::TaskTimer(ApplicationNS::Task::mcTaskTimerId, 10000, true);    // Period 10 seconds
+    mpTaskTimer->Init(&mTaskTimerObjects);
 
     /* Poll the synchronous DNS server frequently while captive AP mode is active. */
     mDnsTimerObjects.mTaskHandle = this->getTaskHandle();
     mDnsTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
-    mpDnsTimer = new ApplicationNS::TaskTimer(mDnsTaskTimerId, 50, true);           // Period 50 ms
+    mpDnsTimer = new ApplicationNS::TaskTimer(mcDnsTimerId, 50, true);      // Period 50 ms
     mpDnsTimer->Init(&mDnsTimerObjects);
 
     /* Register WiFi events listener */
@@ -102,27 +90,16 @@ void WiFiManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     LOG(LOG_VERBOSE, "WiFiManager::Init()");
 }
 
-void WiFiManager::task(void)
-{
-    LOG(LOG_VERBOSE, "WiFiManager::task()");
-
-    /* Start notification timer for this task */
-    mpTimer->start();
-
-    /* Execute base class task */
-    ApplicationNS::Task::task();
-}
-
 void WiFiManager::ProcessTimerEvent(const uint32_t aTimerId)
 {
     LOG(LOG_VERBOSE, "WiFiManager::ProcessTimerEvent() Timer ID: %d", aTimerId);
 
-    if (aTimerId == mPeriodicalTaskTimerId)
+    if (aTimerId == ApplicationNS::Task::mcTaskTimerId)
     {
         /* Process current FSM state */
         ProcessState();
     }
-    else if (aTimerId == mDnsTaskTimerId)
+    else if (aTimerId == mcDnsTimerId)
     {
         if (mState == STATE_AP_STARTED)
         {

@@ -17,9 +17,8 @@
 /* Log level for this module */
 #define LOG_LEVEL               (LOG_DEBUG)
 
-/* Periodical task timer */
-static constexpr uint32_t mPeriodicalTaskTimerId = 0x01;
-static constexpr uint32_t mPeriodicalTaskTimerPeriodMs = 1000; // 1 second
+/* Task timer period */
+static constexpr uint32_t mTaskTimerPeriod = 1000; // 1 second
 
 
 /**
@@ -36,15 +35,7 @@ TimeManager::TimeManager(char const* apName, ApplicationNS::tTaskPriority aPrior
  */
 TimeManager::~TimeManager()
 {
-	/* Clean up task timer */
-    if (mpTimer)
-    {
-		/* Stop running timer */
-        mpTimer->stop();
-		/*    and destroy it */
-        delete mpTimer;
-        mpTimer = nullptr;
-    }
+    // do nothing
 }
 
 void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -52,12 +43,9 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
 
-    /* Create periodical timer */
-	mTimerObjects.mTaskHandle = this->getTaskHandle();
-	mTimerObjects.mpTaskMessagesQueue = this->mpTaskObjects->mpMessageQueue;
-
-    mpTimer = new ApplicationNS::TaskTimer(mPeriodicalTaskTimerId, mPeriodicalTaskTimerPeriodMs, true);
-	mpTimer->Init(&mTimerObjects);
+    /* Create task timer */
+    mpTaskTimer = new ApplicationNS::TaskTimer(ApplicationNS::Task::mcTaskTimerId, mTaskTimerPeriod, true);
+    mpTaskTimer->Init(&mTaskTimerObjects);
 
 //    /* Initialize local time with compilation time */
 //    DateTimeNS::tDateTime wCompileTime = DateTimeNS::CompileTime();
@@ -86,18 +74,9 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 //    NTP.settimeSyncThreshold(3000);
 }
 
-void TimeManager::task(void)
-{
-    /* Start notification timer for this task */
-    mpTimer->start();
-
-    /* Execute base class task */
-    ApplicationNS::Task::task();
-};
-
 void TimeManager::ProcessTimerEvent(const uint32_t aTimerId)
 {
-    if (aTimerId == mPeriodicalTaskTimerId)
+    if (aTimerId == ApplicationNS::Task::mcTaskTimerId)
     {
         /* Send changed time */
         SendTime();
