@@ -8,7 +8,6 @@
 #include "TimeManager.h"
 #include "WifiManager.h"
 #include "WebSite.h"
-#include "IdleCpuUsage.h"
 
 
 /******************************************************************************
@@ -102,14 +101,6 @@ void setup(void)
 
     /* Check the reason for the last system reset */
     RestartReasonNS::CheckResetReason();
-
-    /* Register per-core idle hooks for estimated CPU usage reporting. */
-    const esp_err_t wIdleCpuUsageError = IdleCpuUsageNS::Initialize();
-    if (wIdleCpuUsageError != ESP_OK)
-    {
-        LOG(LOG_ERROR, "Main::setup() Failed to register CPU usage idle hooks: %d",
-            static_cast<int>(wIdleCpuUsageError));
-    }
 
     /* Initialize application */
     InitApplication();

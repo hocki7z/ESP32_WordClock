@@ -1,0 +1,31 @@
+idf_component_register(
+    SRCS
+        "Application.cpp"
+        "Communication.cpp"
+        "DateTime.cpp"
+        "Display.cpp"
+        "Global.cpp"
+        "IdleCpuUsage.cpp"
+        "main.cpp"
+        "OTAUpdate.cpp"
+        "ProductInfo.cpp"
+        "RestartReason.cpp"
+        "Settings.cpp"
+        "TimeManager.cpp"
+        "WebSite.cpp"
+        "WifiManager.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        arduino
+        app_update
+        driver
+        esp_event
+        esp_netif
+        esp_system
+        esp_timer
+        esp_wifi
+        freertos
+        nvs_flash
+        spi_flash
+)

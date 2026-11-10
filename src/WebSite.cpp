@@ -1558,7 +1558,7 @@ void WebSite::UpdateSystemInfo(void)
 
             const std::array<const char*, 5> wDeviceInfoNames = {
             // "Flash",            "Heap",           "Max block",        "Min free",         "CPU"
-                "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap", "CPU usage (est.)"
+                "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap", "CPU usage"
             };
 
             ESPUI.updateLabel(mWebUIControlID.mDeviceInfoLabel,

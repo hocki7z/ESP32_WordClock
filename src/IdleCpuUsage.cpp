@@ -1,122 +1,132 @@
 #include "IdleCpuUsage.h"
 
-#include <esp_freertos_hooks.h>
-#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/portmacro.h>
+#include <freertos/task.h>
 
+#if defined(CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS) && CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 namespace
 {
     static_assert(portNUM_PROCESSORS > 0, "At least one processor is required");
 
-    portMUX_TYPE mIdleCounterMux = portMUX_INITIALIZER_UNLOCKED;
-    uint32_t mIdleHookEvents[portNUM_PROCESSORS]{};
-    uint32_t mPreviousIdleHookEvents[portNUM_PROCESSORS]{};
-    int64_t mPreviousSampleTimeUs = 0;
-    bool mIsInitialized = false;
+    TaskStatus_t* mpTaskStatusBuffer = nullptr;
+    UBaseType_t mTaskStatusBufferCapacity = 0;
+    uint32_t mPreviousIdleRuntime[portNUM_PROCESSORS]{};
+    uint32_t mPreviousTotalRuntime = 0;
+    bool mHasPreviousSample = false;
 
-    bool IdleHookCallback(void)
+    bool CaptureRuntimeSample(uint32_t* apIdleRuntime, uint32_t& arTotalRuntime)
     {
-        const BaseType_t wCore = xPortGetCoreID();
-        if ((wCore >= 0) && (wCore < portNUM_PROCESSORS))
+        bool wSuccess = false;
+        UBaseType_t wRequiredCapacity = uxTaskGetNumberOfTasks() + 4;
+
+        for (uint8_t wAttempt = 0; (wAttempt < 3) && !wSuccess; ++wAttempt)
         {
-            portENTER_CRITICAL(&mIdleCounterMux);
-            ++mIdleHookEvents[wCore];
-            portEXIT_CRITICAL(&mIdleCounterMux);
+            if (wRequiredCapacity > mTaskStatusBufferCapacity)
+            {
+                const size_t wBufferSize = sizeof(TaskStatus_t) * wRequiredCapacity;
+                TaskStatus_t* wpNewBuffer = static_cast<TaskStatus_t*>(pvPortMalloc(wBufferSize));
+                if (wpNewBuffer == nullptr)
+                {
+                    break;
+                }
+
+                if (mpTaskStatusBuffer != nullptr)
+                {
+                    vPortFree(mpTaskStatusBuffer);
+                }
+                mpTaskStatusBuffer = wpNewBuffer;
+                mTaskStatusBufferCapacity = wRequiredCapacity;
+            }
+
+            const UBaseType_t wTaskCount = uxTaskGetSystemState(
+                mpTaskStatusBuffer, mTaskStatusBufferCapacity, &arTotalRuntime);
+            if ((wTaskCount == 0) || (wTaskCount >= mTaskStatusBufferCapacity))
+            {
+                wRequiredCapacity = (wTaskCount > mTaskStatusBufferCapacity)
+                    ? wTaskCount + 4
+                    : mTaskStatusBufferCapacity * 2;
+                continue;
+            }
+
+            bool wFoundIdleTask[portNUM_PROCESSORS]{};
+            for (UBaseType_t wCore = 0; wCore < portNUM_PROCESSORS; ++wCore)
+            {
+                const TaskHandle_t wIdleTaskHandle = xTaskGetIdleTaskHandleForCPU(wCore);
+                for (UBaseType_t wTask = 0; wTask < wTaskCount; ++wTask)
+                {
+                    if (mpTaskStatusBuffer[wTask].xHandle == wIdleTaskHandle)
+                    {
+                        apIdleRuntime[wCore] = static_cast<uint32_t>(
+                            mpTaskStatusBuffer[wTask].ulRunTimeCounter);
+                        wFoundIdleTask[wCore] = true;
+                        break;
+                    }
+                }
+            }
+
+            wSuccess = true;
+            for (UBaseType_t wCore = 0; wCore < portNUM_PROCESSORS; ++wCore)
+            {
+                wSuccess = wSuccess && wFoundIdleTask[wCore];
+            }
         }
 
-        /* Run once per idle-loop iteration; never force a busy loop. */
-        return true;
+        return wSuccess;
     }
 }
+#endif
 
 namespace IdleCpuUsageNS
 {
-    esp_err_t Initialize(void)
-    {
-        if (mIsInitialized)
-        {
-            return ESP_OK;
-        }
-
-        UBaseType_t wRegisteredCores = 0;
-        for (UBaseType_t wCore = 0; wCore < portNUM_PROCESSORS; ++wCore)
-        {
-            const esp_err_t wError = esp_register_freertos_idle_hook_for_cpu(IdleHookCallback, wCore);
-            if (wError != ESP_OK)
-            {
-                /* Undo partial registration so the sampler never reports a misleading aggregate. */
-                for (UBaseType_t wRegisteredCore = 0; wRegisteredCore < wRegisteredCores; ++wRegisteredCore)
-                {
-                    esp_deregister_freertos_idle_hook_for_cpu(IdleHookCallback, wRegisteredCore);
-                }
-
-                return wError;
-            }
-
-            ++wRegisteredCores;
-        }
-
-        portENTER_CRITICAL(&mIdleCounterMux);
-        for (UBaseType_t wCore = 0; wCore < portNUM_PROCESSORS; ++wCore)
-        {
-            mPreviousIdleHookEvents[wCore] = mIdleHookEvents[wCore];
-        }
-        portEXIT_CRITICAL(&mIdleCounterMux);
-
-        mPreviousSampleTimeUs = esp_timer_get_time();
-        mIsInitialized = true;
-        return ESP_OK;
-    }
-
     bool GetUsagePercent(uint8_t& arUsagePercent)
     {
-        if (!mIsInitialized)
+#if defined(CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS) && CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+        uint32_t wCurrentIdleRuntime[portNUM_PROCESSORS]{};
+        uint32_t wCurrentTotalRuntime = 0;
+        if (!CaptureRuntimeSample(wCurrentIdleRuntime, wCurrentTotalRuntime))
         {
             return false;
         }
 
-        uint32_t wCurrentIdleHookEvents[portNUM_PROCESSORS]{};
-        portENTER_CRITICAL(&mIdleCounterMux);
+        if (!mHasPreviousSample)
+        {
+            for (UBaseType_t wCore = 0; wCore < portNUM_PROCESSORS; ++wCore)
+            {
+                mPreviousIdleRuntime[wCore] = wCurrentIdleRuntime[wCore];
+            }
+            mPreviousTotalRuntime = wCurrentTotalRuntime;
+            mHasPreviousSample = true;
+            return false;
+        }
+
+        uint64_t wIdleRuntimeDelta = 0;
         for (UBaseType_t wCore = 0; wCore < portNUM_PROCESSORS; ++wCore)
         {
-            wCurrentIdleHookEvents[wCore] = mIdleHookEvents[wCore];
+            /* Unsigned subtraction handles the 32-bit runtime-counter rollover. */
+            wIdleRuntimeDelta += static_cast<uint32_t>(
+                wCurrentIdleRuntime[wCore] - mPreviousIdleRuntime[wCore]);
+            mPreviousIdleRuntime[wCore] = wCurrentIdleRuntime[wCore];
         }
-        portEXIT_CRITICAL(&mIdleCounterMux);
+        const uint32_t wElapsedRuntime = static_cast<uint32_t>(
+            wCurrentTotalRuntime - mPreviousTotalRuntime);
+        mPreviousTotalRuntime = wCurrentTotalRuntime;
 
-        const int64_t wCurrentTimeUs = esp_timer_get_time();
-        const int64_t wElapsedTimeUs = wCurrentTimeUs - mPreviousSampleTimeUs;
-        if (wElapsedTimeUs < 1000000LL)
+        const uint64_t wTotalRuntimeAllCores =
+            static_cast<uint64_t>(wElapsedRuntime) * portNUM_PROCESSORS;
+        if (wTotalRuntimeAllCores == 0)
         {
             return false;
         }
 
-        uint64_t wIdleHookEventDelta = 0;
-        for (UBaseType_t wCore = 0; wCore < portNUM_PROCESSORS; ++wCore)
-        {
-            /* Unsigned subtraction intentionally handles the 32-bit event counter rollover. */
-            wIdleHookEventDelta += static_cast<uint32_t>(
-                wCurrentIdleHookEvents[wCore] - mPreviousIdleHookEvents[wCore]);
-            mPreviousIdleHookEvents[wCore] = wCurrentIdleHookEvents[wCore];
-        }
-        mPreviousSampleTimeUs = wCurrentTimeUs;
-
-        const uint64_t wExpectedIdleEvents =
-            (static_cast<uint64_t>(wElapsedTimeUs) * configTICK_RATE_HZ * portNUM_PROCESSORS) / 1000000ULL;
-        if (wExpectedIdleEvents == 0)
-        {
-            return false;
-        }
-
-        /* Hook events approximate idle ticks; clamp interrupt-driven excess events to 100%. */
-        uint64_t wIdlePercent = (wIdleHookEventDelta * 100ULL + (wExpectedIdleEvents / 2ULL)) /
-            wExpectedIdleEvents;
-        if (wIdlePercent > 100ULL)
-        {
-            wIdlePercent = 100ULL;
-        }
-
-        arUsagePercent = static_cast<uint8_t>(100ULL - wIdlePercent);
+        const uint64_t wBusyRuntime = (wIdleRuntimeDelta < wTotalRuntimeAllCores)
+            ? (wTotalRuntimeAllCores - wIdleRuntimeDelta)
+            : 0ULL;
+        arUsagePercent = static_cast<uint8_t>(
+            (wBusyRuntime * 100ULL + (wTotalRuntimeAllCores / 2ULL)) / wTotalRuntimeAllCores);
         return true;
+#else
+        (void)arUsagePercent;
+        return false;
+#endif
     }
 }
