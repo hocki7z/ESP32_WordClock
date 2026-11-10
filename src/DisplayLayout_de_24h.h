@@ -39,6 +39,15 @@
  * Logical cells use the current three-byte preview encoding; 'u' = U-umlaut,
  * 'o' = O-umlaut and 's' = sharp-s. Print single German glyphs, not UE/OE/SS.
  * Coordinates are logical left-to-right spans, not physical LED indices.
+ * Unlike the 18x18 proposal, filler letters on this panel are retained;
+ * a printed filler does not imply a selectable word in mcWordDataArray.
+ *
+ * Examples with optional ES IST omitted:
+ * - 13:21, Rhein-Ruhr: ZWANZIG NACH EINS +1 MINUTE.
+ * - 13:21, 24h stepped: DREIZEHN UHR UND ZWANZIG MINUTEN +1 MINUTE.
+ * - 13:21, 24h exact: DREIZEHN UHR UND EINUNDZWANZIG MINUTEN.
+ * - 13:15, Viertel mode: VIERTEL ZWEI; Viertel-nach mode: VIERTEL NACH EINS.
+ * Numeric 12h uses the same minute block but wraps hour names at noon.
  */
 #pragma once
 
@@ -48,7 +57,9 @@
 
 using tWord = uint8_t;
 
-/* Separate name avoids redefining the owner's existing tWordData. */
+/* Separate name avoids redefining the owner's existing tWordData.
+ * Fields are zero-based logical row/column and a horizontal LED count.
+ */
 struct tLayoutWordData24h
 {
     uint8_t mRow;
@@ -109,6 +120,11 @@ static constexpr const char* mDisplayLayout[MATRIX_HEIGHT] =
     /* 15 */  "  S  +  1  2  3  4  O  K  M  I  N  U  T  E  N  W  "
 };
 
+/** @brief Byte-sized IDs indexing mcWordDataArray; zero is an empty slot.
+ * CLOCK_MIN_5/10/20/30 address the colloquial block. MIN_*_24H address the
+ * numeric minute block, also shared by numeric 12h. EIN/SECH/SIEB are stems
+ * for compound numbers. MIN_MINUTE(N) is separate from extra MINUTE(N).
+ */
 typedef enum Word : tWord
 {
     WORD_END_OF_WORDS = 0,
@@ -156,6 +172,10 @@ typedef enum tWordClockMode
     WORDCLOCK_MODE_NUMBER
 } tWordClockMode;
 
+/** @brief Minute phrase, selected hour-table row, and next-hour flag.
+ * The five word slots are zero-padded. Array order selects word IDs; visual
+ * reading order comes from the printed panel, not the order of appending.
+ */
 typedef struct tMinuteDisplay
 {
     tHourMode mHourMode;
@@ -163,6 +183,9 @@ typedef struct tMinuteDisplay
     tWord     wMinuteWords[MAX_MINUTE_WORDS];
 } tMinuteDisplay;
 
+/* UI labels follow the mode enum. Exactness is part of the mode ID in this
+ * layout, unlike the independent resolution setting in the 18x18 proposal.
+ */
 static constexpr const char* mcClockModeItems[WORDCLOCK_MODE_NUMBER] =
 {
     "Wessi", "Rhein-Ruhr", "24h (5 min + extra)", "24h (exact)",
@@ -171,6 +194,9 @@ static constexpr const char* mcClockModeItems[WORDCLOCK_MODE_NUMBER] =
 };
 static constexpr tWordClockMode mcDefaultDisplayClockMode = WORDCLOCK_MODE_24H_EXACT;
 
+/* [word ID] -> { logical row, starting column, horizontal LED count }.
+ * Entries must stay aligned with Word; overlapping stems share LEDs by design.
+ */
 static constexpr tLayoutWordData24h mcWordDataArray[WORD_MAX_NUMBER] =
 {
     /* WORD_END_OF_WORDS       */ {  0,  0,  0 },
@@ -296,7 +322,11 @@ static constexpr tWord mcWordHoursTable[HOUR_MODE_MAX_NUMBER][HOURS_COUNT][MAX_H
     }
 };
 
-/* Compile-time generation; no allocation or runtime string processing. */
+/** @brief Build all sixty numeric-minute phrases at compile time.
+ * :00 contributes no minute words; :01 uses EINE MINUTE. Compound numbers
+ * use EIN UND <tens>, and sixteen/seventeen use the shortened SECH/SIEB.
+ * No allocation or runtime string processing is required.
+ */
 constexpr std::array<tMinuteDisplay, EXACT_MINUTE_COUNT> MakeExactMinuteTable()
 {
     constexpr tWord wUnits[] =
@@ -383,6 +413,10 @@ static constexpr tMinuteDisplay mcColloquialMinutesTable[2][MINUTE_COUNT] =
     }
 };
 
+/** @brief Build twelve five-minute samples for each of the eight modes.
+ * Regional modes inherit Rhein-Ruhr except for their quarter-hour entries;
+ * numeric modes reuse the exact table and choose 12h or 24h hour phrasing.
+ */
 constexpr std::array<std::array<tMinuteDisplay, MINUTE_COUNT>, WORDCLOCK_MODE_NUMBER> MakeMinuteTable()
 {
     std::array<std::array<tMinuteDisplay, MINUTE_COUNT>, WORDCLOCK_MODE_NUMBER> wTable = {};
@@ -410,6 +444,9 @@ constexpr std::array<std::array<tMinuteDisplay, MINUTE_COUNT>, WORDCLOCK_MODE_NU
 /* Exact-mode rows contain only five-minute samples; use the accessor below. */
 static constexpr auto mcWordMinutesTable = MakeMinuteTable();
 
+/* [remainder 0..4][word slot]. Row 15 is independent of the numeric suffix
+ * on row 14, preserving different scene colors and singular/plural forms.
+ */
 static constexpr tWord mcWordExtraMinutesTable[EXTRA_MINUTE_COUNT][MAX_EXTRA_MINUTE_WORDS] =
 {
     { WORD_END_OF_WORDS },
@@ -425,6 +462,11 @@ constexpr bool IsLayoutExactMode(tWordClockMode aMode)
     return aMode == WORDCLOCK_MODE_24H_EXACT || aMode == WORDCLOCK_MODE_12H_EXACT;
 }
 
+/** @brief Resolve a civil minute to exact wording or a floor-to-five phrase.
+ * @param aMode Valid mode ID; no bounds checking is performed.
+ * @param aMinute Civil minute in 0..59, NOT a five-minute table index.
+ * @return Phrase including its hour mode and offset rule.
+ */
 constexpr tMinuteDisplay GetLayoutMinuteDisplay(tWordClockMode aMode, uint8_t aMinute)
 {
     tMinuteDisplay wDisplay = IsLayoutExactMode(aMode) ? mcWordExactMinutesTable[aMinute] :
@@ -436,11 +478,18 @@ constexpr tMinuteDisplay GetLayoutMinuteDisplay(tWordClockMode aMode, uint8_t aM
     return wDisplay;
 }
 
+/** @brief Advance the referenced hour if requested, then wrap to 0..23.
+ * @param aHour Civil hour 0..23; twelve remains noon, zero remains midnight.
+ * @param arMinute Phrase already selected by GetLayoutMinuteDisplay().
+ */
 constexpr uint8_t GetLayoutHourIndex(uint8_t aHour, const tMinuteDisplay& arMinute)
 {
     return (aHour + ((arMinute.mFlags & HOUR_OFFSET_1) ? 1 : 0)) % HOURS_COUNT;
 }
 
+/** @brief Select remainder 0..4, or zero in exact modes to avoid double-counting.
+ * Inputs are a valid mode and a civil minute 0..59. Zero selects an empty row.
+ */
 constexpr uint8_t GetLayoutExtraMinuteIndex(tWordClockMode aMode, uint8_t aMinute)
 {
     return IsLayoutExactMode(aMode) ? 0 : aMinute % 5;

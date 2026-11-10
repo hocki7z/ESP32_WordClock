@@ -3,6 +3,29 @@
  *
  *  Created on: 10.11.2026
  *      Author: hocki
+ *
+ * Active German 16x16 layout: two colloquial 12-hour modes, notification
+ * vocabulary, and a separate bottom-row +1 Minute / +2..4 Minuten display.
+ * Included by DisplayLayout.h after its shared tWord and tWordData types.
+ * Do not include beside either alternative 24h layout: names are shared.
+ *
+ * Time composition (civil input hour 0..23, minute 0..59):
+ * - Main minute index = minute / 5; remainder index = minute % 5.
+ * - Apply HOUR_OFFSET_1 before normalizing the hour to index 0..11.
+ * - Hour index zero denotes ZWOELF, for both midnight and noon.
+ * - ES IST, the main time, and extra minutes are independent scene groups.
+ * - GENAU remains selected for :00..:04 even when an extra minute is shown.
+ *
+ * Wessi uses ZEHN VOR HALB at :20 and ZEHN NACH HALB at :40.
+ * Rhein-Ruhr uses ZWANZIG NACH at :20 and ZWANZIG VOR at :40.
+ * For example, 13:21 is ZEHN VOR HALB ZWEI +1 MINUTE in Wessi,
+ * or ZWANZIG NACH EINS +1 MINUTE in Rhein-Ruhr (optional ES IST omitted).
+ *
+ * All coordinates are zero-based horizontal logical spans, independent of
+ * physical LED wiring. Overlapping spans are intentional (e.g. FRISEUR and
+ * FUENF share an F; ZWOELF and the hour FUENF share an F).
+ * Keep table dimensions and C-array types: the renderer copies fixed-width
+ * rows with memcpy and sizeof; unused word slots are zero-filled sentinels.
  */
 #pragma once
 
@@ -22,7 +45,10 @@
 #define NO_FLAGS                    0x00
 #define HOUR_OFFSET_1               0x01    // Refer to the next hour
 
-/* WordClock front panel layout (german) */
+/* Printed front-panel cells, including filler letters without a word ID.
+ * The preview reads the glyph at column*3+2; preserve padding and case.
+ * Each row is 16 cells, encoded as 50 bytes plus the string terminator.
+ */
 static const char* mDisplayLayout[MATRIX_HEIGHT]=
 {
     // To avoid coding problems when logging, the lowercase letters 'u' and 'o'
@@ -50,6 +76,10 @@ static const char* mDisplayLayout[MATRIX_HEIGHT]=
 /* Single source for word IDs and { row, column, length }. Keep existing order
  * (including the public WORD_WEKRSTATT spelling); append new words only.
  * Distinct HALB spans are intentional and must not be merged.
+ * Entries: sentinel; minute words; hours 1..12; connectors and extra minutes;
+ * notification vocabulary; appended EIN (without S) for full-hour grammar.
+ * The zero-length sentinel never illuminates a cell. ID order matches the
+ * coordinate array exactly because both are expanded from this same list.
  */
 #define WC12_WORDS(X) \
     X(WORD_END_OF_WORDS,  0,  0,  0) \
@@ -107,6 +137,7 @@ static const char* mDisplayLayout[MATRIX_HEIGHT]=
     X(WORD_TERMIN,       10, 10,  6) \
     X(WORD_CLOCK_HOUR_EIN,13, 0,  3)
 
+/** @brief Byte-sized word IDs; WORD_MAX_NUMBER is a count, not a word. */
 enum Word : tWord
 {
 #define WC12_ENUM(aName, aRow, aColumn, aLength) aName,
@@ -115,6 +146,7 @@ enum Word : tWord
     WORD_MAX_NUMBER
 };
 
+/** @brief ID-indexed logical spans: row, starting column, number of LEDs. */
 const tWordData mcWordDataArray[WORD_MAX_NUMBER] =
 {
 #define WC12_DATA(aName, aRow, aColumn, aLength) { aRow, aColumn, aLength },
@@ -123,14 +155,20 @@ const tWordData mcWordDataArray[WORD_MAX_NUMBER] =
 };
 #undef WC12_WORDS
 
+/** @brief Hour phrasing chosen by each five-minute entry. */
 enum tHourMode
 {
     HOUR_MODE_0, HOUR_MODE_1, HOUR_MODE_MAX_NUMBER // With / without UHR
 };
+/** @brief Stable mode IDs, also used by the settings selector. */
 enum tWordClockMode
 {
     WORDCLOCK_MODE_0 = 0, WORDCLOCK_MODE_1, WORDCLOCK_MODE_NUMBER // Wessi / Rhein-Ruhr
 };
+/** @brief One five-minute phrase and its hour-selection rules.
+ * mHourMode selects a row of mcWordHoursTable; mFlags may advance the hour.
+ * wMinuteWords contains up to three word IDs, padded with zero when shorter.
+ */
 struct tMinuteDisplay
 {
     tHourMode mHourMode;
@@ -138,13 +176,16 @@ struct tMinuteDisplay
     tWord     wMinuteWords[MAX_MINUTE_WORDS];
 };
 
+/* Selector labels follow enum order; Rhein-Ruhr is the layout default. */
 static constexpr const char* mcClockModeItems[WORDCLOCK_MODE_NUMBER] = { "Wessi", "Rhein-Ruhr" };
 static constexpr tWordClockMode mcDefaultDisplayClockMode = WORDCLOCK_MODE_1;
 
 static_assert(WORD_END_OF_WORDS == 0, "Unused word slots must remain zero");
 static_assert(WORD_MAX_NUMBER <= 256, "Word IDs must fit tWord");
 
-/* Hour words table */
+/* [hour phrasing][normalized hour 0..11][word slot].
+ * The with-UHR row uses EIN; the without-UHR row retains EINS.
+ */
 const tWord mcWordHoursTable[HOUR_MODE_MAX_NUMBER][HOURS_COUNT][MAX_HOUR_WORDS] =
 {
     {
@@ -177,7 +218,9 @@ const tWord mcWordHoursTable[HOUR_MODE_MAX_NUMBER][HOURS_COUNT][MAX_HOUR_WORDS] 
     },
 };
 
-/* Minute words table */
+/* [clock mode][minute/5][phrase]. Entries correspond to :00,:05,...,:55.
+ * Flags specify the referenced hour, not rounding: remainders are additive.
+ */
 const tMinuteDisplay mcWordMinutesTable[WORDCLOCK_MODE_NUMBER][MINUTE_COUNT] =
 {
     /* Mode WESSI */
@@ -213,6 +256,9 @@ const tMinuteDisplay mcWordMinutesTable[WORDCLOCK_MODE_NUMBER][MINUTE_COUNT] =
     }
 };
 
+/* [minute%5][word slot]. Row zero is empty; only +1 uses singular MINUTE.
+ * These LEDs are separate from the main phrase and may use their own color.
+ */
 const tWord mcWordExtraMinutesTable[EXTRA_MINUTE_COUNT][MAX_EXTRA_MINUTE_WORDS] =
 {
     { WORD_END_OF_WORDS },
