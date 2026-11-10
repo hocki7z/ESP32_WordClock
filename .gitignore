@@ -6,3 +6,4 @@ node_modules/
 .vscode/ipch
 /credentials.h
 /tools/__pycache__
+/components
