@@ -1,4 +1,61 @@
 (() => {
+    // Keep application refreshes separate from ESPUI's structural GUI transfer.
+    let viewSocket = null;
+    let guiComplete = false;
+    let lastView = '';
+    let lastViewSent = 0;
+    function reportClientView() {
+        if (typeof websock === 'undefined' || websock.readyState !== WebSocket.OPEN) return;
+        if (viewSocket !== websock) {
+            viewSocket = websock;
+            guiComplete = false;
+            lastView = '';
+            // ESPUI changes the connection-status DOM on open, before GUI data.
+            // Its own onmessage handler constructs the DOM before this listener.
+            const socket = viewSocket;
+            socket.addEventListener('message', event => {
+                if (socket !== viewSocket) return;
+                let packet;
+                try { packet = JSON.parse(event.data); } catch (_) { return; }
+                if (packet.type === UI_INITIAL_GUI) {
+                    guiComplete = false;
+                    lastView = '';
+                }
+                if (packet.type === UI_INITIAL_GUI || packet.type === UI_EXTEND_GUI) {
+                    guiComplete = Array.isArray(packet.controls) &&
+                        (packet.startindex || 0) + packet.controls.length - 1 >= packet.totalcontrols;
+                }
+                reportClientView();
+            });
+        }
+        if (!guiComplete) return;
+        // A final chunk may still contain an asynchronously assembled control.
+        if (typeof controlAssemblyArray !== 'undefined' && controlAssemblyArray.some(Boolean)) return;
+
+        const activeLink = document.querySelector('#tabsnav li.active a');
+        const target = activeLink && activeLink.getAttribute('href');
+        const panel = target && document.getElementById(target.slice(1));
+        const tab = panel && panel.getAttribute('data-control-id');
+        if (!tab || !/^\d+$/.test(tab)) return;
+
+        const message = 'wcview:' + (document.hidden ? '0' : '1') + ':' + tab;
+        const now = Date.now();
+        if (message !== lastView || now - lastViewSent >= 2000) {
+            websock.send(message);
+            lastView = message;
+            lastViewSent = now;
+        }
+    }
+
+    // DOM observation covers default/hash tabs, keyboard and programmatic changes,
+    // rebuilds and reconnects, not just ESPUI's mouse-up tab callback.
+    const viewObserver = new MutationObserver(reportClientView);
+    viewObserver.observe(document.documentElement, {
+        childList: true, subtree: true, attributes: true, attributeFilter: ['class']
+    });
+    document.addEventListener('visibilitychange', reportClientView);
+    setInterval(reportClientView, 2000); // Retry if the device's event queue was full.
+
     function addFirmwareUploader() {
         const heading = Array.from(document.querySelectorAll('.card h5')).find(element =>
             ['Firmware Update', 'Firmware-Update'].includes(element.textContent.trim())

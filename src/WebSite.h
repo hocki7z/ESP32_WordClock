@@ -8,7 +8,10 @@
 
 #include <Arduino.h>
 #include <array>
+#include <atomic>
+#include <mutex>
 #include <type_traits>
+#include <vector>
 
 #include <ESPUI.h>
 
@@ -53,6 +56,7 @@ private:
         WifiConnectButton,
         WifiScanButton,
         WifiForgetButton,
+
     };
 
     /** @brief Parameters associated with a control (used as the void* callback param in ESPUI) */
@@ -84,6 +88,7 @@ private:
                 int32_t mSsidIndex;
                 char mPassword[SSID_PASSWORD_SIZE];
             } mWifi;
+
         } mPayload{};
     };
 
@@ -178,7 +183,25 @@ private:
     ApplicationNS::TaskTimer* mpTimer = nullptr;
 
     /** @brief Flag indicating whether Web UI updates are enabled */
-    bool mIsWebUIUpdateEnabled = true;
+    std::atomic<bool> mIsWebUIUpdateEnabled{true};
+
+    struct ClientView
+    {
+        uint32_t mClientId;
+        Control::ControlId_t mTab;
+        bool mVisible;
+    };
+
+    /* Callback-owned connection state, read under the mutex by the WebSite task. */
+    std::mutex mClientViewsMutex;
+    std::vector<ClientView> mClientViews;
+    std::atomic<bool> mClientViewChanged{false};
+    /* Pending work is owned exclusively by the WebSite task. */
+    bool mPreviewPending = true;
+    bool mWifiSettingsPending = true;
+    bool mProductInfoPending = true;
+    bool mRuntimeInfoPending = true;
+    bool mDeviceInfoPending = true;
 
     /** @brief Pointers to the control event queue and its notification */
     ControlEventQueue* mpControlEventQueue = nullptr;
@@ -197,6 +220,11 @@ private:
 
     void InitWebUIControls(void);
     void StartWebServer(bool aIsWifiAPMode);
+    bool IsControlViewed(Control::ControlId_t aControlId);
+    void ProcessPendingUpdates();
+    void MarkSystemInfoPending();
+    static void WebSocketCallback(AsyncWebSocket* apServer, AsyncWebSocketClient* apClient,
+        AwsEventType aType, void* apArg, uint8_t* apData, size_t aLength);
 
     Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None,
         const bool aExpandable = false, const bool aExpanded = false);
@@ -243,7 +271,7 @@ private:
 
     String EscapeHtml(const char* apText) const;
 
-    void UpdateDisplayPreview(const MessageNS::Message& arMessage);
+    void UpdateDisplayPreview();
     void UpdateWiFiSettingsControls(bool aForceUpdate = false);
 
     void UpdateSystemInfo(void);

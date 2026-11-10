@@ -4,7 +4,9 @@
  *  Created on: 25.09.2025
  *      Author: hocki
  */
+#include <algorithm>
 #include <array>
+#include <cstring>
 
 #include <esp_ota_ops.h>
 
@@ -145,6 +147,10 @@ void WebSite::OnOtaUploadStatusChanged(OTAUpdateNS::OtaUploadStatus aStatus, esp
             /* OTA upload process is not active */
 
             mIsWebUIUpdateEnabled = true;  // Re-enable web UI updates after OTA upload
+            if (mpControlEventNotification)
+            {
+                mpControlEventNotification->Notify();
+            }
             break;
     }
 }
@@ -155,11 +161,8 @@ void WebSite::ProcessTimerEvent(const uint32_t aTimerId)
 
     if (aTimerId == mPeriodicalTaskTimerId)
     {
-        /* Update the system information only if web UI updates are enabled */
-        if (mIsWebUIUpdateEnabled)
-        {
-            UpdateSystemInfo();
-        }
+        MarkSystemInfoPending();
+        ProcessPendingUpdates();
     }
     else
     {
@@ -184,16 +187,15 @@ void WebSite::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_WIFI_SCAN_DONE:
-            /* WiFi scan finished, update WiFi settings */
-            UpdateWiFiSettingsControls();
+            /* Keep only the latest scan results until Settings is viewed. */
+            mWifiSettingsPending = true;
+            ProcessPendingUpdates();
             break;
 
         case MessageNS::tMessageId::MSG_EVENT_DISPLAY_FRAME_READY:
-            /* Update display preview only if web UI updates are enabled */
-            if (mIsWebUIUpdateEnabled)
-            {
-                UpdateDisplayPreview(arMessage);
-            }
+            /* Coalesce frames, including frames received during OTA. */
+            mPreviewPending = true;
+            ProcessPendingUpdates();
             break;
 
         default:
@@ -236,6 +238,7 @@ void WebSite::ProcessUnknownNotification(uint32_t aNotificationValue)
 
         /* Clear the control event notification bit */
         aNotificationValue &= ~mTaskNotificationControlEvent;
+        ProcessPendingUpdates();
     }
 }
 
@@ -568,7 +571,7 @@ void WebSite::InitWebUIControls(void)
 
     /* Live preview of the word-clock LED matrix */
     mWebUIControlID.mDisplayPreview = AddLabelControl("", mWebUIControlID.mPreviewGroup, CSS_STYLE_PREVIEW,
-        BuildDisplayPreviewSvg()); // "Here will be a live preview of the word-clock LED matrix. Please wait until the first update is received from the device
+        ""); // Render the latest scene only once a browser is viewing this control.
 
 
     /**
@@ -727,8 +730,7 @@ void WebSite::InitWebUIControls(void)
      */
     mWebUIControlID.mFirmwareUpdateGroup = AddGroupHelper("Firmware Update", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
 
-    /* Update the system information displayed on the web UI */
-    UpdateSystemInfo();
+    /* Dynamic values remain pending until a connected browser needs them. */
 }
 
 /**
@@ -752,8 +754,8 @@ void WebSite::StartWebServer(bool aIsWifiAPMode)
     /* Set captive portal mode for ESPUI */
     ESPUI.captivePortal = mIsWifiAPMode;
 
-    /* Update WiFi settings controls */
-    UpdateWiFiSettingsControls();
+    /* Defer dynamic WiFi controls until the Settings tab is viewed. */
+    mWifiSettingsPending = true;
 
     /* Set custom JavaScript for OTA update handling */
     ESPUI.setCustomJS(OTAUpdateNS::CustomJavaScript());
@@ -761,11 +763,139 @@ void WebSite::StartWebServer(bool aIsWifiAPMode)
     /* Start WEB UI */
     ESPUI.begin("Wordclock");
 
+    /* Observe our small visibility messages; forward all ESPUI protocol events. */
+    ESPUI.WebSocket()->onEvent(WebSite::WebSocketCallback);
+
     /* Register OTA update routes */
     OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
 
     /* Start notification timer for this task */
     mpTimer->start();
+}
+
+void WebSite::MarkSystemInfoPending()
+{
+    mProductInfoPending = true;
+    mRuntimeInfoPending = true;
+    mDeviceInfoPending = true;
+}
+
+bool WebSite::IsControlViewed(Control::ControlId_t aControlId)
+{
+    std::lock_guard<std::mutex> wLock(mClientViewsMutex);
+    if (mClientViews.empty()) return false;
+
+    /* Walk all ancestors: a label can be nested inside a group inside a tab. */
+    auto wTab = Control::noParent;
+    for (auto* wpControl = ESPUI.getControl(aControlId); wpControl;
+        wpControl = ESPUI.getControl(wpControl->parentControl))
+    {
+        if (wpControl->GetType() == Control::Type::Tab)
+        {
+            wTab = wpControl->GetId();
+            break;
+        }
+        if (wpControl->parentControl == Control::noParent) break;
+    }
+
+    /* Controls outside tabs are relevant to every connected client. */
+    if (wTab == Control::noParent) return true;
+
+    return std::any_of(mClientViews.begin(), mClientViews.end(),
+        [wTab](const ClientView& arView) { return arView.mVisible && (arView.mTab == wTab); });
+}
+
+void WebSite::ProcessPendingUpdates()
+{
+    if (mClientViewChanged.exchange(false)) MarkSystemInfoPending();
+    if (!mIsWebUIUpdateEnabled) return;
+
+    if (mPreviewPending && IsControlViewed(mWebUIControlID.mDisplayPreview))
+    {
+        UpdateDisplayPreview();
+        mPreviewPending = false;
+    }
+    if (mWifiSettingsPending && IsControlViewed(mWebUIControlID.mWifiSSIDs))
+    {
+        UpdateWiFiSettingsControls();
+        mWifiSettingsPending = false;
+    }
+    UpdateSystemInfo();
+}
+
+void WebSite::WebSocketCallback(AsyncWebSocket* apServer, AsyncWebSocketClient* apClient,
+    AwsEventType aType, void* apArg, uint8_t* apData, size_t aLength)
+{
+    /* Our client sends a single small text frame: wcview:<visible>:<tab-id>. */
+    bool wViewMessage = false;
+    auto wTabId = Control::noParent;
+    bool wVisible = false;
+    if ((aType == WS_EVT_DATA) && apArg && apData)
+    {
+        const auto* wpFrame = static_cast<const AwsFrameInfo*>(apArg);
+        constexpr size_t wPrefixLength = sizeof("wcview:") - 1;
+        wViewMessage = (wpFrame->opcode == WS_TEXT) && (aLength >= wPrefixLength) &&
+            (std::memcmp(apData, "wcview:", wPrefixLength) == 0);
+        if (wViewMessage)
+        {
+            /* Reject fragmented, oversized or malformed application messages. */
+            if (!wpFrame->final || wpFrame->index || (wpFrame->len != aLength) ||
+                (aLength < 10) || (aLength > 14) ||
+                ((apData[7] != '0') && (apData[7] != '1')) || (apData[8] != ':')) return;
+
+            uint32_t wTab = 0;
+            for (size_t wI = 9; wI < aLength; ++wI)
+            {
+                if ((apData[wI] < '0') || (apData[wI] > '9')) return;
+                wTab = wTab * 10 + (apData[wI] - '0');
+            }
+            if (wTab >= Control::noParent) return;
+            wTabId = static_cast<Control::ControlId_t>(wTab);
+            wVisible = (apData[7] == '1');
+        }
+    }
+
+    /* Replacing onEvent must not swallow ESPUI's connect/data/ACK handling. */
+    if (!wViewMessage) ESPUI.onWsEvent(apServer, apClient, aType, apArg, apData, aLength);
+
+    auto* wpSite = mpWebSiteInstance;
+    if (wpSite && (wViewMessage || (aType == WS_EVT_CONNECT) || (aType == WS_EVT_DISCONNECT)))
+    {
+        if (wViewMessage && (wTabId != wpSite->mWebUIControlID.mOverViewTab) &&
+            (wTabId != wpSite->mWebUIControlID.mLedDisplayTab) &&
+            (wTabId != wpSite->mWebUIControlID.mSettingsTab)) return;
+
+        bool wChanged = false;
+        {
+            /* Do not inspect AsyncWebSocket's unsynchronized client list from
+             * the task. This registry cannot lose disconnects to queue overflow. */
+            std::lock_guard<std::mutex> wLock(wpSite->mClientViewsMutex);
+            auto& wViews = wpSite->mClientViews;
+            auto wIt = std::find_if(wViews.begin(), wViews.end(),
+                [apClient](const ClientView& arView) { return arView.mClientId == apClient->id(); });
+            if (aType == WS_EVT_DISCONNECT)
+            {
+                if (wIt != wViews.end()) wViews.erase(wIt);
+                wChanged = true;
+            }
+            else if (wIt == wViews.end())
+            {
+                wViews.push_back({apClient->id(), wTabId, wVisible});
+                wChanged = true;
+            }
+            else if (wViewMessage && ((wIt->mTab != wTabId) || (wIt->mVisible != wVisible)))
+            {
+                wIt->mTab = wTabId;
+                wIt->mVisible = wVisible;
+                wChanged = true;
+            }
+        }
+        if (wChanged)
+        {
+            wpSite->mClientViewChanged = true;
+            if (wpSite->mpControlEventNotification) wpSite->mpControlEventNotification->Notify();
+        }
+    }
 }
 
 /**
@@ -1303,7 +1433,7 @@ String WebSite::EscapeHtml(const char* apText) const
     return wEscaped;
 }
 
-void WebSite::UpdateDisplayPreview(const MessageNS::Message& arMessage)
+void WebSite::UpdateDisplayPreview()
 {
     DisplayScene wSceneSnapshot;
     mDisplaySceneSnapshot.Get(wSceneSnapshot);
@@ -1428,7 +1558,9 @@ void WebSite::UpdateWiFiSettingsControls(bool aForceUpdate)
 void WebSite::UpdateSystemInfo(void)
 {
     /* Update product information */
+    if (mProductInfoPending && IsControlViewed(mWebUIControlID.mProductInfoLabel))
     {
+        mProductInfoPending = false;
         static bool wProductInfoInitialized = false;
 
         if (!wProductInfoInitialized)
@@ -1469,7 +1601,9 @@ void WebSite::UpdateSystemInfo(void)
     }
 
     /* Runtime information */
+    if (mRuntimeInfoPending && IsControlViewed(mWebUIControlID.mRuntimeInfoLabel))
     {
+        mRuntimeInfoPending = false;
         /* Static variables to track initialization and previous uptime */
         static bool wRuntimeInitialized = false;
         static DateTimeNS::tUptime wPreviousUptime{};
@@ -1505,7 +1639,9 @@ void WebSite::UpdateSystemInfo(void)
     }
 
     /* Device information */
+    if (mDeviceInfoPending && IsControlViewed(mWebUIControlID.mDeviceInfoLabel))
     {
+        mDeviceInfoPending = false;
         /* Static variables to track initialization and previous device metrics */
         static bool wDeviceInfoInitialized = false;
         static std::array<uint32_t, 6> wPreviousDeviceMetrics{};

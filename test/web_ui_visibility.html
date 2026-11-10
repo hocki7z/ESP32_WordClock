@@ -1,0 +1,126 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WordClock UI visibility tests</title>
+<h1>WordClock UI visibility tests</h1>
+<pre id="results">Running…</pre>
+<span id="conStatus"></span>
+<ul id="tabsnav">
+  <li class="active"><a href="#overview">Overview</a></li>
+  <li><a href="#led-display">LED Display</a></li>
+  <li><a href="#settings">Settings</a></li>
+</ul>
+<div id="tabscontent">
+  <div id="overview" data-control-id="0"></div>
+  <div id="led-display" data-control-id="1"></div>
+  <div id="settings" data-control-id="2"></div>
+</div>
+<script>
+// No network, ESP32, npm packages or ESPUI scripts are required for these tests.
+const UI_INITIAL_GUI = 200;
+const UI_EXTEND_GUI = 210;
+let controlAssemblyArray = [];
+let testHidden = false;
+let testNow = 10000;
+let heartbeat;
+Object.defineProperty(document, 'hidden', { get: () => testHidden });
+Date.now = () => testNow;
+window.setInterval = callback => { heartbeat = callback; return 1; };
+class TestSocket extends EventTarget {
+    constructor() { super(); this.readyState = 0; this.messages = []; }
+    send(message) { this.messages.push(message); }
+    receive(packet) {
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(packet) }));
+    }
+}
+var websock = new TestSocket();
+</script>
+<script src="../tools/ota_uploader.js"></script>
+<script>
+(async () => {
+    const results = [];
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+    function check(condition, name) {
+        if (!condition) throw new Error(name);
+        results.push('PASS ' + name);
+    }
+    function selectTab(index) {
+        document.querySelectorAll('#tabsnav li').forEach((item, i) => {
+            item.classList.toggle('active', index === i);
+        });
+    }
+    function openSocket() {
+        websock.readyState = WebSocket.OPEN;
+        document.getElementById('conStatus').classList.toggle('connected');
+    }
+    const partial = { type: UI_INITIAL_GUI, controls: [{}, {}], totalcontrols: 3 };
+    const final = { type: UI_EXTEND_GUI, startindex: 1, controls: [{}, {}, {}], totalcontrols: 3 };
+    try {
+        await settle();
+        check(websock.messages.length === 0, 'No reporting before WebSocket opens');
+        openSocket();
+        await settle();
+        check(websock.messages.length === 0, 'Connection alone does not authorize refreshes');
+        websock.receive(partial);
+        check(websock.messages.length === 0, 'Partial GUI transfer is not ready');
+        websock.receive(final);
+        check(websock.messages.at(-1) === 'wcview:1:0', 'Initial selected tab reported after final chunk');
+
+        let count = websock.messages.length;
+        heartbeat();
+        check(websock.messages.length === count, 'Unchanged view is deduplicated');
+        selectTab(2);
+        await settle();
+        check(websock.messages.at(-1) === 'wcview:1:2', 'Programmatic tab change is observed');
+        testHidden = true;
+        document.dispatchEvent(new Event('visibilitychange'));
+        check(websock.messages.at(-1) === 'wcview:0:2', 'Background document releases tab demand');
+        testHidden = false;
+        document.dispatchEvent(new Event('visibilitychange'));
+        check(websock.messages.at(-1) === 'wcview:1:2', 'Foreground document restores demand');
+        count = websock.messages.length;
+        testNow += 2000;
+        heartbeat();
+        check(websock.messages.length === count + 1, 'Heartbeat retries the current view');
+
+        websock.readyState = WebSocket.CLOSED;
+        count = websock.messages.length;
+        testNow += 2000;
+        heartbeat();
+        check(websock.messages.length === count, 'Closed socket never sends');
+        const oldSocket = websock;
+        websock = new TestSocket();
+        openSocket();
+        await settle();
+        heartbeat();
+        check(websock.messages.length === 0, 'Reconnect ignores the previous session DOM');
+        oldSocket.receive(final);
+        check(websock.messages.length === 0, 'Old socket cannot authorize a new session');
+        websock.receive(partial);
+        controlAssemblyArray = [{}];
+        websock.receive(final);
+        check(websock.messages.length === 0, 'Outstanding control fragments delay readiness');
+        controlAssemblyArray = [null];
+        heartbeat();
+        check(websock.messages.at(-1) === 'wcview:1:2', 'Ready reconnect reports actual selected tab');
+
+        count = websock.messages.length;
+        websock.receive(partial);
+        heartbeat();
+        check(websock.messages.length === count, 'Same-socket GUI rebuild suspends reporting');
+        websock.receive(final);
+        check(websock.messages.length === count + 1, 'Completed rebuild reports even an unchanged tab');
+        count = websock.messages.length;
+        document.getElementById('settings').setAttribute('data-control-id', 'invalid');
+        testNow += 2000;
+        heartbeat();
+        check(websock.messages.length === count, 'Invalid tab IDs are not reported');
+
+        document.getElementById('results').textContent = results.join('\n') + '\n\n' + results.length + ' tests passed.';
+        document.documentElement.dataset.testResult = 'passed';
+    } catch (error) {
+        document.getElementById('results').textContent = results.join('\n') + '\nFAIL ' + error.message;
+        document.documentElement.dataset.testResult = 'failed';
+        throw error;
+    }
+})();
+</script>
