@@ -40,3 +40,27 @@ Commit the bootstrap script and CMake configuration. If LittleFS is obtained by
 the bootstrap rather than tracked as vendored source or a proper Git submodule,
 do not accidentally stage it as an embedded repository. Its exact source
 revisions are pinned in the bootstrap script.
+
+## Arduino board-variant warning
+
+With PlatformIO Espressif32 6.8.1 and Arduino Core 2.0.17, the combined build prints:
+
+> Arduino framework as an ESP-IDF component doesn't handle the `variant` field!
+> The default `esp32` variant will be used.
+
+This is a PlatformIO limitation notice, not a compilation error. The combined
+build uses Arduino's generic ESP32 pin definitions instead of the NodeMCU-32S
+variant selected by an Arduino-only build.
+
+The installed NodeMCU-32S and generic ESP32 variants have identical UART, I2C,
+SPI, analog, touch and DAC pin mappings. The NodeMCU-32S variant additionally
+defines `LED_BUILTIN` (GPIO 2), `BUILTIN_LED` and `KEY_BUILTIN` (GPIO 0).
+The current application does not reference these board-specific aliases; its
+FastLED display uses an explicit `LED_DATA_PIN`. The fallback is therefore
+acceptable for the current hardware and application.
+
+The message is printed unconditionally by this PlatformIO combined-framework
+builder. Compiler warning flags and `board_build.variant` do not suppress it.
+Leave it visible rather than patching installed PlatformIO files merely to hide
+the notice. Recheck pin definitions if changing boards or adding code that relies
+on board-specific aliases; suppressing the message would not fix a pin mismatch.
