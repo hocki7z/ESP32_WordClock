@@ -20,6 +20,7 @@ idf_component_register(
         "."
     REQUIRES
         framework-arduinoespressif32-3.20017.0
+        joltwallet__littlefs
         app_update
         driver
         esp_event
