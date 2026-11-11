@@ -46,7 +46,6 @@ private:
     /* Fade directions */
     typedef enum tFadeDirection
     {
-        FADE_NONE,
         FADE_OUT,
         FADE_HOLD,
         FADE_IN,
@@ -83,7 +82,7 @@ private:
     bool     mFadeActive = false;
     uint32_t mFadeStepPeriodMs = 40;
     uint8_t  mFadeBlendIncrement = 6;
-    tFadeDirection mFadeDirection = FADE_NONE;
+    tFadeDirection mFadeDirection = FADE_OUT;
     tFadeMode mFadeMode = FADE_MODE_SCENE_CHANGE;
     /* Previous and incoming word LED masks. */
     BitMatrix mFadeOutMask{MATRIX_WIDTH, MATRIX_HEIGHT};
@@ -115,12 +114,10 @@ private:
     void SetLedColor(BitMatrix& arLedMask, const CRGB aColor);
 
     void PaintWord(const tWord aWord, const CRGB aColor);
-    void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
-
     void AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const;
 
     void StartFade(void);
     void StartBlackFade(const tFadeMode aMode);
     void FadeStep(void);
-    bool StopFade(void);
+    void StopFade(void);
 };

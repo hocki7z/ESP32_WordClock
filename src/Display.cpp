@@ -13,9 +13,6 @@
 #define LOG_LEVEL   (LOG_DEBUG)
 
 
-/* Delay in msec between display updates */
-static constexpr uint32_t mcUpdateDelay = 10;
-
 /* Intro color */
 static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 
@@ -48,6 +45,13 @@ static constexpr uint32_t mcFadeHoldMs = 300;
 /* Blend progress added per fade step (0..255) */
 static constexpr uint8_t mcFadeBlendStep = 6;   // with 6, each phase takes about 1.72 seconds when LEDs start together
 
+static fract8 FadeAmount(const uint32_t aElapsedMs, const uint32_t aStepPeriodMs,
+                         const uint8_t aBlendIncrement)
+{
+    const uint32_t wProgress = (aElapsedMs / aStepPeriodMs) * aBlendIncrement;
+    return static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+}
+
 
 /**
  * @brief Constructor
@@ -79,7 +83,6 @@ void Display::SetDisplayEnabled(const bool aEnabled)
     }
 
     mDisplayEnabled = aEnabled;
-    mpTaskTimer->stop();
 
     if (!aEnabled)
     {
@@ -90,7 +93,6 @@ void Display::SetDisplayEnabled(const bool aEnabled)
         mFadeOutMask.SetZigzagOrder(true);
 
         memcpy(mFadeFrom, mLeds, sizeof(mLeds));
-        fill_solid(mFadeTo, LED_NUMBER, CRGB::Black);
         StartBlackFade(FADE_MODE_SCREEN_OFF);
     }
     else if (mDisplayFrameValid)
@@ -101,7 +103,6 @@ void Display::SetDisplayEnabled(const bool aEnabled)
         AddGroupToMask(mFadeInMask, mDisplayScene.mExtraMinutes);
         mFadeInMask.SetZigzagOrder(true);
 
-        fill_solid(mFadeFrom, LED_NUMBER, CRGB::Black);
         memcpy(mFadeTo, mDisplayFrame, sizeof(mLeds));
         StartBlackFade(FADE_MODE_SCREEN_ON);
     }
@@ -248,6 +249,7 @@ void Display::UpdateDisplay(void)
 
         if (!mDisplayEnabled)
         {
+            StopFade();
             Clear();
             FastLED.show();
         }
@@ -793,9 +795,7 @@ void Display::FadeStep(void)
 
         if (mFadeMode != FADE_MODE_SCENE_CHANGE)
         {
-            const uint32_t wFrames = wElapsed / mFadeStepPeriodMs;
-            const uint32_t wProgress = wFrames * mFadeBlendIncrement;
-            const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+            const fract8 wAmount = FadeAmount(wElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
 
             if (mFadeDirection == FADE_TO_BLACK)
             {
@@ -903,9 +903,8 @@ void Display::FadeStep(void)
                     const uint32_t wLedSpawnDelay = mcFadeStaggerWords ? wSpawnDelay : 0U;
                     if (wElapsed >= wLedSpawnDelay)
                     {
-                        const uint32_t wFrames = (wElapsed - wLedSpawnDelay) / mFadeStepPeriodMs;
-                        const uint32_t wProgress = wFrames * mFadeBlendIncrement;
-                        const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+                        const fract8 wAmount = FadeAmount(
+                            wElapsed - wLedSpawnDelay, mFadeStepPeriodMs, mFadeBlendIncrement);
                         mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
                     }
                     wSpawnDelay += mcFadeSpawnIntervalMs;
@@ -946,9 +945,8 @@ void Display::FadeStep(void)
                     const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
                     if (wFadeInElapsed >= wLedSpawnDelay)
                     {
-                        const uint32_t wFrames = (wFadeInElapsed - wLedSpawnDelay) / mFadeStepPeriodMs;
-                        const uint32_t wProgress = wFrames * mFadeBlendIncrement;
-                        const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+                        const fract8 wAmount = FadeAmount(
+                            wFadeInElapsed - wLedSpawnDelay, mFadeStepPeriodMs, mFadeBlendIncrement);
                         mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
                     }
                     else
@@ -982,19 +980,11 @@ void Display::FadeStep(void)
     }
 }
 
-/**
- * @brief Stops a running fade.
- *
- * @return true if a fade was running.
- */
-bool Display::StopFade(void)
+/** @brief Stops the fade timer and clears fade state. */
+void Display::StopFade(void)
 {
-    const bool wWasActive = mFadeActive;
-
     mpTaskTimer->stop();
     FastLED.setDither(DISABLE_DITHER);
     mFadeActive = false;
     mFadeMode = FADE_MODE_SCENE_CHANGE;
-
-    return wWasActive;
 }
