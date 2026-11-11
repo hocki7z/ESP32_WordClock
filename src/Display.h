@@ -40,19 +40,32 @@ public:
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
+    /* Fade directions */
+    typedef enum tFadeDirection
+    {
+        FADE_NONE,
+        FADE_OUT,
+        FADE_HOLD,
+        FADE_IN,
+    } tFadeDirection;
+
+
     /* Leds */
     CRGB mLeds[LED_NUMBER];
 
-    /* Fade transition: start frame, target frame, background and start time */
+    /* Fade transition frames, background, and current phase start time */
     CRGB     mFadeFrom[LED_NUMBER];
     CRGB     mFadeTo[LED_NUMBER];
     CRGB     mFadeBkgd;
     uint32_t mFadeStart  = 0;
+    /* These durations are derived from the number of staggered LEDs. */
     uint32_t mFadeOutDurationMs = 0;
     uint32_t mFadeInDurationMs  = 0;
     bool     mFadeActive = false;
-    /* LEDs of the word groups (old and new) that fade out to background and in again */
-    BitMatrix mFadeMask{MATRIX_WIDTH, MATRIX_HEIGHT};
+    tFadeDirection mFadeDirection = FADE_NONE;
+    /* Previous and incoming word LED masks. */
+    BitMatrix mFadeOutMask{MATRIX_WIDTH, MATRIX_HEIGHT};
+    BitMatrix mFadeInMask{MATRIX_WIDTH, MATRIX_HEIGHT};
 
     /* Display scene */
     DisplayScene mDisplayScene;
@@ -84,7 +97,7 @@ private:
 
     void AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const;
 
-    void StartFade(const uint32_t aOutDurationMs, const uint32_t aInDurationMs);
+    void StartFade(void);
     void FadeStep(void);
     bool StopFade(void);
 };
