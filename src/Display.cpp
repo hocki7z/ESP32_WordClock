@@ -28,6 +28,13 @@ static constexpr bool mcFadeStaggerWords = false;
 
 /**
  * Fade animation timing (all *_Ms values are milliseconds)
+ * 
+ * Example:
+ *    mcFadeStaggerWords: false
+ *    mcFadeStepMs:  40
+ *    mcFadeBlendStep: 6
+ *
+ *    Each phase (fade-out, fade-in) takes about (255/6)×40 ms = 43×40 ms = 1720 ms
  */
 /* Timer period: recompute each LED's blend amount once per fade step. */
 static constexpr uint32_t mcFadeStepMs = 40;    // recompute blend amount every 40 ms (25 updates/second)
@@ -36,7 +43,7 @@ static constexpr uint32_t mcFadeSpawnIntervalMs = 20;
 /* Pause at the background color after fade-out and before fade-in. */
 static constexpr uint32_t mcFadeHoldMs = 300;
 /* Blend progress added per fade step (0..255) */
-static constexpr uint8_t mcFadeBlendStep = 6;   // with 5 each phase takes about 2.04 seconds when all LEDs fade together
+static constexpr uint8_t mcFadeBlendStep = 6;   // with 6, each phase takes about 1.72 seconds when LEDs start together
 
 
 /**
@@ -635,15 +642,17 @@ void Display::StartFade(void)
     /* One LED needs ceil(255 / blend step) timer ticks to reach full blend. */
     const uint32_t wRampDurationMs =
         ((255U + mcFadeBlendStep - 1U) / mcFadeBlendStep) * mcFadeStepMs;
-    /* Phase length = last LED's start delay + one complete per-LED blend ramp. */
-    mFadeOutDurationMs = (wFadeOutCount > 0)
+    /* Staggered word LEDs may take longer than the simultaneous background fade. */
+    const uint32_t wFadeOutWordDurationMs = (wFadeOutCount > 0)
         ? ((mcFadeStaggerWords ? (wFadeOutCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
         : 0;
-    mFadeInDurationMs = (wFadeInCount > 0)
+    const uint32_t wFadeInWordDurationMs = (wFadeInCount > 0)
         ? ((mcFadeStaggerWords ? (wFadeInCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
         : 0;
+    mFadeOutDurationMs = wFadeOutWordDurationMs;
+    mFadeInDurationMs = wFadeInWordDurationMs;
 
-    mFadeBkgd   = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
+    mFadeBkgd = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
     mFadeStart  = millis();
     mFadeDirection = (mFadeOutDurationMs > 0) ? FADE_OUT : FADE_IN;
     mFadeActive = (mFadeOutDurationMs > 0) || (mFadeInDurationMs > 0);
@@ -661,9 +670,8 @@ void Display::StartFade(void)
 /**
  * @brief Renders one fade frame.
  *
- * @details All word LEDs in the old scene fade to the background one at a
- *          time. After a hold, all LEDs in the new scene fade from background
- *          to their target color.
+ * @details Old word LEDs fade to the configured background. After a hold,
+ *          new word LEDs fade from the background to their target colors.
  */
 void Display::FadeStep(void)
 {
@@ -721,8 +729,8 @@ void Display::FadeStep(void)
             {
                 if (mFadeInMask.IsBitSet(wI))
                 {
-                    const CRGB wStart = mFadeBkgd;
                     const uint32_t wLedSpawnDelay = mcFadeStaggerWords ? wSpawnDelay : 0U;
+                    const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
                     if (wFadeInElapsed >= wLedSpawnDelay)
                     {
                         const uint32_t wFrames = (wFadeInElapsed - wLedSpawnDelay) / mcFadeStepMs;
