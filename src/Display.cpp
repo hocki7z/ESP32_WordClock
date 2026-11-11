@@ -17,33 +17,17 @@
 static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 
 /**
- * Fade animation stagger:
- *  if true: start LEDs one by one;
- *  otherwise if false: start all LEDs in each phase together
- */
-static constexpr bool mcFadeStaggerWords = false;
-
-/**
  * Fade animation timing (all *_Ms values are milliseconds)
- * 
- * Example:
- *    mcFadeStaggerWords: false
- *    mcFadeStepMs:  40
- *    mcFadeBlendStep: 6
- *
- *    Each phase (fade-out, fade-in) takes about (255/6)×40 ms = 43×40 ms = 1720 ms
  */
 /* Timer period: recompute each LED's blend amount once per fade step. */
 static constexpr uint32_t mcFadeStepMs = 40;    // recompute blend amount every 40 ms (25 updates/second)
 /* Fine timing for black transitions to reduce visible steps in dim colors. */
 static constexpr uint32_t mcBlackFadeStepMs = 8;    // target 125 updates/second for FastLED dithering
 static constexpr uint8_t mcBlackFadeBlendStep = 1;  // 255 steps; about 2.04 seconds per phase
-/* Delay between starting consecutive LED fades; used only when staggering is enabled. */
-static constexpr uint32_t mcFadeSpawnIntervalMs = 20;
 /* Pause at the background color after fade-out and before fade-in. */
 static constexpr uint32_t mcFadeHoldMs = 300;
 /* Blend progress added per fade step (0..255) */
-static constexpr uint8_t mcFadeBlendStep = 6;   // with 6, each phase takes about 1.72 seconds when LEDs start together
+static constexpr uint8_t mcFadeBlendStep = 6;   // about 1.72 seconds per phase
 
 static fract8 FadeAmount(const uint32_t aElapsedMs, const uint32_t aStepPeriodMs,
                          const uint8_t aBlendIncrement)
@@ -670,9 +654,7 @@ void Display::AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const
     }
 }
 
-/**
- * @brief Starts the staggered fade from the previous scene to the new scene.
- */
+/** @brief Starts a simultaneous fade from the previous scene to the new scene. */
 void Display::StartFade(void)
 {
     /* A new display update replaces any transition already in progress. */
@@ -686,34 +668,19 @@ void Display::StartFade(void)
     memcpy(mFadeTo,   mLeds, sizeof(mLeds));
     memcpy(mLeds, mFadeFrom, sizeof(mLeds));
 
-    uint32_t wFadeOutCount = 0;
-    uint32_t wFadeInCount = 0;
+    bool wHasFadeOutWords = false;
+    bool wHasFadeInWords = false;
     for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
     {
-        const bool wOldWordLed = mFadeOutMask.IsBitSet(wI);
-        const bool wNewWordLed = mFadeInMask.IsBitSet(wI);
-        if (wOldWordLed)
-        {
-            wFadeOutCount++;
-        }
-        if (wNewWordLed)
-        {
-            wFadeInCount++;
-        }
+        wHasFadeOutWords = wHasFadeOutWords || mFadeOutMask.IsBitSet(wI);
+        wHasFadeInWords = wHasFadeInWords || mFadeInMask.IsBitSet(wI);
     }
 
-    /* One LED needs ceil(255 / blend step) timer ticks to reach full blend. */
+    /* A simultaneous fade needs ceil(255 / blend step) timer ticks to complete. */
     const uint32_t wRampDurationMs =
         ((255U + mFadeBlendIncrement - 1U) / mFadeBlendIncrement) * mFadeStepPeriodMs;
-    /* Staggered word LEDs may take longer than the simultaneous background fade. */
-    const uint32_t wFadeOutWordDurationMs = (wFadeOutCount > 0)
-        ? ((mcFadeStaggerWords ? (wFadeOutCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
-        : 0;
-    const uint32_t wFadeInWordDurationMs = (wFadeInCount > 0)
-        ? ((mcFadeStaggerWords ? (wFadeInCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
-        : 0;
-    mFadeOutDurationMs = wFadeOutWordDurationMs;
-    mFadeInDurationMs = wFadeInWordDurationMs;
+    mFadeOutDurationMs = wHasFadeOutWords ? wRampDurationMs : 0U;
+    mFadeInDurationMs = wHasFadeInWords ? wRampDurationMs : 0U;
 
     mFadeBkgd = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
     mFadeStart  = millis();
@@ -895,19 +862,12 @@ void Display::FadeStep(void)
 
         if (mFadeDirection == FADE_OUT)
         {
-            uint32_t wSpawnDelay = 0;
+            const fract8 wAmount = FadeAmount(wElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
             for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
             {
                 if (mFadeOutMask.IsBitSet(wI))
                 {
-                    const uint32_t wLedSpawnDelay = mcFadeStaggerWords ? wSpawnDelay : 0U;
-                    if (wElapsed >= wLedSpawnDelay)
-                    {
-                        const fract8 wAmount = FadeAmount(
-                            wElapsed - wLedSpawnDelay, mFadeStepPeriodMs, mFadeBlendIncrement);
-                        mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
-                    }
-                    wSpawnDelay += mcFadeSpawnIntervalMs;
+                    mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
                 }
             }
 
@@ -936,24 +896,13 @@ void Display::FadeStep(void)
         else if (mFadeDirection == FADE_IN)
         {
             const uint32_t wFadeInElapsed = wElapsed;
-            uint32_t wSpawnDelay = 0;
+            const fract8 wAmount = FadeAmount(wFadeInElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
             for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
             {
                 if (mFadeInMask.IsBitSet(wI))
                 {
-                    const uint32_t wLedSpawnDelay = mcFadeStaggerWords ? wSpawnDelay : 0U;
                     const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
-                    if (wFadeInElapsed >= wLedSpawnDelay)
-                    {
-                        const fract8 wAmount = FadeAmount(
-                            wFadeInElapsed - wLedSpawnDelay, mFadeStepPeriodMs, mFadeBlendIncrement);
-                        mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
-                    }
-                    else
-                    {
-                        mLeds[wI] = wStart;
-                    }
-                    wSpawnDelay += mcFadeSpawnIntervalMs;
+                    mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
                 }
                 else if (mFadeOutMask.IsBitSet(wI))
                 {

@@ -76,7 +76,7 @@ private:
     CRGB     mFadeTo[LED_NUMBER];
     CRGB     mFadeBkgd;
     uint32_t mFadeStart  = 0;
-    /* These durations are derived from the number of staggered LEDs. */
+    /* Fade phase durations; all LEDs in a phase animate together. */
     uint32_t mFadeOutDurationMs = 0;
     uint32_t mFadeInDurationMs  = 0;
     bool     mFadeActive = false;
