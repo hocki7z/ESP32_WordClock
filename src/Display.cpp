@@ -957,6 +957,11 @@ void Display::FadeStep(void)
                     }
                     wSpawnDelay += mcFadeSpawnIntervalMs;
                 }
+                else if (mFadeOutMask.IsBitSet(wI))
+                {
+                    /* Old-only word LEDs already faded to background; keep them there. */
+                    mLeds[wI] = mFadeTo[wI];
+                }
                 else if (mFadeFrom[wI] != mFadeTo[wI])
                 {
                     const uint32_t wProgress = (mFadeInDurationMs > 0)
