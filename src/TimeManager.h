@@ -24,10 +24,12 @@ public:
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
 private:
-    /* Last sent datatime */
+    /* Last datetime sent to the display */
     DateTimeNS::tDateTime mSentTime;
+    bool mHasSentTime = false;
+    uint32_t mTestClockLastAdvanceMs = 0;
 
-    /* Flag indicates that the NTP time is synchronized */
+    /* True when production NTP sync or the test clock has initialized time. */
     bool mNtpTimeSynced = false;
 
     uint8_t mNtpServer;

@@ -14,6 +14,15 @@
 
 #include "DisplayLayout.h"
 
+/* Accelerated clock test mode: one simulated minute passes per configured interval. */
+#ifndef WORDCLOCK_TEST_MODE
+#define WORDCLOCK_TEST_MODE 0
+#endif
+/* Milliseconds between simulated minute changes; can be overridden with a build define. */
+#ifndef WORDCLOCK_TEST_INTERVAL
+#define WORDCLOCK_TEST_INTERVAL 5000
+#endif
+
 
 /* Imports all symbols from the ApplicationNS namespace */
 using namespace ApplicationNS;

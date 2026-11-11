@@ -20,6 +20,10 @@
 /* Task timer period */
 static constexpr uint32_t mTaskTimerPeriod = 1000; // 1 second
 
+#if WORDCLOCK_TEST_MODE
+static_assert(WORDCLOCK_TEST_INTERVAL > 0, "Test clock interval must be greater than zero");
+#endif
+
 
 /**
  * @brief Constructor
@@ -47,13 +51,18 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mpTaskTimer = new ApplicationNS::TaskTimer(ApplicationNS::Task::mcTaskTimerId, mTaskTimerPeriod, true);
     mpTaskTimer->Init(&mTaskTimerObjects);
 
-//    /* Initialize local time with compilation time */
-//    DateTimeNS::tDateTime wCompileTime = DateTimeNS::CompileTime();
-//    SetLocalTime(wCompileTime);
+    /* Set time zone from settings */
+    mTimeZone = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+    NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
 
-    /* Init variables */
-    mSentTime = GetLocalTime();
-
+ #if WORDCLOCK_TEST_MODE
+    /* Start from the firmware build timestamp; no Wi-Fi or NTP sync is required. */
+    SetLocalTime(DateTimeNS::GetCompileTime());
+    mNtpTimeSynced = true;     // Enables the existing time broadcast path in test mode.
+    mTestClockLastAdvanceMs = millis();
+    LOG(LOG_INFO, "TimeManager: accelerated test clock enabled; advancing one minute every %u ms",
+        static_cast<unsigned>(WORDCLOCK_TEST_INTERVAL));
+ #else
     /* Register NTP sync events callback */
 	NTP.onNTPSyncEvent(
         std::bind(&TimeManager::HandleNTPSyncEvent, this, std::placeholders::_1));
@@ -61,23 +70,39 @@ void TimeManager::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     /* Get NTP server from settings */
     mNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
 
-    /* Set time zone from settings */
-    mTimeZone = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
-    NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
-
-   /* Set sync parameters */
+    /* Set NTP sync parameters */
     NTP.setInterval(Settings.GetValue<uint32_t>(
             ConfigNS::mKeyNtpSyncPeriod, ConfigNS::mDefaultNtpSyncPeriod));
     NTP.setNTPTimeout(Settings.GetValue<uint32_t>(
             ConfigNS::mKeyNtpSyncTimeout, ConfigNS::mDefaultNtpSyncTimeout));
 //    NTP.setMinSyncAccuracy(5000);
 //    NTP.settimeSyncThreshold(3000);
+ #endif
+
+    /* Ensure the first clock tick publishes the current time. */
+    mSentTime = GetLocalTime();
 }
 
 void TimeManager::ProcessTimerEvent(const uint32_t aTimerId)
 {
     if (aTimerId == ApplicationNS::Task::mcTaskTimerId)
     {
+#if WORDCLOCK_TEST_MODE
+        const uint32_t wNow = millis();
+        constexpr uint32_t wTestIntervalMs = WORDCLOCK_TEST_INTERVAL;
+        while (static_cast<uint32_t>(wNow - mTestClockLastAdvanceMs) >= wTestIntervalMs)
+        {
+            mTestClockLastAdvanceMs += wTestIntervalMs;
+
+            timeval wNewTimeval{};
+            wNewTimeval.tv_sec = time(nullptr) + 60;
+            if (settimeofday(&wNewTimeval, nullptr) != 0)
+            {
+                LOG(LOG_ERROR, "TimeManager: failed to advance test clock");
+                break;
+            }
+        }
+#endif
         /* Send changed time */
         SendTime();
     }
@@ -94,6 +119,7 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
 
     switch (arMessage.mId)
     {
+#if !WORDCLOCK_TEST_MODE
         case MessageNS::tMessageId::MSG_EVENT_WIFI_INTERNET_AVAILABLE:
         {
             /* WiFi connected, start NTP sync */
@@ -114,40 +140,43 @@ void TimeManager::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             /* Set local time from the last NTP sync time */
             SetLocalTimeFromNTP();
             break;
+#endif
 
         case MessageNS::tMessageId::MSG_EVENT_SETTINGS_CHANGED:
         {
             // Settings changed, re-read settings if needed
             LOG(LOG_DEBUG, "TimeManager::ProcessIncomingMessage() Settings changed");
 
-            /* Get NTP server and time zone from settings */
-            uint8_t wNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
-            uint8_t wTimeZone  = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
+            /* Keep the time zone current in both production and test builds. */
+            uint8_t wTimeZone = Settings.GetValue<uint8_t>(ConfigNS::mKeyTimeZone, ConfigNS::mDefaultTimeZone);
 
-            /* Update NTP server if changed */
+#if !WORDCLOCK_TEST_MODE
+            /* Restart NTP if its selected server changed. */
+            uint8_t wNtpServer = Settings.GetValue<uint8_t>(ConfigNS::mKeyNtpServer, ConfigNS::mDefaultNtpServer);
             if (wNtpServer != mNtpServer)
             {
-                mTimeZone = wTimeZone;
                 mNtpServer = wNtpServer;
 
                 /* Restart NTP client with new server */
                 NTP.stop();
                 NTP.begin(ConfigNS::mcNtpServerItems[mNtpServer], false);
             }
-            else if (wTimeZone != mTimeZone)
+#endif
+
+            if (wTimeZone != mTimeZone)
             {
                 /* Update time zone */
                 mTimeZone = wTimeZone;
                 NTP.setTimeZone(ConfigNS::mcTimezones[mTimeZone]);
 
+#if !WORDCLOCK_TEST_MODE
                 if (mNtpTimeSynced)
                 {
                     /* Update local time */
                     SetLocalTimeFromNTP();
-
-                    /* Send time */
-                    SendTime();
                 }
+#endif
+                SendTime();
             }
         }
             break;
@@ -262,7 +291,8 @@ void TimeManager::SendTime(void)
         DateTimeNS::tDateTime wCurrTime = GetLocalTime();
 
         /* Check if a minute event should be fired */
-        if ((mSentTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
+        if (!mHasSentTime ||
+            (mSentTime.mTime.mHour   != wCurrTime.mTime.mHour) ||
             (mSentTime.mTime.mMinute != wCurrTime.mTime.mMinute))
         {
             /* Send changed time */
@@ -284,15 +314,13 @@ void TimeManager::SendTime(void)
                 wMessage.mPayloadLength = sizeof(wDword);
                 /* Send message */
                 SendMessage(wMessage);
+                mSentTime = wCurrTime;
+                mHasSentTime = true;
             }
             else
             {
                 //TODO handle serialization error
             }
-
-
-            /* Update previous time*/
-            mSentTime = wCurrTime;
         }
     }
 }
