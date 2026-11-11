@@ -24,6 +24,7 @@ static constexpr uint32_t mcFadeStepMs = 20;
 static constexpr uint32_t mcFadeSpawnIntervalMs = 20;
 static constexpr uint32_t mcFadeHoldMs = 300;
 static constexpr uint8_t mcFadeBlendStep = 8;
+static constexpr bool mcFadeStaggerWords = true;   // false: fade all active word LEDs together
 
 
 /**
@@ -609,7 +610,7 @@ void Display::StartFade(void)
     {
         const bool wOldWordLed = mFadeOutMask.IsBitSet(wI);
         const bool wNewWordLed = mFadeInMask.IsBitSet(wI);
-        if (wOldWordLed && !wNewWordLed)
+        if (wOldWordLed)
         {
             wFadeOutCount++;
         }
@@ -622,10 +623,10 @@ void Display::StartFade(void)
     const uint32_t wRampDurationMs =
         ((255U + mcFadeBlendStep - 1U) / mcFadeBlendStep) * mcFadeStepMs;
     mFadeOutDurationMs = (wFadeOutCount > 0)
-        ? ((wFadeOutCount - 1U) * mcFadeSpawnIntervalMs + wRampDurationMs)
+        ? ((mcFadeStaggerWords ? (wFadeOutCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
         : 0;
     mFadeInDurationMs = (wFadeInCount > 0)
-        ? ((wFadeInCount - 1U) * mcFadeSpawnIntervalMs + wRampDurationMs)
+        ? ((mcFadeStaggerWords ? (wFadeInCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
         : 0;
 
     mFadeBkgd   = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
@@ -646,8 +647,9 @@ void Display::StartFade(void)
 /**
  * @brief Renders one fade frame.
  *
- * @details Old-only word LEDs fade to the background one at a time. After a
- *          hold, incoming word LEDs fade from the background to their target.
+ * @details All word LEDs in the old scene fade to the background one at a
+ *          time. After a hold, all LEDs in the new scene fade from background
+ *          to their target color.
  */
 void Display::FadeStep(void)
 {
@@ -661,11 +663,12 @@ void Display::FadeStep(void)
             uint32_t wSpawnDelay = 0;
             for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
             {
-                if (mFadeOutMask.IsBitSet(wI) && !mFadeInMask.IsBitSet(wI))
+                if (mFadeOutMask.IsBitSet(wI))
                 {
-                    if (wElapsed >= wSpawnDelay)
+                    const uint32_t wLedSpawnDelay = mcFadeStaggerWords ? wSpawnDelay : 0U;
+                    if (wElapsed >= wLedSpawnDelay)
                     {
-                        const uint32_t wFrames = (wElapsed - wSpawnDelay) / mcFadeStepMs;
+                        const uint32_t wFrames = (wElapsed - wLedSpawnDelay) / mcFadeStepMs;
                         const uint32_t wProgress = wFrames * mcFadeBlendStep;
                         const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                         mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
@@ -704,10 +707,11 @@ void Display::FadeStep(void)
             {
                 if (mFadeInMask.IsBitSet(wI))
                 {
-                    const CRGB wStart = mFadeOutMask.IsBitSet(wI) ? mFadeFrom[wI] : mFadeBkgd;
-                    if (wFadeInElapsed >= wSpawnDelay)
+                    const CRGB wStart = mFadeBkgd;
+                    const uint32_t wLedSpawnDelay = mcFadeStaggerWords ? wSpawnDelay : 0U;
+                    if (wFadeInElapsed >= wLedSpawnDelay)
                     {
-                        const uint32_t wFrames = (wFadeInElapsed - wSpawnDelay) / mcFadeStepMs;
+                        const uint32_t wFrames = (wFadeInElapsed - wLedSpawnDelay) / mcFadeStepMs;
                         const uint32_t wProgress = wFrames * mcFadeBlendStep;
                         const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                         mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
