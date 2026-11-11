@@ -83,12 +83,24 @@ void Display::SetDisplayEnabled(const bool aEnabled)
 
     if (!aEnabled)
     {
+        mFadeOutMask.ClearAll();
+        AddGroupToMask(mFadeOutMask, mDisplayScene.mItIs);
+        AddGroupToMask(mFadeOutMask, mDisplayScene.mTime);
+        AddGroupToMask(mFadeOutMask, mDisplayScene.mExtraMinutes);
+        mFadeOutMask.SetZigzagOrder(true);
+
         memcpy(mFadeFrom, mLeds, sizeof(mLeds));
         fill_solid(mFadeTo, LED_NUMBER, CRGB::Black);
         StartBlackFade(FADE_MODE_SCREEN_OFF);
     }
     else if (mDisplayFrameValid)
     {
+        mFadeInMask.ClearAll();
+        AddGroupToMask(mFadeInMask, mDisplayScene.mItIs);
+        AddGroupToMask(mFadeInMask, mDisplayScene.mTime);
+        AddGroupToMask(mFadeInMask, mDisplayScene.mExtraMinutes);
+        mFadeInMask.SetZigzagOrder(true);
+
         fill_solid(mFadeFrom, LED_NUMBER, CRGB::Black);
         memcpy(mFadeTo, mDisplayFrame, sizeof(mLeds));
         StartBlackFade(FADE_MODE_SCREEN_ON);
@@ -736,31 +748,32 @@ void Display::StartBlackFade(const tFadeMode aMode)
     {
         memcpy(mFadeTo, mLeds, sizeof(mLeds));
     }
-    mFadeOutDurationMs = ((aMode == FADE_MODE_INTRO_TO_SCENE) || (aMode == FADE_MODE_SCREEN_OFF))
-        ? wRampDurationMs : 0U;
-    mFadeInDurationMs = ((aMode == FADE_MODE_INTRO_TO_SCENE) || (aMode == FADE_MODE_SCREEN_ON))
-        ? wRampDurationMs : 0U;
+    mFadeOutDurationMs = wRampDurationMs;
+    mFadeInDurationMs = wRampDurationMs;
+    mFadeBkgd = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
 
     if (aMode == FADE_MODE_SCREEN_OFF)
     {
         fill_solid(mFadeTo, LED_NUMBER, CRGB::Black);
+        bool wHasOldWords = false;
+        for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+        {
+            wHasOldWords = wHasOldWords || mFadeOutMask.IsBitSet(wI);
+        }
+        mFadeDirection = wHasOldWords ? FADE_WORDS_OUT : FADE_BACKGROUND_OUT;
     }
     else if (aMode == FADE_MODE_SCREEN_ON)
     {
         fill_solid(mFadeFrom, LED_NUMBER, CRGB::Black);
+        mFadeDirection = FADE_BACKGROUND_IN;
+    }
+    else
+    {
+        mFadeDirection = FADE_TO_BLACK;
     }
 
     mFadeStart = millis();
-    mFadeDirection = (mFadeOutDurationMs > 0) ? FADE_OUT : FADE_IN;
-    mFadeActive = (mFadeOutDurationMs > 0) || (mFadeInDurationMs > 0);
-
-    if (!mFadeActive)
-    {
-        memcpy(mLeds, mFadeTo, sizeof(mLeds));
-        FastLED.show();
-        mFadeMode = FADE_MODE_SCENE_CHANGE;
-        return;
-    }
+    mFadeActive = true;
 
     mpTaskTimer->SetPeriodAndStartTimer(pdMS_TO_TICKS(mFadeStepPeriodMs));
 }
@@ -768,8 +781,8 @@ void Display::StartBlackFade(const tFadeMode aMode)
 /**
  * @brief Renders one fade frame.
  *
- * @details Old word LEDs fade to the configured background. After a hold,
- *          new word LEDs fade from the background to their target colors.
+ * @details Screen-on: all LEDs fade black→background, then time words fade
+ *          background→time color. Screen-off does the reverse in two phases.
  */
 void Display::FadeStep(void)
 {
@@ -780,11 +793,12 @@ void Display::FadeStep(void)
 
         if (mFadeMode != FADE_MODE_SCENE_CHANGE)
         {
-            if (mFadeDirection == FADE_OUT)
+            const uint32_t wFrames = wElapsed / mFadeStepPeriodMs;
+            const uint32_t wProgress = wFrames * mFadeBlendIncrement;
+            const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+
+            if (mFadeDirection == FADE_TO_BLACK)
             {
-                const uint32_t wFrames = wElapsed / mFadeStepPeriodMs;
-                const uint32_t wProgress = wFrames * mFadeBlendIncrement;
-                const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
                     mLeds[wI] = blend(mFadeFrom[wI], CRGB::Black, wAmount);
@@ -793,38 +807,79 @@ void Display::FadeStep(void)
                 if (wElapsed >= mFadeOutDurationMs)
                 {
                     fill_solid(mLeds, LED_NUMBER, CRGB::Black);
-                    if (mFadeMode == FADE_MODE_INTRO_TO_SCENE)
-                    {
-                        mFadeDirection = (mcFadeHoldMs > 0) ? FADE_HOLD : FADE_IN;
-                        mFadeStart = wNow;
-                    }
-                    else
-                    {
-                        StopFade();
-                    }
+                    mFadeDirection = (mcFadeHoldMs > 0) ? FADE_HOLD : FADE_BACKGROUND_IN;
+                    mFadeStart = wNow;
                 }
             }
             else if (mFadeDirection == FADE_HOLD)
             {
                 if (wElapsed >= mcFadeHoldMs)
                 {
-                    mFadeDirection = FADE_IN;
+                    mFadeDirection = FADE_BACKGROUND_IN;
                     mFadeStart = wNow;
                 }
             }
-            else if (mFadeDirection == FADE_IN)
+            else if (mFadeDirection == FADE_BACKGROUND_IN)
             {
-                const uint32_t wFrames = wElapsed / mFadeStepPeriodMs;
-                const uint32_t wProgress = wFrames * mFadeBlendIncrement;
-                const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
-                    mLeds[wI] = blend(CRGB::Black, mFadeTo[wI], wAmount);
+                    mLeds[wI] = blend(CRGB::Black, mFadeBkgd, wAmount);
+                }
+
+                if (wElapsed >= mFadeInDurationMs)
+                {
+                    fill_solid(mLeds, LED_NUMBER, mFadeBkgd);
+                    mFadeDirection = FADE_WORDS_IN;
+                    mFadeStart = wNow;
+                }
+            }
+            else if (mFadeDirection == FADE_WORDS_IN)
+            {
+                for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+                {
+                    if (mFadeInMask.IsBitSet(wI))
+                    {
+                        mLeds[wI] = blend(mFadeBkgd, mFadeTo[wI], wAmount);
+                    }
+                    else
+                    {
+                        mLeds[wI] = mFadeBkgd;
+                    }
                 }
 
                 if (wElapsed >= mFadeInDurationMs)
                 {
                     memcpy(mLeds, mFadeTo, sizeof(mLeds));
+                    StopFade();
+                }
+            }
+            else if (mFadeDirection == FADE_WORDS_OUT)
+            {
+                for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+                {
+                    if (mFadeOutMask.IsBitSet(wI))
+                    {
+                        mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
+                    }
+                }
+
+                if (wElapsed >= mFadeOutDurationMs)
+                {
+                    fill_solid(mLeds, LED_NUMBER, mFadeBkgd);
+                    mFadeDirection = FADE_BACKGROUND_OUT;
+                    mFadeStart = wNow;
+                }
+            }
+            else if (mFadeDirection == FADE_BACKGROUND_OUT)
+            {
+                for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+                {
+                    mLeds[wI] = blend(mFadeBkgd, CRGB::Black, wAmount);
+                }
+
+                if (wElapsed >= mFadeInDurationMs)
+                {
+                    fill_solid(mLeds, LED_NUMBER, CRGB::Black);
                     StopFade();
                 }
             }

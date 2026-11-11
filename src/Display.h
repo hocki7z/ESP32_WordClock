@@ -50,6 +50,11 @@ private:
         FADE_OUT,
         FADE_HOLD,
         FADE_IN,
+        FADE_TO_BLACK,
+        FADE_BACKGROUND_IN,
+        FADE_WORDS_IN,
+        FADE_WORDS_OUT,
+        FADE_BACKGROUND_OUT,
     } tFadeDirection;
 
     typedef enum tFadeMode
