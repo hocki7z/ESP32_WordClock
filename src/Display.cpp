@@ -38,6 +38,9 @@ static constexpr bool mcFadeStaggerWords = false;
  */
 /* Timer period: recompute each LED's blend amount once per fade step. */
 static constexpr uint32_t mcFadeStepMs = 40;    // recompute blend amount every 40 ms (25 updates/second)
+/* Finer timing for black transitions to improve low-brightness background smoothness. */
+static constexpr uint32_t mcBlackFadeStepMs = 20;   // 50 updates/second
+static constexpr uint8_t mcBlackFadeBlendStep = 3;  // keeps phase duration close to the normal fade
 /* Delay between starting consecutive LED fades; used only when staggering is enabled. */
 static constexpr uint32_t mcFadeSpawnIntervalMs = 20;
 /* Pause at the background color after fade-out and before fade-in. */
@@ -661,6 +664,8 @@ void Display::StartFade(void)
     /* A new display update replaces any transition already in progress. */
     mpTaskTimer->stop();
     mFadeMode = FADE_MODE_SCENE_CHANGE;
+    mFadeStepPeriodMs = mcFadeStepMs;
+    mFadeBlendIncrement = mcFadeBlendStep;
 
     /* Store the current LED state as the target for the fade */
     memcpy(mFadeTo,   mLeds, sizeof(mLeds));
@@ -684,7 +689,7 @@ void Display::StartFade(void)
 
     /* One LED needs ceil(255 / blend step) timer ticks to reach full blend. */
     const uint32_t wRampDurationMs =
-        ((255U + mcFadeBlendStep - 1U) / mcFadeBlendStep) * mcFadeStepMs;
+        ((255U + mFadeBlendIncrement - 1U) / mFadeBlendIncrement) * mFadeStepPeriodMs;
     /* Staggered word LEDs may take longer than the simultaneous background fade. */
     const uint32_t wFadeOutWordDurationMs = (wFadeOutCount > 0)
         ? ((mcFadeStaggerWords ? (wFadeOutCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
@@ -707,7 +712,7 @@ void Display::StartFade(void)
         return;
     }
 
-    mpTaskTimer->start();
+    mpTaskTimer->SetPeriodAndStartTimer(pdMS_TO_TICKS(mFadeStepPeriodMs));
 }
 
 /**
@@ -719,9 +724,12 @@ void Display::StartBlackFade(const tFadeMode aMode)
 {
     mpTaskTimer->stop();
     mFadeMode = aMode;
+    /* A quicker, finer-grained ramp helps the low-level background color look smooth. */
+    mFadeStepPeriodMs = mcBlackFadeStepMs;
+    mFadeBlendIncrement = mcBlackFadeBlendStep;
 
     const uint32_t wRampDurationMs =
-        ((255U + mcFadeBlendStep - 1U) / mcFadeBlendStep) * mcFadeStepMs;
+        ((255U + mFadeBlendIncrement - 1U) / mFadeBlendIncrement) * mFadeStepPeriodMs;
     if (aMode == FADE_MODE_INTRO_TO_SCENE)
     {
         memcpy(mFadeTo, mLeds, sizeof(mLeds));
@@ -752,7 +760,7 @@ void Display::StartBlackFade(const tFadeMode aMode)
         return;
     }
 
-    mpTaskTimer->start();
+    mpTaskTimer->SetPeriodAndStartTimer(pdMS_TO_TICKS(mFadeStepPeriodMs));
 }
 
 /**
@@ -772,8 +780,8 @@ void Display::FadeStep(void)
         {
             if (mFadeDirection == FADE_OUT)
             {
-                const uint32_t wFrames = wElapsed / mcFadeStepMs;
-                const uint32_t wProgress = wFrames * mcFadeBlendStep;
+                const uint32_t wFrames = wElapsed / mFadeStepPeriodMs;
+                const uint32_t wProgress = wFrames * mFadeBlendIncrement;
                 const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
@@ -804,8 +812,8 @@ void Display::FadeStep(void)
             }
             else if (mFadeDirection == FADE_IN)
             {
-                const uint32_t wFrames = wElapsed / mcFadeStepMs;
-                const uint32_t wProgress = wFrames * mcFadeBlendStep;
+                const uint32_t wFrames = wElapsed / mFadeStepPeriodMs;
+                const uint32_t wProgress = wFrames * mFadeBlendIncrement;
                 const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
@@ -833,8 +841,8 @@ void Display::FadeStep(void)
                     const uint32_t wLedSpawnDelay = mcFadeStaggerWords ? wSpawnDelay : 0U;
                     if (wElapsed >= wLedSpawnDelay)
                     {
-                        const uint32_t wFrames = (wElapsed - wLedSpawnDelay) / mcFadeStepMs;
-                        const uint32_t wProgress = wFrames * mcFadeBlendStep;
+                        const uint32_t wFrames = (wElapsed - wLedSpawnDelay) / mFadeStepPeriodMs;
+                        const uint32_t wProgress = wFrames * mFadeBlendIncrement;
                         const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                         mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
                     }
@@ -876,8 +884,8 @@ void Display::FadeStep(void)
                     const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
                     if (wFadeInElapsed >= wLedSpawnDelay)
                     {
-                        const uint32_t wFrames = (wFadeInElapsed - wLedSpawnDelay) / mcFadeStepMs;
-                        const uint32_t wProgress = wFrames * mcFadeBlendStep;
+                        const uint32_t wFrames = (wFadeInElapsed - wLedSpawnDelay) / mFadeStepPeriodMs;
+                        const uint32_t wProgress = wFrames * mFadeBlendIncrement;
                         const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
                         mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
                     }

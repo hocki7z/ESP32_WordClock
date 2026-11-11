@@ -76,6 +76,8 @@ private:
     uint32_t mFadeOutDurationMs = 0;
     uint32_t mFadeInDurationMs  = 0;
     bool     mFadeActive = false;
+    uint32_t mFadeStepPeriodMs = 40;
+    uint8_t  mFadeBlendIncrement = 6;
     tFadeDirection mFadeDirection = FADE_NONE;
     tFadeMode mFadeMode = FADE_MODE_SCENE_CHANGE;
     /* Previous and incoming word LED masks. */
