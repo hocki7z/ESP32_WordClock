@@ -149,6 +149,8 @@ namespace ApplicationNS
 
         uint32_t GetTimerId(void) const;
 
+        bool SetPeriodAndStartTimer(TickType_t aPeriod, TickType_t aTimeout = 0);
+
     private:
         /** @brief Timer identifier */
         uint32_t mTimerId;

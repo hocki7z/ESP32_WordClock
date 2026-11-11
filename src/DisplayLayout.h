@@ -54,16 +54,25 @@ struct WordGroup
     uint8_t  mWordsCount = 0;
     bool     mEnabled = false;
 
+    /** @brief Sets the enabled state of the word group
+     *
+     * @param aEnabled true to enable the word group, false to disable it
+     */
     void SetEnabled(bool aEnabled)
     {
         mEnabled = aEnabled;
     }
 
+    /** @brief Checks if the word group is enabled
+     *
+     * @return true if the word group is enabled, false otherwise
+     */
     bool IsEnabled(void) const
     {
         return mEnabled;
     }
 
+    /** @brief Clears the word group */
     void Clear(void)
     {
         mColor = 0;
@@ -73,6 +82,13 @@ struct WordGroup
         mEnabled = false;
     }
 
+    /** @brief Copies the content from another word group
+     *
+     * @details
+     * This function copies the content of another word group into this one.
+     *
+     * @param arOther The other word group to copy from
+     */
     void CopyFrom(const WordGroup& arOther)
     {
         if (this != &arOther)
@@ -81,6 +97,11 @@ struct WordGroup
         }
     }
 
+    /** @brief Compares the word group with another word group
+     *
+     * @param arOther The other word group to compare with
+     * @return true if the word groups are equal, false otherwise
+     */
     bool operator==(const WordGroup& arOther) const
     {
         return (mColor == arOther.mColor) &&
@@ -90,6 +111,11 @@ struct WordGroup
                (memcmp(mWords, arOther.mWords, sizeof(mWords)) == 0);
     }
 
+    /** @brief Compares the word group with another word group for inequality
+     *
+     * @param arOther The other word group to compare with
+     * @return true if the word groups are not equal, false otherwise
+     */
     bool operator!=(const WordGroup& arOther) const
     {
         return !(*this == arOther);

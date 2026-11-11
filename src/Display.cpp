@@ -19,12 +19,24 @@ static constexpr uint32_t mcUpdateDelay = 10;
 /* Intro color */
 static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 
-/* Fade animation timing */
-static constexpr uint32_t mcFadeStepMs = 20;
+/**
+ * Fade animation stagger:
+ *  if true: start LEDs one by one;
+ *  otherwise if false: start all LEDs in each phase together
+ */
+static constexpr bool mcFadeStaggerWords = false;
+
+/**
+ * Fade animation timing (all *_Ms values are milliseconds)
+ */
+/* Timer period: recompute each LED's blend amount once per fade step. */
+static constexpr uint32_t mcFadeStepMs = 40;    // recompute blend amount every 40 ms (25 updates/second)
+/* Delay between starting consecutive LED fades; used only when staggering is enabled. */
 static constexpr uint32_t mcFadeSpawnIntervalMs = 20;
+/* Pause at the background color after fade-out and before fade-in. */
 static constexpr uint32_t mcFadeHoldMs = 300;
-static constexpr uint8_t mcFadeBlendStep = 8;
-static constexpr bool mcFadeStaggerWords = true;   // false: fade all active word LEDs together
+/* Blend progress added per fade step (0..255) */
+static constexpr uint8_t mcFadeBlendStep = 6;   // with 5 each phase takes about 2.04 seconds when all LEDs fade together
 
 
 /**
@@ -620,8 +632,10 @@ void Display::StartFade(void)
         }
     }
 
+    /* One LED needs ceil(255 / blend step) timer ticks to reach full blend. */
     const uint32_t wRampDurationMs =
         ((255U + mcFadeBlendStep - 1U) / mcFadeBlendStep) * mcFadeStepMs;
+    /* Phase length = last LED's start delay + one complete per-LED blend ramp. */
     mFadeOutDurationMs = (wFadeOutCount > 0)
         ? ((mcFadeStaggerWords ? (wFadeOutCount - 1U) * mcFadeSpawnIntervalMs : 0U) + wRampDurationMs)
         : 0;

@@ -181,6 +181,37 @@ uint32_t TaskTimer::GetTimerId(void) const
 }
 
 /**
+ * @brief Sets the timer period and starts the timer.
+ *
+ * @param aPeriod The timer period.
+ * @param aTimeout The timeout value (default is 0).
+ * @return True if the timer was successfully started, false otherwise.
+ */
+bool TaskTimer::SetPeriodAndStartTimer(TickType_t aPeriod, TickType_t aTimeout)
+{
+    bool wResult = false;
+
+    /* Stop timer if running */
+    this->stop();
+
+    /* Check if the period is valid */
+    if (aPeriod > 0)
+    {
+        /* Set the timer period and reload behavior */
+        this->period(aPeriod, aTimeout);
+        wResult = this->start();
+    }
+    else
+    {
+        LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_APPLICATION_NS,
+            "%s::TaskTimer::SetPeriodAndStartTimer() Invalid timer period: %u",
+            pcTaskGetName(NULL), aPeriod);
+    }
+
+    return wResult;     // Indicate that the timer was successfully started
+}
+
+/**
  * @brief Callback function invoked when the timer expires.
  *
  * @details
