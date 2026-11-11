@@ -63,6 +63,35 @@ Display::~Display()
     // do nothing
 }
 
+/**
+ * @brief Fades the display to black or restores the current scene from black.
+ *
+ * @param aEnabled True to show the latest scene, false to fade the matrix off.
+ */
+void Display::SetDisplayEnabled(const bool aEnabled)
+{
+    if (mDisplayEnabled == aEnabled)
+    {
+        return;
+    }
+
+    mDisplayEnabled = aEnabled;
+    mpTaskTimer->stop();
+
+    if (!aEnabled)
+    {
+        memcpy(mFadeFrom, mLeds, sizeof(mLeds));
+        fill_solid(mFadeTo, LED_NUMBER, CRGB::Black);
+        StartBlackFade(FADE_MODE_SCREEN_OFF);
+    }
+    else if (mDisplayFrameValid)
+    {
+        fill_solid(mFadeFrom, LED_NUMBER, CRGB::Black);
+        memcpy(mFadeTo, mDisplayFrame, sizeof(mLeds));
+        StartBlackFade(FADE_MODE_SCREEN_ON);
+    }
+}
+
 void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
     /* Initialize base class */
@@ -185,11 +214,6 @@ void Display::UpdateDisplay(void)
                           !wOldScene.mTime.IsEnabled() &&
                           !wOldScene.mExtraMinutes.IsEnabled();
 
-    if (wInitial)
-    {
-        Clear();
-    }
-
     mFadeOutMask.ClearAll();
     AddGroupToMask(mFadeOutMask, wOldScene.mItIs);
     AddGroupToMask(mFadeOutMask, wOldScene.mTime);
@@ -204,15 +228,33 @@ void Display::UpdateDisplay(void)
     /* Display scene changed */
     if (wUpdated)
     {
-        mFadeInMask.ClearAll();
+        memcpy(mDisplayFrame, mLeds, sizeof(mLeds));
+        mDisplayFrameValid = true;
 
-        AddGroupToMask(mFadeInMask, mDisplayScene.mItIs);
-        AddGroupToMask(mFadeInMask, mDisplayScene.mTime);
-        AddGroupToMask(mFadeInMask, mDisplayScene.mExtraMinutes);
+        if (!mDisplayEnabled)
+        {
+            Clear();
+            FastLED.show();
+        }
+        else
+        {
+            mFadeInMask.ClearAll();
 
-        mFadeInMask.SetZigzagOrder(true);
+            AddGroupToMask(mFadeInMask, mDisplayScene.mItIs);
+            AddGroupToMask(mFadeInMask, mDisplayScene.mTime);
+            AddGroupToMask(mFadeInMask, mDisplayScene.mExtraMinutes);
 
-        StartFade();
+            mFadeInMask.SetZigzagOrder(true);
+
+            if (wInitial)
+            {
+                StartBlackFade(FADE_MODE_INTRO_TO_SCENE);
+            }
+            else
+            {
+                StartFade();
+            }
+        }
 
         /* Publish a compact snapshot for the web UI */
         MessageNS::Message wMessage{};
@@ -618,6 +660,7 @@ void Display::StartFade(void)
 {
     /* A new display update replaces any transition already in progress. */
     mpTaskTimer->stop();
+    mFadeMode = FADE_MODE_SCENE_CHANGE;
 
     /* Store the current LED state as the target for the fade */
     memcpy(mFadeTo,   mLeds, sizeof(mLeds));
@@ -668,6 +711,51 @@ void Display::StartFade(void)
 }
 
 /**
+ * @brief Starts a full-matrix transition through black.
+ *
+ * @param aMode Intro sequence, screen-off fade, or screen-on fade.
+ */
+void Display::StartBlackFade(const tFadeMode aMode)
+{
+    mpTaskTimer->stop();
+    mFadeMode = aMode;
+
+    const uint32_t wRampDurationMs =
+        ((255U + mcFadeBlendStep - 1U) / mcFadeBlendStep) * mcFadeStepMs;
+    if (aMode == FADE_MODE_INTRO_TO_SCENE)
+    {
+        memcpy(mFadeTo, mLeds, sizeof(mLeds));
+    }
+    mFadeOutDurationMs = ((aMode == FADE_MODE_INTRO_TO_SCENE) || (aMode == FADE_MODE_SCREEN_OFF))
+        ? wRampDurationMs : 0U;
+    mFadeInDurationMs = ((aMode == FADE_MODE_INTRO_TO_SCENE) || (aMode == FADE_MODE_SCREEN_ON))
+        ? wRampDurationMs : 0U;
+
+    if (aMode == FADE_MODE_SCREEN_OFF)
+    {
+        fill_solid(mFadeTo, LED_NUMBER, CRGB::Black);
+    }
+    else if (aMode == FADE_MODE_SCREEN_ON)
+    {
+        fill_solid(mFadeFrom, LED_NUMBER, CRGB::Black);
+    }
+
+    mFadeStart = millis();
+    mFadeDirection = (mFadeOutDurationMs > 0) ? FADE_OUT : FADE_IN;
+    mFadeActive = (mFadeOutDurationMs > 0) || (mFadeInDurationMs > 0);
+
+    if (!mFadeActive)
+    {
+        memcpy(mLeds, mFadeTo, sizeof(mLeds));
+        FastLED.show();
+        mFadeMode = FADE_MODE_SCENE_CHANGE;
+        return;
+    }
+
+    mpTaskTimer->start();
+}
+
+/**
  * @brief Renders one fade frame.
  *
  * @details Old word LEDs fade to the configured background. After a hold,
@@ -679,6 +767,61 @@ void Display::FadeStep(void)
     {
         const uint32_t wNow = millis();
         const uint32_t wElapsed = wNow - mFadeStart;
+
+        if (mFadeMode != FADE_MODE_SCENE_CHANGE)
+        {
+            if (mFadeDirection == FADE_OUT)
+            {
+                const uint32_t wFrames = wElapsed / mcFadeStepMs;
+                const uint32_t wProgress = wFrames * mcFadeBlendStep;
+                const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+                for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+                {
+                    mLeds[wI] = blend(mFadeFrom[wI], CRGB::Black, wAmount);
+                }
+
+                if (wElapsed >= mFadeOutDurationMs)
+                {
+                    fill_solid(mLeds, LED_NUMBER, CRGB::Black);
+                    if (mFadeMode == FADE_MODE_INTRO_TO_SCENE)
+                    {
+                        mFadeDirection = (mcFadeHoldMs > 0) ? FADE_HOLD : FADE_IN;
+                        mFadeStart = wNow;
+                    }
+                    else
+                    {
+                        StopFade();
+                    }
+                }
+            }
+            else if (mFadeDirection == FADE_HOLD)
+            {
+                if (wElapsed >= mcFadeHoldMs)
+                {
+                    mFadeDirection = FADE_IN;
+                    mFadeStart = wNow;
+                }
+            }
+            else if (mFadeDirection == FADE_IN)
+            {
+                const uint32_t wFrames = wElapsed / mcFadeStepMs;
+                const uint32_t wProgress = wFrames * mcFadeBlendStep;
+                const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+                for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+                {
+                    mLeds[wI] = blend(CRGB::Black, mFadeTo[wI], wAmount);
+                }
+
+                if (wElapsed >= mFadeInDurationMs)
+                {
+                    memcpy(mLeds, mFadeTo, sizeof(mLeds));
+                    StopFade();
+                }
+            }
+
+            FastLED.show();
+            return;
+        }
 
         if (mFadeDirection == FADE_OUT)
         {
@@ -775,6 +918,7 @@ bool Display::StopFade(void)
 
     mpTaskTimer->stop();
     mFadeActive = false;
+    mFadeMode = FADE_MODE_SCENE_CHANGE;
 
     return wWasActive;
 }

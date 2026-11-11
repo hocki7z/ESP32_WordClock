@@ -39,6 +39,9 @@ public:
     /* ApplicationNS::Task::Init */
     void Init(ApplicationNS::tTaskObjects* apTaskObjects) override;
 
+    /* Fade the entire matrix to black or restore the latest time scene from black. */
+    void SetDisplayEnabled(const bool aEnabled);
+
 private:
     /* Fade directions */
     typedef enum tFadeDirection
@@ -49,9 +52,20 @@ private:
         FADE_IN,
     } tFadeDirection;
 
+    typedef enum tFadeMode
+    {
+        FADE_MODE_SCENE_CHANGE,
+        FADE_MODE_INTRO_TO_SCENE,
+        FADE_MODE_SCREEN_OFF,
+        FADE_MODE_SCREEN_ON,
+    } tFadeMode;
+
 
     /* Leds */
     CRGB mLeds[LED_NUMBER];
+    CRGB mDisplayFrame[LED_NUMBER];
+    bool mDisplayFrameValid = false;
+    bool mDisplayEnabled = true;
 
     /* Fade transition frames, background, and current phase start time */
     CRGB     mFadeFrom[LED_NUMBER];
@@ -63,6 +77,7 @@ private:
     uint32_t mFadeInDurationMs  = 0;
     bool     mFadeActive = false;
     tFadeDirection mFadeDirection = FADE_NONE;
+    tFadeMode mFadeMode = FADE_MODE_SCENE_CHANGE;
     /* Previous and incoming word LED masks. */
     BitMatrix mFadeOutMask{MATRIX_WIDTH, MATRIX_HEIGHT};
     BitMatrix mFadeInMask{MATRIX_WIDTH, MATRIX_HEIGHT};
@@ -98,6 +113,7 @@ private:
     void AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const;
 
     void StartFade(void);
+    void StartBlackFade(const tFadeMode aMode);
     void FadeStep(void);
     bool StopFade(void);
 };
