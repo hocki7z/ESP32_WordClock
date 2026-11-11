@@ -19,6 +19,12 @@ static constexpr uint32_t mcUpdateDelay = 10;
 /* Intro color */
 static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 
+/* Time change: fade out old time to background, then fade in new time */
+static constexpr uint32_t mcFadeOutMs  = 2000;
+static constexpr uint32_t mcFadeInMs   = 2000;
+/* Delay between two fade steps */
+static constexpr uint32_t mcFadeStepMs = 20;
+
 
 /**
  * @brief Constructor
@@ -41,6 +47,10 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 {
     /* Initialize base class */
     ApplicationNS::Task::Init(apTaskObjects);
+
+    /* Create task timer */
+    mpTaskTimer = new ApplicationNS::TaskTimer(ApplicationNS::Task::mcTaskTimerId, pdMS_TO_TICKS(mcFadeStepMs), true);
+    mpTaskTimer->Init(&mTaskTimerObjects);
 
     /* Initialize FastLED */
     // Initialize LEDs
@@ -106,6 +116,18 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
     }
 }
 
+void Display::ProcessTimerEvent(const uint32_t aTimerId)
+{
+    if (aTimerId == ApplicationNS::Task::mcTaskTimerId)
+    {
+        FadeStep();
+    }
+    else
+    {
+        // do nothing here
+    }
+}
+
 /**
  * @brief Clears the LED matrix by filling it with black color.
  */
@@ -137,14 +159,34 @@ void Display::UpdateDisplay(void)
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
 
+    /* No word group shown yet (after intro) */
+    const DisplayScene wOldScene = mDisplayScene;
+    const bool wInitial = !wOldScene.mItIs.IsEnabled() &&
+                          !wOldScene.mTime.IsEnabled() &&
+                          !wOldScene.mExtraMinutes.IsEnabled();
+
+    if (wInitial)
+    {
+        Clear();
+    }
+
+    memcpy(mFadeFrom, mLeds, sizeof(mLeds));
+
     /* Prepare time scene */
     bool wUpdated = DisplayTimeScene();
 
     /* Display scene changed */
     if (wUpdated)
     {
-        /* Show new data on the LED matrix */
-        FastLED.show();
+        mFadeMask.ClearAll();
+
+        AddGroupToMask(mFadeMask, mDisplayScene.mItIs);
+        AddGroupToMask(mFadeMask, mDisplayScene.mTime);
+        AddGroupToMask(mFadeMask, mDisplayScene.mExtraMinutes);
+
+        mFadeMask.SetZigzagOrder(true);
+
+        StartFade(wInitial ? 0 : mcFadeOutMs, mcFadeInMs);
 
         /* Publish a compact snapshot for the web UI */
         MessageNS::Message wMessage{};
@@ -510,4 +552,132 @@ void Display::PaintWord(const tWord aWord, const CRGB aColor)
 
     /* Now paint all LEDs marked in the mask */
     SetLedColor(wWordMask, aColor);
+}
+
+/**
+ * @brief Adds the word group to the given bit matrix
+ *
+ * @details
+ * This function checks if the word group is enabled and, if so,
+ * iterates through its words. For each valid word, it retrieves
+ * the corresponding word data and sets the appropriate bits in
+ * the provided bit matrix to create a logical mask representing
+ * the LEDs of the word group.
+ *
+ * @param arMask The bit matrix to which the word group will be added.
+ * @param arGroup The word group to be added to the mask.
+ */
+void Display::AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const
+{
+    if (arGroup.IsEnabled())
+    {
+        for (uint8_t wI = 0; wI < arGroup.mWordsCount; wI++)
+        {
+            tWord wWord = arGroup.mWords[wI];
+
+            if ((wWord > WORD_END_OF_WORDS) &&
+                (wWord < WORD_MAX_NUMBER))
+            {
+                const tWordData& wData = mcWordDataArray[wWord];
+                arMask.SetLine(wData.mRow, wData.mColumn, wData.mLength);
+            }
+        }
+    }
+}
+
+/**
+ * @brief Starts the fade from mFadeFrom to the freshly rendered scene in mLeds.
+ *
+ * @param aOutDurationMs Fade-out duration (0 = fade in directly from the current frame).
+ * @param aInDurationMs  Fade-in duration.
+ */
+void Display::StartFade(const uint32_t aOutDurationMs, const uint32_t aInDurationMs)
+{
+    /* Store the current LED state as the target for the fade */
+    memcpy(mFadeTo,   mLeds, sizeof(mLeds));
+    memcpy(mLeds, mFadeFrom, sizeof(mLeds));
+
+    mFadeOutDurationMs = aOutDurationMs;
+    mFadeInDurationMs  = aInDurationMs;
+
+    mFadeBkgd   = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
+    mFadeStart  = millis();
+    mFadeActive = true;
+
+    mpTaskTimer->start();
+}
+
+/**
+ * @brief Renders one fade frame.
+ *
+ * @details Masked LEDs fade old color -> background, then background -> new color.
+ *          Other changed LEDs (e.g. background) blend old -> new during fade-in.
+ */
+void Display::FadeStep(void)
+{
+    if (mFadeActive)
+    {
+        /* Elapsed time since fade started */
+        const uint32_t wElapsed = millis() - mFadeStart;
+
+        /* Check if fade is complete */
+        if (wElapsed >= (mFadeOutDurationMs + mFadeInDurationMs))
+        {
+            memcpy(mLeds, mFadeTo, sizeof(mLeds));
+            StopFade();
+        }
+        /* Fade is still in progress */
+        else if (wElapsed < mFadeOutDurationMs)
+        {
+            /* Calculate fade-out amount */
+            const fract8 wAmount = static_cast<fract8>((wElapsed * 255U) / mFadeOutDurationMs);
+
+            /* Fade-out phase: masked LEDs fade from old color to background */
+            for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+            {
+                if (mFadeMask.IsBitSet(wI))
+                {
+                    mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
+                }
+            }
+        }
+        /* Fade-in phase */
+        else
+        {
+            /* Calculate fade-in amount */
+            const fract8 wAmount = static_cast<fract8>(((wElapsed - mFadeOutDurationMs) * 255U) / mFadeInDurationMs);
+
+            /* Fade-in phase: masked LEDs fade from background to new color, other changed LEDs blend old -> new */
+            for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+            {
+                if (mFadeMask.IsBitSet(wI))
+                {
+                    const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
+                    mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
+                }
+                else if (mFadeFrom[wI] != mFadeTo[wI])
+                {
+                    mLeds[wI] = blend(mFadeFrom[wI], mFadeTo[wI], wAmount);
+                }
+            }
+        }
+
+        /* Update the LEDs with the new colors */
+        FastLED.show();
+    }
+}
+
+/**
+ * @brief Stops a running fade.
+ *
+ * @return true if a fade was running.
+ */
+bool Display::StopFade(void)
+{
+    const bool wWasActive = mFadeActive;
+
+    mpTaskTimer->stop();
+    mFadeActive = false;
+
+    return wWasActive;
 }

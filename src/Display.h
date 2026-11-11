@@ -43,14 +43,27 @@ private:
     /* Leds */
     CRGB mLeds[LED_NUMBER];
 
+    /* Fade transition: start frame, target frame, background and start time */
+    CRGB     mFadeFrom[LED_NUMBER];
+    CRGB     mFadeTo[LED_NUMBER];
+    CRGB     mFadeBkgd;
+    uint32_t mFadeStart  = 0;
+    uint32_t mFadeOutDurationMs = 0;
+    uint32_t mFadeInDurationMs  = 0;
+    bool     mFadeActive = false;
+    /* LEDs of the word groups (old and new) that fade out to background and in again */
+    BitMatrix mFadeMask{MATRIX_WIDTH, MATRIX_HEIGHT};
+
     /* Display scene */
     DisplayScene mDisplayScene;
 
     /* Current date and time */
     DateTimeNS::tDateTime mDateTime;
 
-    /* ApplicationNS::Task::ProcessIncomingMessage() */
+    /* Override ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
+    /* Override ApplicationNS::Task::ProcessTimerEvent() */
+    void ProcessTimerEvent(const uint32_t aTimerId = 0) override;
 
     void Clear(void);
     void Fill(const CRGB aColor, const uint8_t aBrightness=100);
@@ -68,4 +81,10 @@ private:
 
     void PaintWord(const tWord aWord, const CRGB aColor);
     void PaintTime(const uint8_t aHour, const uint8_t aMinute, const CRGB aColor);
+
+    void AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const;
+
+    void StartFade(const uint32_t aOutDurationMs, const uint32_t aInDurationMs);
+    void FadeStep(void);
+    bool StopFade(void);
 };
