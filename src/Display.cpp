@@ -19,8 +19,8 @@ static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 /**
  * Fade animation timing (all *_Ms values are milliseconds)
  */
-/* Fine-grained ramp for smoother low-brightness color transitions. */
-static constexpr uint32_t mcFadeStepMs = 8;       // target 125 updates/second for FastLED dithering
+/* Fine-grained ramp; dithering stays disabled to avoid shimmer on dim background LEDs. */
+static constexpr uint32_t mcFadeStepMs = 8;
 static constexpr uint8_t mcFadeBlendStep = 1;     // 255 steps; about 2.04 seconds per phase
 /* Pause at the background color after fade-out and before fade-in. */
 static constexpr uint32_t mcFadeHoldMs = 300;
@@ -655,7 +655,7 @@ void Display::StartFade(void)
 {
     /* A new display update replaces any transition already in progress. */
     mpTaskTimer->stop();
-    FastLED.setDither(BINARY_DITHER);
+    FastLED.setDither(DISABLE_DITHER);
     mFadeMode = FADE_MODE_SCENE_CHANGE;
     mFadeStepPeriodMs = mcFadeStepMs;
     mFadeBlendIncrement = mcFadeBlendStep;
@@ -701,7 +701,7 @@ void Display::StartFade(void)
 void Display::StartBlackFade(const tFadeMode aMode)
 {
     mpTaskTimer->stop();
-    FastLED.setDither(BINARY_DITHER);
+    FastLED.setDither(DISABLE_DITHER);
     mFadeMode = aMode;
     /* A quicker, finer-grained ramp helps the low-level background color look smooth. */
     mFadeStepPeriodMs = mcFadeStepMs;
@@ -848,11 +848,6 @@ void Display::FadeStep(void)
             }
 
             FastLED.show();
-            /* FastLED disables dithering below 100 FPS; restore it once the measured rate qualifies. */
-            if (mFadeActive && (FastLED.getFPS() >= 100))
-            {
-                FastLED.setDither(BINARY_DITHER);
-            }
             return;
         }
 
@@ -922,11 +917,6 @@ void Display::FadeStep(void)
         }
 
         FastLED.show();
-        /* FastLED disables dithering below 100 FPS; restore it once the measured rate qualifies. */
-        if (mFadeActive && (FastLED.getFPS() >= 100))
-        {
-            FastLED.setDither(BINARY_DITHER);
-        }
     }
 }
 
