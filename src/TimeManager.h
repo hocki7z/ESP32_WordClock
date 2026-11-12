@@ -40,7 +40,7 @@ private:
     /* Override ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
-    DateTimeNS::tDateTime GetLocalTime(void);
+    DateTimeNS::tDateTime GetLocalTime(void) const;
     DateTimeNS::tDateTime GetNtpTime(void);
 #if WORDCLOCK_TEST_MODE
     bool IsNightModeTime(void) const;

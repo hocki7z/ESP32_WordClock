@@ -235,7 +235,7 @@ void TimeManager::SetLocalTime(uint8_t aHour, uint8_t aMinute, uint8_t aSecond, 
     settimeofday(&wNewTimeval, nullptr);
 }
 
-DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
+DateTimeNS::tDateTime TimeManager::GetLocalTime(void) const
 {
     DateTimeNS::tDateTime wDateTime;
 
