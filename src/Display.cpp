@@ -19,15 +19,11 @@ static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 /**
  * Fade animation timing (all *_Ms values are milliseconds)
  */
-/* Timer period: recompute each LED's blend amount once per fade step. */
-static constexpr uint32_t mcFadeStepMs = 40;    // recompute blend amount every 40 ms (25 updates/second)
-/* Fine timing for black transitions to reduce visible steps in dim colors. */
-static constexpr uint32_t mcBlackFadeStepMs = 8;    // target 125 updates/second for FastLED dithering
-static constexpr uint8_t mcBlackFadeBlendStep = 1;  // 255 steps; about 2.04 seconds per phase
+/* Fine-grained ramp for smoother low-brightness color transitions. */
+static constexpr uint32_t mcFadeStepMs = 8;       // target 125 updates/second for FastLED dithering
+static constexpr uint8_t mcFadeBlendStep = 1;     // 255 steps; about 2.04 seconds per phase
 /* Pause at the background color after fade-out and before fade-in. */
 static constexpr uint32_t mcFadeHoldMs = 300;
-/* Blend progress added per fade step (0..255) */
-static constexpr uint8_t mcFadeBlendStep = 6;   // about 1.72 seconds per phase
 
 static fract8 FadeAmount(const uint32_t aElapsedMs, const uint32_t aStepPeriodMs,
                          const uint8_t aBlendIncrement)
@@ -659,7 +655,7 @@ void Display::StartFade(void)
 {
     /* A new display update replaces any transition already in progress. */
     mpTaskTimer->stop();
-    FastLED.setDither(DISABLE_DITHER);
+    FastLED.setDither(BINARY_DITHER);
     mFadeMode = FADE_MODE_SCENE_CHANGE;
     mFadeStepPeriodMs = mcFadeStepMs;
     mFadeBlendIncrement = mcFadeBlendStep;
@@ -708,8 +704,8 @@ void Display::StartBlackFade(const tFadeMode aMode)
     FastLED.setDither(BINARY_DITHER);
     mFadeMode = aMode;
     /* A quicker, finer-grained ramp helps the low-level background color look smooth. */
-    mFadeStepPeriodMs = mcBlackFadeStepMs;
-    mFadeBlendIncrement = mcBlackFadeBlendStep;
+    mFadeStepPeriodMs = mcFadeStepMs;
+    mFadeBlendIncrement = mcFadeBlendStep;
 
     const uint32_t wRampDurationMs =
         ((255U + mFadeBlendIncrement - 1U) / mFadeBlendIncrement) * mFadeStepPeriodMs;
@@ -926,6 +922,11 @@ void Display::FadeStep(void)
         }
 
         FastLED.show();
+        /* FastLED disables dithering below 100 FPS; restore it once the measured rate qualifies. */
+        if (mFadeActive && (FastLED.getFPS() >= 100))
+        {
+            FastLED.setDither(BINARY_DITHER);
+        }
     }
 }
 
