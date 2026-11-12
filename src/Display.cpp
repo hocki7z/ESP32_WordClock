@@ -32,6 +32,66 @@ static fract8 FadeAmount(const uint32_t aElapsedMs, const uint32_t aStepPeriodMs
     return static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
 }
 
+/* 64 perceptual intensity steps mapped to 8-bit PWM using a gamma-2.2 curve. */
+static constexpr uint8_t mcGammaPwmTable[] =
+{
+    0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 8, 9, 11,
+    13, 14, 16, 18, 20, 23, 25, 28, 31, 33, 36, 40, 43, 46, 50, 54,
+    57, 61, 66, 70, 74, 79, 84, 89, 94, 99, 105, 110, 116, 122, 128, 134,
+    140, 147, 153, 160, 167, 174, 182, 189, 197, 205, 213, 221, 229, 238, 246, 255
+};
+
+static uint8_t GammaIntensityStep(const uint8_t aPwmValue)
+{
+    uint8_t wLow = 0;
+    uint8_t wHigh = sizeof(mcGammaPwmTable) / sizeof(mcGammaPwmTable[0]) - 1;
+
+    while (wLow < wHigh)
+    {
+        const uint8_t wMiddle = wLow + (wHigh - wLow) / 2;
+        if (mcGammaPwmTable[wMiddle] < aPwmValue)
+        {
+            wLow = wMiddle + 1;
+        }
+        else
+        {
+            wHigh = wMiddle;
+        }
+    }
+
+    if (wLow > 0 && (aPwmValue - mcGammaPwmTable[wLow - 1]) <=
+                    (mcGammaPwmTable[wLow] - aPwmValue))
+    {
+        return wLow - 1;
+    }
+    return wLow;
+}
+
+static uint8_t GammaBlendChannel(const uint8_t aFrom, const uint8_t aTo, const fract8 aAmount)
+{
+    if (aAmount == 0)
+    {
+        return aFrom;
+    }
+    if (aAmount == 255)
+    {
+        return aTo;
+    }
+
+    const uint32_t wFromStep = GammaIntensityStep(aFrom);
+    const uint32_t wToStep = GammaIntensityStep(aTo);
+    const uint32_t wStep = (wFromStep * (255U - aAmount) + wToStep * aAmount + 127U) / 255U;
+    return mcGammaPwmTable[wStep];
+}
+
+static CRGB GammaBlend(const CRGB aFrom, const CRGB aTo, const fract8 aAmount)
+{
+    return CRGB(
+        GammaBlendChannel(aFrom.r, aTo.r, aAmount),
+        GammaBlendChannel(aFrom.g, aTo.g, aAmount),
+        GammaBlendChannel(aFrom.b, aTo.b, aAmount));
+}
+
 
 /**
  * @brief Constructor
@@ -764,7 +824,7 @@ void Display::FadeStep(void)
             {
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
-                    mLeds[wI] = blend(mFadeFrom[wI], CRGB::Black, wAmount);
+                    mLeds[wI] = GammaBlend(mFadeFrom[wI], CRGB::Black, wAmount);
                 }
 
                 if (wElapsed >= mFadeOutDurationMs)
@@ -786,7 +846,7 @@ void Display::FadeStep(void)
             {
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
-                    mLeds[wI] = blend(CRGB::Black, mFadeBkgd, wAmount);
+                    mLeds[wI] = GammaBlend(CRGB::Black, mFadeBkgd, wAmount);
                 }
 
                 if (wElapsed >= mFadeInDurationMs)
@@ -802,7 +862,7 @@ void Display::FadeStep(void)
                 {
                     if (mFadeInMask.IsBitSet(wI))
                     {
-                        mLeds[wI] = blend(mFadeBkgd, mFadeTo[wI], wAmount);
+                        mLeds[wI] = GammaBlend(mFadeBkgd, mFadeTo[wI], wAmount);
                     }
                     else
                     {
@@ -822,7 +882,7 @@ void Display::FadeStep(void)
                 {
                     if (mFadeOutMask.IsBitSet(wI))
                     {
-                        mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
+                        mLeds[wI] = GammaBlend(mFadeFrom[wI], mFadeBkgd, wAmount);
                     }
                 }
 
@@ -837,7 +897,7 @@ void Display::FadeStep(void)
             {
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
-                    mLeds[wI] = blend(mFadeBkgd, CRGB::Black, wAmount);
+                    mLeds[wI] = GammaBlend(mFadeBkgd, CRGB::Black, wAmount);
                 }
 
                 if (wElapsed >= mFadeInDurationMs)
@@ -858,7 +918,7 @@ void Display::FadeStep(void)
             {
                 if (mFadeOutMask.IsBitSet(wI))
                 {
-                    mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
+                    mLeds[wI] = GammaBlend(mFadeFrom[wI], mFadeBkgd, wAmount);
                 }
             }
 
@@ -893,7 +953,7 @@ void Display::FadeStep(void)
                 if (mFadeInMask.IsBitSet(wI))
                 {
                     const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
-                    mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
+                    mLeds[wI] = GammaBlend(wStart, mFadeTo[wI], wAmount);
                 }
                 else if (mFadeOutMask.IsBitSet(wI))
                 {
@@ -905,7 +965,7 @@ void Display::FadeStep(void)
                     const uint32_t wProgress = (mFadeInDurationMs > 0)
                         ? (wFadeInElapsed * 255U) / mFadeInDurationMs : 255U;
                     const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
-                    mLeds[wI] = blend(mFadeFrom[wI], mFadeTo[wI], wAmount);
+                    mLeds[wI] = GammaBlend(mFadeFrom[wI], mFadeTo[wI], wAmount);
                 }
             }
 
