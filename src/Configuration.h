@@ -14,9 +14,9 @@
 
 #include "DisplayLayout.h"
 
-/* Accelerated clock test mode: one simulated minute passes per configured interval. */
+/* Accelerated test clock: one simulated minute per interval, only during configured night hours. */
 #ifndef WORDCLOCK_TEST_MODE
-#define WORDCLOCK_TEST_MODE 0
+#define WORDCLOCK_TEST_MODE 1
 #endif
 /* Milliseconds between simulated minute changes; can be overridden with a build define. */
 #ifndef WORDCLOCK_TEST_INTERVAL

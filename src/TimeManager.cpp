@@ -90,17 +90,26 @@ void TimeManager::ProcessTimerEvent(const uint32_t aTimerId)
 #if WORDCLOCK_TEST_MODE
         const uint32_t wNow = millis();
         constexpr uint32_t wTestIntervalMs = WORDCLOCK_TEST_INTERVAL;
-        while (static_cast<uint32_t>(wNow - mTestClockLastAdvanceMs) >= wTestIntervalMs)
+        if (IsNightModeTime())
         {
-            mTestClockLastAdvanceMs += wTestIntervalMs;
-
-            timeval wNewTimeval{};
-            wNewTimeval.tv_sec = time(nullptr) + 60;
-            if (settimeofday(&wNewTimeval, nullptr) != 0)
+            while (static_cast<uint32_t>(wNow - mTestClockLastAdvanceMs) >= wTestIntervalMs &&
+                   IsNightModeTime())
             {
-                LOG(LOG_ERROR, "TimeManager: failed to advance test clock");
-                break;
+                mTestClockLastAdvanceMs += wTestIntervalMs;
+
+                timeval wNewTimeval{};
+                wNewTimeval.tv_sec = time(nullptr) + 60;
+                if (settimeofday(&wNewTimeval, nullptr) != 0)
+                {
+                    LOG(LOG_ERROR, "TimeManager: failed to advance test clock");
+                    break;
+                }
             }
+        }
+        else
+        {
+            /* Don't accumulate daytime elapsed time and catch up when night begins. */
+            mTestClockLastAdvanceMs = wNow;
         }
 #endif
         /* Send changed time */
@@ -246,6 +255,23 @@ DateTimeNS::tDateTime TimeManager::GetLocalTime(void)
 
     return wDateTime;
 }
+
+#if WORDCLOCK_TEST_MODE
+/** @brief Returns true outside the configured day-start/day-end interval. */
+bool TimeManager::IsNightModeTime(void) const
+{
+    const uint32_t wDayStartValue = Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayDayModeStartTime, ConfigNS::mDefaultDisplayDayModeStartTime);
+    const uint32_t wDayEndValue = Settings.GetValue<uint32_t>(
+        ConfigNS::mKeyDisplayDayModeEndTime, ConfigNS::mDefaultDisplayDayModeEndTime);
+    const DateTimeNS::tDateTime wDayStart = DateTimeNS::DwordToDateTime(wDayStartValue);
+    const DateTimeNS::tDateTime wDayEnd = DateTimeNS::DwordToDateTime(wDayEndValue);
+    const DateTimeNS::tDateTime wCurrentTime = GetLocalTime();
+
+    return !DateTimeNS::IsTimeInInterval(
+        wCurrentTime.mTime, wDayStart.mTime, wDayEnd.mTime);
+}
+#endif
 
 DateTimeNS::tDateTime TimeManager::GetNtpTime(void)
 {

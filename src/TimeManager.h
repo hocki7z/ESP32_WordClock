@@ -42,6 +42,9 @@ private:
 
     DateTimeNS::tDateTime GetLocalTime(void);
     DateTimeNS::tDateTime GetNtpTime(void);
+#if WORDCLOCK_TEST_MODE
+    bool IsNightModeTime(void) const;
+#endif
 
     void SetLocalTimeFromNTP(void);
 
