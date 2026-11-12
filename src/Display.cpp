@@ -25,71 +25,37 @@ static constexpr uint8_t mcFadeBlendStep = 1;     // 255 steps; about 2.04 secon
 /* Pause at the background color after fade-out and before fade-in. */
 static constexpr uint32_t mcFadeHoldMs = 300;
 
-static fract8 FadeAmount(const uint32_t aElapsedMs, const uint32_t aStepPeriodMs,
-                         const uint8_t aBlendIncrement)
+static uint16_t FadeAmount(const uint32_t aElapsedMs, const uint32_t aStepPeriodMs,
+                           const uint8_t aBlendIncrement)
 {
     const uint32_t wProgress = (aElapsedMs / aStepPeriodMs) * aBlendIncrement;
-    return static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
+    const uint32_t wClampedProgress = (wProgress > 255U) ? 255U : wProgress;
+    return static_cast<uint16_t>(wClampedProgress * 257U);
 }
 
-/* 64 perceptual intensity steps mapped to 8-bit PWM using a gamma-2.2 curve. */
-static constexpr uint8_t mcGammaPwmTable[] =
+/* WLED-style 16-bit interpolation fraction; color channels remain 8-bit PWM. */
+static uint8_t BlendChannel16(const uint8_t aFrom, const uint8_t aTo, const uint16_t aAmount)
 {
-    0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 8, 9, 11,
-    13, 14, 16, 18, 20, 23, 25, 28, 31, 33, 36, 40, 43, 46, 50, 54,
-    57, 61, 66, 70, 74, 79, 84, 89, 94, 99, 105, 110, 116, 122, 128, 134,
-    140, 147, 153, 160, 167, 174, 182, 189, 197, 205, 213, 221, 229, 238, 246, 255
-};
-
-static uint8_t GammaIntensityStep(const uint8_t aPwmValue)
-{
-    uint8_t wLow = 0;
-    uint8_t wHigh = sizeof(mcGammaPwmTable) / sizeof(mcGammaPwmTable[0]) - 1;
-
-    while (wLow < wHigh)
-    {
-        const uint8_t wMiddle = wLow + (wHigh - wLow) / 2;
-        if (mcGammaPwmTable[wMiddle] < aPwmValue)
-        {
-            wLow = wMiddle + 1;
-        }
-        else
-        {
-            wHigh = wMiddle;
-        }
-    }
-
-    if (wLow > 0 && (aPwmValue - mcGammaPwmTable[wLow - 1]) <=
-                    (mcGammaPwmTable[wLow] - aPwmValue))
-    {
-        return wLow - 1;
-    }
-    return wLow;
-}
-
-static uint8_t GammaBlendChannel(const uint8_t aFrom, const uint8_t aTo, const fract8 aAmount)
-{
-    if (aAmount == 0)
+    if (aAmount == 0U)
     {
         return aFrom;
     }
-    if (aAmount == 255)
+    if (aAmount == 65535U)
     {
         return aTo;
     }
 
-    const uint32_t wFromStep = GammaIntensityStep(aFrom);
-    const uint32_t wToStep = GammaIntensityStep(aTo);
-    const uint32_t wStep = (wFromStep * (255U - aAmount) + wToStep * aAmount + 127U) / 255U;
-    return mcGammaPwmTable[wStep];
+    const uint32_t wInverseAmount = 65535U - aAmount;
+    return static_cast<uint8_t>((static_cast<uint32_t>(aFrom) * wInverseAmount +
+                                 static_cast<uint32_t>(aTo) * aAmount) >> 16);
 }
 
-static CRGB GammaBlend(const CRGB aFrom, const CRGB aTo, const fract8 aAmount)
+static CRGB BlendColor16(const CRGB aFrom, const CRGB aTo, const uint16_t aAmount)
 {
     return CRGB(
-        GammaBlendChannel(aFrom.r, aTo.r, aAmount),
-        GammaBlendChannel(aFrom.g, aTo.g, aAmount),
-        GammaBlendChannel(aFrom.b, aTo.b, aAmount));
+        BlendChannel16(aFrom.r, aTo.r, aAmount),
+        BlendChannel16(aFrom.g, aTo.g, aAmount),
+        BlendChannel16(aFrom.b, aTo.b, aAmount));
 }
 
 
@@ -818,13 +784,13 @@ void Display::FadeStep(void)
 
         if (mFadeMode != FADE_MODE_SCENE_CHANGE)
         {
-            const fract8 wAmount = FadeAmount(wElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
+            const uint16_t wAmount = FadeAmount(wElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
 
             if (mFadeDirection == FADE_TO_BLACK)
             {
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
-                    mLeds[wI] = GammaBlend(mFadeFrom[wI], CRGB::Black, wAmount);
+                    mLeds[wI] = BlendColor16(mFadeFrom[wI], CRGB::Black, wAmount);
                 }
 
                 if (wElapsed >= mFadeOutDurationMs)
@@ -846,7 +812,7 @@ void Display::FadeStep(void)
             {
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
-                    mLeds[wI] = GammaBlend(CRGB::Black, mFadeBkgd, wAmount);
+                    mLeds[wI] = BlendColor16(CRGB::Black, mFadeBkgd, wAmount);
                 }
 
                 if (wElapsed >= mFadeInDurationMs)
@@ -862,7 +828,7 @@ void Display::FadeStep(void)
                 {
                     if (mFadeInMask.IsBitSet(wI))
                     {
-                        mLeds[wI] = GammaBlend(mFadeBkgd, mFadeTo[wI], wAmount);
+                        mLeds[wI] = BlendColor16(mFadeBkgd, mFadeTo[wI], wAmount);
                     }
                     else
                     {
@@ -882,7 +848,7 @@ void Display::FadeStep(void)
                 {
                     if (mFadeOutMask.IsBitSet(wI))
                     {
-                        mLeds[wI] = GammaBlend(mFadeFrom[wI], mFadeBkgd, wAmount);
+                        mLeds[wI] = BlendColor16(mFadeFrom[wI], mFadeBkgd, wAmount);
                     }
                 }
 
@@ -897,7 +863,7 @@ void Display::FadeStep(void)
             {
                 for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
                 {
-                    mLeds[wI] = GammaBlend(mFadeBkgd, CRGB::Black, wAmount);
+                    mLeds[wI] = BlendColor16(mFadeBkgd, CRGB::Black, wAmount);
                 }
 
                 if (wElapsed >= mFadeInDurationMs)
@@ -913,12 +879,12 @@ void Display::FadeStep(void)
 
         if (mFadeDirection == FADE_OUT)
         {
-            const fract8 wAmount = FadeAmount(wElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
+            const uint16_t wAmount = FadeAmount(wElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
             for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
             {
                 if (mFadeOutMask.IsBitSet(wI))
                 {
-                    mLeds[wI] = GammaBlend(mFadeFrom[wI], mFadeBkgd, wAmount);
+                    mLeds[wI] = BlendColor16(mFadeFrom[wI], mFadeBkgd, wAmount);
                 }
             }
 
@@ -947,13 +913,13 @@ void Display::FadeStep(void)
         else if (mFadeDirection == FADE_IN)
         {
             const uint32_t wFadeInElapsed = wElapsed;
-            const fract8 wAmount = FadeAmount(wFadeInElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
+            const uint16_t wAmount = FadeAmount(wFadeInElapsed, mFadeStepPeriodMs, mFadeBlendIncrement);
             for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
             {
                 if (mFadeInMask.IsBitSet(wI))
                 {
                     const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
-                    mLeds[wI] = GammaBlend(wStart, mFadeTo[wI], wAmount);
+                    mLeds[wI] = BlendColor16(wStart, mFadeTo[wI], wAmount);
                 }
                 else if (mFadeOutMask.IsBitSet(wI))
                 {
@@ -964,8 +930,8 @@ void Display::FadeStep(void)
                 {
                     const uint32_t wProgress = (mFadeInDurationMs > 0)
                         ? (wFadeInElapsed * 255U) / mFadeInDurationMs : 255U;
-                    const fract8 wAmount = static_cast<fract8>((wProgress > 255U) ? 255U : wProgress);
-                    mLeds[wI] = GammaBlend(mFadeFrom[wI], mFadeTo[wI], wAmount);
+                    const uint16_t wAmount = static_cast<uint16_t>((wProgress > 255U) ? 65535U : wProgress * 257U);
+                    mLeds[wI] = BlendColor16(mFadeFrom[wI], mFadeTo[wI], wAmount);
                 }
             }
 
