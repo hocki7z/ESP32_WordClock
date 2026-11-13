@@ -24,6 +24,11 @@
 #include "SSIDList.h"
 #include "RestartReason.h"
 
+/* Accelerated test clock: one simulated minute per interval, only during configured night hours. */
+#define WORDCLOCK_TEST_MODE         (true)      // Enable accelerated test clock
+/* Milliseconds between simulated minute changes; can be overridden with a build define. */
+#define WORDCLOCK_TEST_INTERVAL     5000        // 5 seconds per simulated minute
+
 
 /** @brief Shared display-scene snapshot */
 extern DisplaySceneSnapshot mDisplaySceneSnapshot;

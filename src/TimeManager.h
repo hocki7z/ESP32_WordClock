@@ -28,10 +28,12 @@ private:
 	ApplicationNS::tTaskTimerObjects mTimerObjects;
     ApplicationNS::TaskTimer* mpTimer;
 
-    /* Last sent datatime */
+    /* Last datetime sent to the display */
     DateTimeNS::tDateTime mSentTime;
+    bool mHasSentTime = false;
+    uint32_t mTestClockLastAdvanceMs = 0;
 
-    /* Flag indicates that the NTP time is synchronized */
+    /* True when production NTP sync or the test clock has initialized time. */
     bool mNtpTimeSynced = false;
 
     uint8_t mNtpServer;
@@ -44,8 +46,12 @@ private:
     /* ApplicationNS::Task::ProcessIncomingMessage() */
     void ProcessIncomingMessage(const MessageNS::Message &arMessage) override;
 
-    DateTimeNS::tDateTime GetLocalTime(void);
+    DateTimeNS::tDateTime GetLocalTime(void) const;
     DateTimeNS::tDateTime GetNtpTime(void);
+
+#if WORDCLOCK_TEST_MODE == true
+    bool IsNightModeTime(void) const;
+#endif
 
     void SetLocalTimeFromNTP(void);
 
