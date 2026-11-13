@@ -36,8 +36,8 @@ static constexpr int32_t mcScrollCharWidth = Font5x7NS::mGlyphWidth + Font5x7NS:
 
 /* Update approximately one RGB channel level per step, with bounded phase durations. */
 static constexpr uint32_t mcFadeStepMs = 20;
-static constexpr uint32_t mcFadeMinMs  = 200;
-static constexpr uint32_t mcFadeMaxMs  = 4000;
+static constexpr uint32_t mcFadeMinMs  = 750;
+static constexpr uint32_t mcFadeMaxMs  = 3000;
 
 /** @brief Converts the largest RGB channel difference into a bounded phase duration. */
 static uint32_t FadeDuration(uint8_t aDistance)
