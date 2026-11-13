@@ -593,6 +593,13 @@ void WebSite::InitWebUIControls(void)
     mWebUIControlID.mDisplayClockSingleMinutes = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayClockSingleMins, ConfigNS::mDefaultDisplayClockSingleMins);
 
+        /* Clock transitions only; the screen saver keeps its own fade animation. */
+        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Fade clock transitions");
+        mWebUIControlID.mDisplayClockFade = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
+            ConfigNS::mKeyDisplayClockFade, ConfigNS::mDefaultDisplayClockFade);
+        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL_LIGHTER,
+            "Fades may appear uneven or stepped, especially at low brightness.");
+
     /* Switch for scrolling IP address at startup */
     AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH_LABEL, "Show IP address at startup");
     mWebUIControlID.mDisplayStartupText = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,

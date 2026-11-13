@@ -405,7 +405,7 @@ void Display::SwitchMode(void)
 
         default:
             mState = STATE_TIME;
-            /* Empty scene makes UpdateDisplay() fade in all parts from black */
+            /* An empty scene makes UpdateDisplay() treat this as the first time scene. */
             mDisplayScene.Clear();
             if (mDateTimeValid)
             {
@@ -636,13 +636,16 @@ void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
  * @brief Updates the LED matrix display with the current scene.
  *
  * @param aForceRepaint Repaint the LEDs even if the scene is unchanged.
- * @param aFade Fade from the current frame to the new scene instead of switching at once.
+ * @param aFade Request a fade, subject to the clock fade setting.
  */
 void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
 {
     /* LOG */
     LOG(LOG_DEBUG, "Display.UpdateDisplay() Update display for time %02u:%02u",
             mDateTime.mTime.mHour,  mDateTime.mTime.mMinute);
+
+    const bool wFade = aFade && Settings.GetValue<bool>(
+        ConfigNS::mKeyDisplayClockFade, ConfigNS::mDefaultDisplayClockFade);
 
     /* An interrupted fade leaves an intermediate frame, so the scene must be repainted */
     const bool wFadeInterrupted = StopFade();
@@ -653,7 +656,7 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
                           !wOldScene.mTime.IsEnabled() &&
                           !wOldScene.mExtraMinutes.IsEnabled();
 
-    if (aFade)
+    if (wFade)
     {
         if (wInitial)
         {
@@ -669,7 +672,7 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
     /* Display scene changed */
     if (wUpdated)
     {
-        if (aFade)
+        if (wFade)
         {
             /* Changed time words imply new extra minutes too */
             const bool wItIsChanged  = (wOldScene.mItIs != mDisplayScene.mItIs);

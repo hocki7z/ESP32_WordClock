@@ -101,6 +101,7 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayScreenSaverColor3     = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0C);
     /* Reserved former effect mapping key: 0x0D. */
     static const SettingsNS::tKey  mKeyDisplayScreenSaverPalette    = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0E);
+    static const SettingsNS::tKey  mKeyDisplayClockFade             = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0F);
     static const SettingsNS::tKey  mKeyDisplayScreenSaverSpeed      = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x30);
     static const SettingsNS::tKey  mKeyDisplayScreenSaverIntensity  = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x31);
     static const SettingsNS::tKey  mKeyDisplayScreenSaverPresentation = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x32);
@@ -136,6 +137,7 @@ namespace ConfigNS
     /* Default values for display settings */
     static constexpr bool     mDefaultDisplayClockItIs              = true;         // Show "It is" in the display
     static constexpr bool     mDefaultDisplayClockSingleMins        = true;         // Show single minutes in the display
+    static constexpr bool     mDefaultDisplayClockFade              = true;         // Fade clock transitions
     static constexpr bool     mDefaultDisplayStartupText            = true;         // Scroll IP address after the intro
     static constexpr bool     mDefaultDisplayScreenSaver            = false;        // Show screen saver instead of time
     static constexpr uint8_t  mDefaultDisplayScreenSaverPalette     = 1;            // Rainbow
