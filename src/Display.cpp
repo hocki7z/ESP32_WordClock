@@ -786,7 +786,7 @@ void Display::FadeStep(void)
     }
     else if (wElapsed < mFadeOutDurationMs)
     {
-        const uint8_t wAmount = DisplayFadesNS::FadeAmount(wElapsed, mFadeOutDurationMs);
+        const uint16_t wAmount = DisplayFadesNS::FadeAmount(wElapsed, mFadeOutDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
@@ -798,7 +798,7 @@ void Display::FadeStep(void)
     }
     else
     {
-        const uint8_t wAmount = DisplayFadesNS::FadeAmount(wElapsed - mFadeOutDurationMs, mFadeInDurationMs);
+        const uint16_t wAmount = DisplayFadesNS::FadeAmount(wElapsed - mFadeOutDurationMs, mFadeInDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {

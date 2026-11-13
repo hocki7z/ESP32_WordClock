@@ -2,6 +2,7 @@
 #pragma once
 
 #include <FastLED.h>
+#include "DisplayFadeMath.h"
 
 namespace DisplayFadesNS
 {
@@ -11,7 +12,6 @@ namespace DisplayFadesNS
 
     /** @brief Largest absolute channel difference between two rendered colors. */
     uint8_t ColorDistance(const CRGB& arFrom, const CRGB& arTo);
-    uint8_t FadeAmount(uint32_t aElapsedMs, uint32_t aDurationMs);
-    CRGB FadeColor(const CRGB& arFrom, const CRGB& arTo, uint8_t aAmount);
+    CRGB FadeColor(const CRGB& arFrom, const CRGB& arTo, uint16_t aAmount);
     void StepColorTwinkle(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed);
 }

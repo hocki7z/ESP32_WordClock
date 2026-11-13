@@ -51,15 +51,11 @@ namespace DisplayFadesNS
         return wMax;
     }
 
-    uint8_t FadeAmount(uint32_t aElapsedMs, uint32_t aDurationMs)
+    CRGB FadeColor(const CRGB& arFrom, const CRGB& arTo, uint16_t aAmount)
     {
-        if ((aDurationMs == 0) || (aElapsedMs >= aDurationMs)) return 255;
-        return static_cast<uint8_t>((static_cast<uint64_t>(aElapsedMs) * 255U) / aDurationMs);
-    }
-
-    CRGB FadeColor(const CRGB& arFrom, const CRGB& arTo, uint8_t aAmount)
-    {
-        return blend(arFrom, arTo, aAmount);
+        return CRGB(FadeChannel(arFrom.r, arTo.r, aAmount),
+                    FadeChannel(arFrom.g, arTo.g, aAmount),
+                    FadeChannel(arFrom.b, arTo.b, aAmount));
     }
 
     void StepColorTwinkle(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed)
