@@ -156,6 +156,19 @@ static void FxSweep(Fx& f)       { ColorWipe(f, true,  false); }
 static void FxWipeRandom(Fx& f)  { ColorWipe(f, false, true);  }
 static void FxSweepRandom(Fx& f) { ColorWipe(f, true,  true);  }
 
+/** @brief Calculates the linear, bounded progress used by the Random Colors fade. */
+uint8_t FadeAmount(uint32_t aElapsedMs, uint32_t aDurationMs)
+{
+    if ((aDurationMs == 0) || (aElapsedMs >= aDurationMs)) return 255;
+    return static_cast<uint8_t>((static_cast<uint64_t>(aElapsedMs) * 255U) / aDurationMs);
+}
+
+/** @brief Applies the Fade effect's color interpolation at the supplied progress. */
+CRGB FadeColor(const CRGB& arFrom, const CRGB& arTo, uint8_t aAmount)
+{
+    return blend(arFrom, arTo, aAmount);
+}
+
 static void FxRandomColors(Fx& f)
 {
     const uint32_t wCycle   = 200 + (255 - f.mSpeed) * 50;
@@ -163,8 +176,7 @@ static void FxRandomColors(Fx& f)
     const uint32_t wRem     = f.mNow % wCycle;
     const uint16_t wFadeDur = (wCycle * f.mIntensity) >> 8;
 
-    uint32_t wFade = 255;
-    if (wFadeDur) { wFade = (wRem * 255) / wFadeDur; if (wFade > 255) wFade = 255; }
+    const uint8_t wFade = FadeAmount(wRem, wFadeDur);
 
     if (f.mCall == 0) { f.mAux0 = random8(); f.mStep = 2; }
     if (wIt != f.mStep)
@@ -173,7 +185,7 @@ static void FxRandomColors(Fx& f)
         f.mAux0 = f.RandomWheelIndex(f.mAux0);
         f.mStep = wIt;
     }
-    f.Fill(blend(f.Wheel(f.mAux1), f.Wheel(f.mAux0), wFade));
+    f.Fill(FadeColor(f.Wheel(f.mAux1), f.Wheel(f.mAux0), wFade));
 }
 
 static void DynamicBase(Fx& f, bool aSmooth)
@@ -218,7 +230,7 @@ static void FxFade(Fx& f)
 {
     const uint16_t wCounter = f.mNow * ((f.mSpeed >> 3) + 10);
     const uint8_t  wLum     = TriWave16(wCounter) >> 8;
-    for (int wI = 0; wI < f.Len(); wI++) f.SetPixel(wI, blend(f.mColors[1], f.ColorFromPal(wI, true, PALETTE_SOLID_WRAP, 0), wLum));
+    for (int wI = 0; wI < f.Len(); wI++) f.SetPixel(wI, FadeColor(f.mColors[1], f.ColorFromPal(wI, true, PALETTE_SOLID_WRAP, 0), wLum));
 }
 
 static void ScanBase(Fx& f, bool aDual)
@@ -2040,33 +2052,36 @@ static void FxNoise4(Fx& f)
     }
 }
 
+/** @brief Advances the WLED Colortwinkles envelope for one pixel or word. */
+void StepColorTwinkle(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed)
+{
+    if (arFadeUp)
+    {
+        const CRGB wPrev = arColor;
+        CRGB wInc = arColor;
+        wInc.nscale8_video(8 + (aSpeed >> 2));
+        arColor += wInc;
+        if ((arColor.r == 255) || (arColor.g == 255) || (arColor.b == 255)) arFadeUp = false;
+        if (arColor == wPrev) arColor += arColor;
+    }
+    else
+    {
+        arColor.nscale8(255 - (8 + (aSpeed >> 3)));
+    }
+}
+
 static void FxColortwinkles(Fx& f)
 {
     uint8_t* wBits = f.mData;
     if (f.mCall == 0) f.Fill(CRGB::Black);
 
-    const fract8 wUp   = 8 + (f.mSpeed >> 2);
-    const fract8 wDown = 8 + (f.mSpeed >> 3);
-
     for (int wI = 0; wI < f.Len(); wI++)
     {
         CRGB wC = f.GetPixel(wI);
-        const CRGB wPrev = wC;
-        const bool wFadeUp = bitRead(wBits[wI >> 3], wI & 0x07);
-        if (wFadeUp)
-        {
-            CRGB wInc = wC;
-            wInc.nscale8_video(wUp);
-            wC += wInc;
-            if ((wC.r == 255) || (wC.g == 255) || (wC.b == 255)) bitWrite(wBits[wI >> 3], wI & 0x07, false);
-            f.SetPixel(wI, wC);
-            if (f.GetPixel(wI) == wPrev) { wC += wC; f.SetPixel(wI, wC); }
-        }
-        else
-        {
-            wC.nscale8(255 - wDown);
-            f.SetPixel(wI, wC);
-        }
+        bool wFadeUp = bitRead(wBits[wI >> 3], wI & 0x07);
+        StepColorTwinkle(wC, wFadeUp, f.mSpeed);
+        bitWrite(wBits[wI >> 3], wI & 0x07, wFadeUp);
+        f.SetPixel(wI, wC);
     }
 
     for (int wJ = 0; wJ <= f.Len() / 50; wJ++)

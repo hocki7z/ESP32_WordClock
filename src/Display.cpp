@@ -45,24 +45,6 @@ static constexpr uint32_t mcFadeStepMs = 20;
  */
 static constexpr uint32_t mcSaverStepMs     = 24;
 
-/** @brief Shared Colortwinkles envelope for one word or letter (WLED-MM, EUPL-1.2). */
-static void StepSaverColor(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed)
-{
-    if (arFadeUp)
-    {
-        const CRGB wPrev = arColor;
-        CRGB wInc = arColor;
-        wInc.nscale8_video(8 + (aSpeed >> 2));
-        arColor += wInc;
-        if ((arColor.r == 255) || (arColor.g == 255) || (arColor.b == 255)) arFadeUp = false;
-        if (arColor == wPrev) arColor += wPrev;
-    }
-    else
-    {
-        arColor.nscale8(255 - (8 + (aSpeed >> 3)));
-    }
-}
-
 /* Effects: delay between two frames */
 static constexpr uint32_t mcEffectStepMs    = 25;
 
@@ -641,7 +623,7 @@ void Display::ScreenSaverStep(void)
             continue;
         }
 
-        StepSaverColor(wSlot.mColor, wSlot.mFadeUp, mSaverSpeed);
+        EffectsNS::StepColorTwinkle(wSlot.mColor, wSlot.mFadeUp, mSaverSpeed);
         if (wSlot.mColor == CRGB(CRGB::Black)) wSlot.mWord = WORD_END_OF_WORDS;
     }
 
@@ -674,7 +656,7 @@ void Display::ScreenSaverLettersStep(void)
 {
     for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
     {
-        StepSaverColor(mLeds[wI], mSaverLetterFadeUp[wI], mSaverSpeed);
+        EffectsNS::StepColorTwinkle(mLeds[wI], mSaverLetterFadeUp[wI], mSaverSpeed);
     }
 
     /* Colortwinkles scales ignition attempts with the number of pixels. */
@@ -900,30 +882,30 @@ void Display::FadeStep(void)
     }
     else if (wElapsed < mFadeOutDurationMs)
     {
-        const fract8 wAmount = static_cast<fract8>((wElapsed * 255U) / mFadeOutDurationMs);
+        const uint8_t wAmount = EffectsNS::FadeAmount(wElapsed, mFadeOutDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
             if (mFadeMask.IsBitSet(wI))
             {
-                mLeds[wI] = blend(mFadeFrom[wI], mFadeBkgd, wAmount);
+                mLeds[wI] = EffectsNS::FadeColor(mFadeFrom[wI], mFadeBkgd, wAmount);
             }
         }
     }
     else
     {
-        const fract8 wAmount = static_cast<fract8>(((wElapsed - mFadeOutDurationMs) * 255U) / mFadeInDurationMs);
+        const uint8_t wAmount = EffectsNS::FadeAmount(wElapsed - mFadeOutDurationMs, mFadeInDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
             if (mFadeMask.IsBitSet(wI))
             {
                 const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
-                mLeds[wI] = blend(wStart, mFadeTo[wI], wAmount);
+                mLeds[wI] = EffectsNS::FadeColor(wStart, mFadeTo[wI], wAmount);
             }
             else if (mFadeFrom[wI] != mFadeTo[wI])
             {
-                mLeds[wI] = blend(mFadeFrom[wI], mFadeTo[wI], wAmount);
+                mLeds[wI] = EffectsNS::FadeColor(mFadeFrom[wI], mFadeTo[wI], wAmount);
             }
         }
     }

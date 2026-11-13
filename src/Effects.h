@@ -28,6 +28,13 @@ namespace EffectsNS
     /** @brief Resolves a palette; apColors points to three user colors. */
     CRGBPalette16 GetPalette(uint8_t aIndex, const CRGB* apColors);
 
+    /** @brief Linear fade progress, clamped to 255; a zero duration completes immediately. */
+    uint8_t FadeAmount(uint32_t aElapsedMs, uint32_t aDurationMs);
+    /** @brief Blend two colors using the same operation as the Fade effect. */
+    CRGB FadeColor(const CRGB& arFrom, const CRGB& arTo, uint8_t aAmount);
+    /** @brief Advance the Colortwinkles envelope for one color and its fade direction. */
+    void StepColorTwinkle(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed);
+
     /** @brief Number and names of the 1D-to-2D mappings (for the web UI); 0 = effect default */
     uint8_t GetMappingCount(void);
     const char* const* GetMappingNames(void);
