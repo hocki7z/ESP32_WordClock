@@ -39,6 +39,18 @@ namespace DisplayFadesNS
         }
     }
 
+    uint8_t ColorDistance(const CRGB& arFrom, const CRGB& arTo)
+    {
+        uint8_t wMax = 0;
+        for (uint8_t wChannel = 0; wChannel < 3; wChannel++)
+        {
+            const int wDelta = int(arFrom[wChannel]) - int(arTo[wChannel]);
+            const uint8_t wDistance = static_cast<uint8_t>((wDelta < 0) ? -wDelta : wDelta);
+            if (wDistance > wMax) wMax = wDistance;
+        }
+        return wMax;
+    }
+
     uint8_t FadeAmount(uint32_t aElapsedMs, uint32_t aDurationMs)
     {
         if ((aDurationMs == 0) || (aElapsedMs >= aDurationMs)) return 255;

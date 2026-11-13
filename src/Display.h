@@ -147,7 +147,7 @@ private:
 
     void UpdateDisplay(const bool aForceRepaint = false, const bool aFade = false);
 
-    void StartFade(const uint32_t aOutDurationMs, const uint32_t aInDurationMs);
+    void StartFade(const bool aInitial);
     void FadeStep(void);
     bool StopFade(void);
     void AddGroupToMask(BitMatrix& arMask, const WordGroup& arGroup) const;

@@ -9,6 +9,8 @@ namespace DisplayFadesNS
     const char* const* GetPaletteNames(void);
     CRGBPalette16 GetPalette(uint8_t aIndex, const CRGB* apColors);
 
+    /** @brief Largest absolute channel difference between two rendered colors. */
+    uint8_t ColorDistance(const CRGB& arFrom, const CRGB& arTo);
     uint8_t FadeAmount(uint32_t aElapsedMs, uint32_t aDurationMs);
     CRGB FadeColor(const CRGB& arFrom, const CRGB& arTo, uint8_t aAmount);
     void StepColorTwinkle(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed);

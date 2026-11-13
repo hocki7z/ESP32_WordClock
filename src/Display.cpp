@@ -34,11 +34,17 @@ static constexpr uint8_t mcScrollTextRow = (MATRIX_HEIGHT - Font5x7NS::mGlyphHei
 /* Width of one character including spacing */
 static constexpr int32_t mcScrollCharWidth = Font5x7NS::mGlyphWidth + Font5x7NS::mGlyphSpacing;
 
-/* Time change: fade out old time to background, then fade in new time */
-static constexpr uint32_t mcFadeOutMs  = 2000;
-static constexpr uint32_t mcFadeInMs   = 2000;
-/* Delay between two fade steps */
+/* Update approximately one RGB channel level per step, with bounded phase durations. */
 static constexpr uint32_t mcFadeStepMs = 20;
+static constexpr uint32_t mcFadeMinMs  = 200;
+static constexpr uint32_t mcFadeMaxMs  = 4000;
+
+/** @brief Converts the largest RGB channel difference into a bounded phase duration. */
+static uint32_t FadeDuration(uint8_t aDistance)
+{
+    if (aDistance == 0) return 0;
+    return std::min(mcFadeMaxMs, std::max(mcFadeMinMs, uint32_t(aDistance) * mcFadeStepMs));
+}
 
 /* Colortwinkles timing with independent saver speed/intensity, applied to whole words.
  * No fixed hold: brighten to saturation, decay to black, then randomly restart.
@@ -691,7 +697,7 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
             }
             mFadeMask.SetZigzagOrder(true);
 
-            StartFade(wInitial ? 0 : mcFadeOutMs, mcFadeInMs);
+            StartFade(wInitial);
         }
         else
         {
@@ -712,17 +718,43 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
 /**
  * @brief Starts the fade from mFadeFrom to the freshly rendered scene in mLeds.
  *
- * @param aOutDurationMs Fade-out duration (0 = fade in directly from the current frame).
- * @param aInDurationMs  Fade-in duration.
+ * @param aInitial Skip fade-out when starting the first time scene.
  */
-void Display::StartFade(const uint32_t aOutDurationMs, const uint32_t aInDurationMs)
+void Display::StartFade(const bool aInitial)
 {
     memcpy(mFadeTo, mLeds, sizeof(mLeds));
     memcpy(mLeds, mFadeFrom, sizeof(mLeds));
 
     mFadeBkgd   = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
-    mFadeOutDurationMs = aOutDurationMs;
-    mFadeInDurationMs  = aInDurationMs;
+
+    /* Masked pixels go through the background; all other changed pixels fade in directly. */
+    uint8_t wOutDistance = 0;
+    if (!aInitial)
+    {
+        for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+        {
+            if (mFadeMask.IsBitSet(wI))
+                wOutDistance = std::max(wOutDistance, DisplayFadesNS::ColorDistance(mFadeFrom[wI], mFadeBkgd));
+        }
+    }
+    mFadeOutDurationMs = FadeDuration(wOutDistance);
+
+    uint8_t wInDistance = 0;
+    for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+    {
+        const CRGB& wStart = (mFadeOutDurationMs > 0 && mFadeMask.IsBitSet(wI)) ? mFadeBkgd : mFadeFrom[wI];
+        wInDistance = std::max(wInDistance, DisplayFadesNS::ColorDistance(wStart, mFadeTo[wI]));
+    }
+    mFadeInDurationMs = FadeDuration(wInDistance);
+
+    /* No channel changes: show the exact target without starting a timer. */
+    if (mFadeOutDurationMs == 0 && mFadeInDurationMs == 0)
+    {
+        memcpy(mLeds, mFadeTo, sizeof(mLeds));
+        FastLED.show();
+        return;
+    }
+
     mFadeStart  = millis();
     mFadeActive = true;
 
