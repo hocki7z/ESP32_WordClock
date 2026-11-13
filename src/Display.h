@@ -13,7 +13,6 @@
 #include "DisplayLayout.h"
 #include "DateTime.h"
 #include "BitMatrix.h"
-#include "Effects.h"
 
 
 /***************************************************************************************************
@@ -51,7 +50,6 @@ private:
         STATE_SCROLL_TEXT,      // Text is scrolling
         STATE_TIME,             // Time is displayed
         STATE_SCREEN_SAVER,     // Random words or separate letters fade in/out
-        STATE_EFFECT,           // LED effect selected in the web UI
     };
 
     /** @brief Word shown by the screen saver */
@@ -70,7 +68,6 @@ private:
     static constexpr uint32_t mScrollTimerId = 0x02;
     static constexpr uint32_t mFadeTimerId   = 0x03;
     static constexpr uint32_t mSaverTimerId  = 0x04;
-    static constexpr uint32_t mEffectTimerId = 0x05;
 
     /* Timers */
     ApplicationNS::tTaskTimerObjects mTimerObjects;
@@ -78,7 +75,6 @@ private:
     ApplicationNS::TaskTimer* mpScrollTimer = nullptr;
     ApplicationNS::TaskTimer* mpFadeTimer   = nullptr;
     ApplicationNS::TaskTimer* mpSaverTimer  = nullptr;
-    ApplicationNS::TaskTimer* mpEffectTimer = nullptr;
 
     /* Current display state */
     tDisplayState mState = STATE_INTRO;
@@ -117,10 +113,6 @@ private:
     /* Letter colors live in mLeds; each letter has its own fade direction. */
     bool mSaverLetterFadeUp[LED_NUMBER] = {};
 
-    /* LED effect engine and output brightness (0-255) */
-    EffectsNS::Engine mEffects;
-    uint8_t           mEffectBrightness = 255;
-
     /* Display scene */
     DisplayScene mDisplayScene;
 
@@ -149,11 +141,6 @@ private:
     void ScreenSaverLettersStep(void);
     void SpawnSaverWord(void);
     bool IsSaverWordFree(const tWord aWord) const;
-
-    void StartEffect(void);
-    void LoadEffectSettings(void);
-    void UpdateEffectText(void);
-    void EffectStep(void);
 
     void Clear(void);
     void Fill(const CRGB aColor, const uint8_t aBrightness=100);

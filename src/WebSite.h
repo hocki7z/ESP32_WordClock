@@ -122,19 +122,11 @@ private:
         Control::ControlId_t mDisplayScreenSaver;
         Control::ControlId_t mDisplayScreenSaverPresentation;
         Control::ControlId_t mDisplayScreenSaverPalette;
+        Control::ControlId_t mDisplayScreenSaverColor1;
+        Control::ControlId_t mDisplayScreenSaverColor2;
+        Control::ControlId_t mDisplayScreenSaverColor3;
         Control::ControlId_t mDisplayScreenSaverSpeed;
         Control::ControlId_t mDisplayScreenSaverIntensity;
-        //
-        Control::ControlId_t mLedDisplayEffectGroup;
-        Control::ControlId_t mDisplayEffectMode;
-        Control::ControlId_t mDisplayEffect;
-        Control::ControlId_t mDisplayEffectSpeed;
-        Control::ControlId_t mDisplayEffectIntensity;
-        Control::ControlId_t mDisplayEffectPalette;
-        Control::ControlId_t mDisplayEffectMapping;
-        Control::ControlId_t mDisplayEffectColor1;
-        Control::ControlId_t mDisplayEffectColor2;
-        Control::ControlId_t mDisplayEffectColor3;
         //
         Control::ControlId_t mLedDisplayColorGroup;
         Control::ControlId_t mDisplayColorTime;

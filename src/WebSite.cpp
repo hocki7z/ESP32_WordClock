@@ -16,7 +16,7 @@
 #include "DateTime.h"
 #include "BitMatrix.h"
 #include "DisplayLayout.h"
-#include "Effects.h"
+#include "DisplayFades.h"
 #include "OTAUpdate.h"
 
 #include "WebSite.h"
@@ -603,17 +603,23 @@ void WebSite::InitWebUIControls(void)
     mWebUIControlID.mDisplayScreenSaver = AddSwitcherControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SWITCH,
             ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver);
 
-        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver presentation");
-        mWebUIControlID.mDisplayScreenSaverPresentation = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver presentation");
+    mWebUIControlID.mDisplayScreenSaverPresentation = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
             ConfigNS::mcScreenSaverPresentationItems, ConfigNS::mcScreenSaverPresentationCount,
             ConfigNS::mKeyDisplayScreenSaverPresentation, ConfigNS::mDefaultDisplayScreenSaverPresentation);
 
-        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver palette");
-        mWebUIControlID.mDisplayScreenSaverPalette = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
-            EffectsNS::GetPaletteNames(), EffectsNS::GetPaletteCount(),
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver palette");
+    mWebUIControlID.mDisplayScreenSaverPalette = AddSelectControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT,
+            DisplayFadesNS::GetPaletteNames(), DisplayFadesNS::GetPaletteCount(),
             ConfigNS::mKeyDisplayScreenSaverPalette, ConfigNS::mDefaultDisplayScreenSaverPalette);
-        AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL,
-            "Custom palettes use Colors 1-3 from Effects.");
+
+    AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Custom palette colors 1, 2 and 3");
+    mWebUIControlID.mDisplayScreenSaverColor1 = AddColorControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayScreenSaverColor1, ConfigNS::mDefaultDisplayScreenSaverColor1);
+    mWebUIControlID.mDisplayScreenSaverColor2 = AddColorControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayScreenSaverColor2, ConfigNS::mDefaultDisplayScreenSaverColor2);
+    mWebUIControlID.mDisplayScreenSaverColor3 = AddColorControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_INPUT_HALF_WIDTH,
+            ConfigNS::mKeyDisplayScreenSaverColor3, ConfigNS::mDefaultDisplayScreenSaverColor3);
 
     AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver speed");
     mWebUIControlID.mDisplayScreenSaverSpeed = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SLIDER,
@@ -622,47 +628,6 @@ void WebSite::InitWebUIControls(void)
     AddLabelControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_LABEL, "Screen saver intensity");
     mWebUIControlID.mDisplayScreenSaverIntensity = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayDisplayGroup, CSS_STYLE_SLIDER,
             ConfigNS::mKeyDisplayScreenSaverIntensity, ConfigNS::mDefaultDisplayScreenSaverIntensity);
-
-
-    /**
-     * Tab LED Display / Group Effects
-     */
-    mWebUIControlID.mLedDisplayEffectGroup = AddGroupHelper("Effects", mWebUIControlID.mLedDisplayTab, GROUP_CONTROL_COLOR);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SWITCH_LABEL, "Effect mode");
-    mWebUIControlID.mDisplayEffectMode = AddSwitcherControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SWITCH,
-            ConfigNS::mKeyDisplayEffectMode, ConfigNS::mDefaultDisplayEffectMode);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Effect");
-    mWebUIControlID.mDisplayEffect = AddSelectControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT,
-            EffectsNS::GetEffectNames(), EffectsNS::GetEffectCount(),
-            ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Palette");
-    mWebUIControlID.mDisplayEffectPalette = AddSelectControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT,
-            EffectsNS::GetPaletteNames(), EffectsNS::GetPaletteCount(),
-            ConfigNS::mKeyDisplayEffectPalette, ConfigNS::mDefaultDisplayEffectPalette);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "1D mapping");
-    mWebUIControlID.mDisplayEffectMapping = AddSelectControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT,
-            EffectsNS::GetMappingNames(), EffectsNS::GetMappingCount(),
-            ConfigNS::mKeyDisplayEffectMapping, ConfigNS::mDefaultDisplayEffectMapping);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Colors");
-    mWebUIControlID.mDisplayEffectColor1 = AddColorControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-            ConfigNS::mKeyDisplayEffectColor1, ConfigNS::mDefaultDisplayEffectColor1);
-    mWebUIControlID.mDisplayEffectColor2 = AddColorControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-            ConfigNS::mKeyDisplayEffectColor2, ConfigNS::mDefaultDisplayEffectColor2);
-    mWebUIControlID.mDisplayEffectColor3 = AddColorControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_INPUT_HALF_WIDTH,
-            ConfigNS::mKeyDisplayEffectColor3, ConfigNS::mDefaultDisplayEffectColor3);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Speed");
-    mWebUIControlID.mDisplayEffectSpeed = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SLIDER,
-            ConfigNS::mKeyDisplayEffectSpeed, ConfigNS::mDefaultDisplayEffectSpeed);
-
-    AddLabelControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_LABEL, "Intensity");
-    mWebUIControlID.mDisplayEffectIntensity = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayEffectGroup, CSS_STYLE_SLIDER,
-            ConfigNS::mKeyDisplayEffectIntensity, ConfigNS::mDefaultDisplayEffectIntensity);
 
 
     /**

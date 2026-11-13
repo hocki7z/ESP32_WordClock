@@ -94,15 +94,12 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayClockSingleMins       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x02);
     static const SettingsNS::tKey  mKeyDisplayStartupText           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x03);
     static const SettingsNS::tKey  mKeyDisplayScreenSaver           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x04);
-    static const SettingsNS::tKey  mKeyDisplayEffectMode            = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x05);
-    static const SettingsNS::tKey  mKeyDisplayEffect                = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x06);
-    static const SettingsNS::tKey  mKeyDisplayEffectSpeed           = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x07);
-    static const SettingsNS::tKey  mKeyDisplayEffectIntensity       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x08);
-    static const SettingsNS::tKey  mKeyDisplayEffectPalette         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x09);
-    static const SettingsNS::tKey  mKeyDisplayEffectColor1          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0A);
-    static const SettingsNS::tKey  mKeyDisplayEffectColor2          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0B);
-    static const SettingsNS::tKey  mKeyDisplayEffectColor3          = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0C);
-    static const SettingsNS::tKey  mKeyDisplayEffectMapping         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0D);
+    /* Reserved former effect keys: 0x05 mode, 0x06 effect, 0x07 speed, 0x08 intensity, 0x09 palette. */
+    /* Retain the former effect color key IDs so stored custom colors remain available. */
+    static const SettingsNS::tKey  mKeyDisplayScreenSaverColor1     = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0A);
+    static const SettingsNS::tKey  mKeyDisplayScreenSaverColor2     = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0B);
+    static const SettingsNS::tKey  mKeyDisplayScreenSaverColor3     = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0C);
+    /* Reserved former effect mapping key: 0x0D. */
     static const SettingsNS::tKey  mKeyDisplayScreenSaverPalette    = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x0E);
     static const SettingsNS::tKey  mKeyDisplayScreenSaverSpeed      = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x30);
     static const SettingsNS::tKey  mKeyDisplayScreenSaverIntensity  = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x31);
@@ -141,7 +138,7 @@ namespace ConfigNS
     static constexpr bool     mDefaultDisplayClockSingleMins        = true;         // Show single minutes in the display
     static constexpr bool     mDefaultDisplayStartupText            = true;         // Scroll IP address after the intro
     static constexpr bool     mDefaultDisplayScreenSaver            = false;        // Show screen saver instead of time
-    static constexpr uint8_t  mDefaultDisplayScreenSaverPalette     = 1;            // Rainbow; independent of effect palette
+    static constexpr uint8_t  mDefaultDisplayScreenSaverPalette     = 1;            // Rainbow
     static constexpr uint8_t  mDefaultDisplayScreenSaverSpeed       = 50;           // Percentage (0-100)
     static constexpr uint8_t  mDefaultDisplayScreenSaverIntensity   = 50;           // Percentage (0-100)
     static constexpr uint8_t  mDefaultDisplayScreenSaverPresentation = 0;          // Words
@@ -149,15 +146,9 @@ namespace ConfigNS
     static constexpr const char* mcScreenSaverPresentationItems[mcScreenSaverPresentationCount] = {
         "Words", "Separate letters"
     };
-    static constexpr bool     mDefaultDisplayEffectMode             = false;        // Show LED effect instead of time
-    static constexpr uint8_t  mDefaultDisplayEffect                 = 0;            // First effect
-    static constexpr uint8_t  mDefaultDisplayEffectSpeed            = 50;           // Percentage (0-100)
-    static constexpr uint8_t  mDefaultDisplayEffectIntensity        = 50;           // Percentage (0-100)
-    static constexpr uint8_t  mDefaultDisplayEffectPalette          = 0;            // Effect default palette
-    static constexpr uint32_t mDefaultDisplayEffectColor1           = 0xFFAA00;     // WLED default primary color
-    static constexpr uint32_t mDefaultDisplayEffectColor2           = 0x000000;
-    static constexpr uint32_t mDefaultDisplayEffectColor3           = 0x000000;
-    static constexpr uint8_t  mDefaultDisplayEffectMapping          = 0;            // Effect default 1D mapping
+    static constexpr uint32_t mDefaultDisplayScreenSaverColor1      = 0xFFAA00;     // WLED default primary color
+    static constexpr uint32_t mDefaultDisplayScreenSaverColor2      = 0x000000;
+    static constexpr uint32_t mDefaultDisplayScreenSaverColor3      = 0x000000;
     static constexpr uint32_t mDefaultDisplayColorTime              = 0x00FF00;     // Green
     static constexpr uint32_t mDefaultDisplayColorTimeNight         = 0xFFA500;     // FastLED CRGB::Orange
     static constexpr uint32_t mDefaultDisplayColorBkgd              = 0x000000;     // Black

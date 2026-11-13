@@ -9,6 +9,7 @@
 
 #include "Global.h"
 #include "Display.h"
+#include "DisplayFades.h"
 #include "Font5x7.h"
 
 
@@ -41,12 +42,9 @@ static constexpr uint32_t mcFadeStepMs = 20;
 
 /* Colortwinkles timing with independent saver speed/intensity, applied to whole words.
  * No fixed hold: brighten to saturation, decay to black, then randomly restart.
- * WLED-MM / Effects1D.cpp (EUPL-1.2) uses a 24 ms frame time.
+ * WLED-MM (EUPL-1.2) uses a 24 ms frame time.
  */
 static constexpr uint32_t mcSaverStepMs     = 24;
-
-/* Effects: delay between two frames */
-static constexpr uint32_t mcEffectStepMs    = 25;
 
 
 /**
@@ -91,12 +89,6 @@ Display::~Display()
         mpSaverTimer = nullptr;
     }
 
-    if (mpEffectTimer)
-    {
-        mpEffectTimer->stop();
-        delete mpEffectTimer;
-        mpEffectTimer = nullptr;
-    }
 }
 
 void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
@@ -119,9 +111,6 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
 
     mpSaverTimer = new ApplicationNS::TaskTimer(mSaverTimerId, pdMS_TO_TICKS(mcSaverStepMs), true);
     mpSaverTimer->Init(&mTimerObjects);
-
-    mpEffectTimer = new ApplicationNS::TaskTimer(mEffectTimerId, pdMS_TO_TICKS(mcEffectStepMs), true);
-    mpEffectTimer->Init(&mTimerObjects);
 
     /* Initialize FastLED */
     // Initialize LEDs
@@ -185,10 +174,6 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
             ScreenSaverStep();
             break;
 
-        case mEffectTimerId:
-            EffectStep();
-            break;
-
         default:
             LOG(LOG_ERROR, "Display::ProcessTimerEvent() Unknown timer ID %08X", aTimerId);
             break;
@@ -219,12 +204,6 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 {
                     UpdateDisplay(false, true);
                 }
-                else if (mState == STATE_EFFECT)
-                {
-                    /* Time text and day/night brightness may have changed */
-                    UpdateEffectText();
-                    LoadEffectSettings();
-                }
             }
         }
             break;
@@ -235,7 +214,7 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             LOG(LOG_DEBUG, "Display::ProcessIncomingMessage() Settings changed");
 
             /* Switch mode or update the current one (not during the startup sequence) */
-            if ((mState == STATE_TIME) || (mState == STATE_SCREEN_SAVER) || (mState == STATE_EFFECT))
+            if ((mState == STATE_TIME) || (mState == STATE_SCREEN_SAVER))
             {
                 SwitchMode();
             }
@@ -380,10 +359,6 @@ void Display::FinishScrollText(void)
  */
 Display::tDisplayState Display::GetRequestedMode(void) const
 {
-    if (Settings.GetValue<bool>(ConfigNS::mKeyDisplayEffectMode, ConfigNS::mDefaultDisplayEffectMode))
-    {
-        return STATE_EFFECT;
-    }
     if (Settings.GetValue<bool>(ConfigNS::mKeyDisplayScreenSaver, ConfigNS::mDefaultDisplayScreenSaver))
     {
         return STATE_SCREEN_SAVER;
@@ -404,10 +379,6 @@ void Display::SwitchMode(void)
         {
             UpdateDisplay();
         }
-        else if (mState == STATE_EFFECT)
-        {
-            LoadEffectSettings();
-        }
         else if (mState == STATE_SCREEN_SAVER)
         {
             LoadScreenSaverSettings();
@@ -419,16 +390,11 @@ void Display::SwitchMode(void)
 
     StopFade();
     mpSaverTimer->stop();
-    mpEffectTimer->stop();
 
     switch (wTarget)
     {
         case STATE_SCREEN_SAVER:
             StartScreenSaver();
-            break;
-
-        case STATE_EFFECT:
-            StartEffect();
             break;
 
         default:
@@ -446,103 +412,6 @@ void Display::SwitchMode(void)
             }
             break;
     }
-}
-
-/**
- * @brief Starts the selected LED effect from a black screen.
- */
-void Display::StartEffect(void)
-{
-    mState = STATE_EFFECT;
-
-    Clear();
-    FastLED.show();
-
-    mEffects.Start(Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect),
-                   Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectMapping, ConfigNS::mDefaultDisplayEffectMapping));
-    LoadEffectSettings();
-    UpdateEffectText();
-
-    mpEffectTimer->start();
-}
-
-/**
- * @brief Applies effect selection, speed, intensity, palette and brightness from the settings.
- */
-void Display::LoadEffectSettings(void)
-{
-    const uint8_t wEffect  = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffect, ConfigNS::mDefaultDisplayEffect);
-    const uint8_t wMapping = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectMapping, ConfigNS::mDefaultDisplayEffectMapping);
-    if ((wEffect != mEffects.GetEffect()) || (wMapping != mEffects.GetMapping()))
-    {
-        mEffects.Start(wEffect, wMapping);
-    }
-
-    mEffects.SetColors(
-        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor1, ConfigNS::mDefaultDisplayEffectColor1) & COLOR_RGB_MASK),
-        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor2, ConfigNS::mDefaultDisplayEffectColor2) & COLOR_RGB_MASK),
-        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor3, ConfigNS::mDefaultDisplayEffectColor3) & COLOR_RGB_MASK));
-
-    const uint8_t wSpeed     = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectSpeed, ConfigNS::mDefaultDisplayEffectSpeed);
-    const uint8_t wIntensity = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectIntensity, ConfigNS::mDefaultDisplayEffectIntensity);
-    const uint8_t wPalette   = Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayEffectPalette, ConfigNS::mDefaultDisplayEffectPalette);
-
-    /* UI sliders are percentages */
-    mEffects.SetParams(map(std::min<uint8_t>(wSpeed, 100), 0, 100, 0, 255),
-                       map(std::min<uint8_t>(wIntensity, 100), 0, 100, 0, 255),
-                       wPalette);
-
-    /* Effects use the time brightness of the current day/night mode */
-    const uint8_t wBrightness = IsDayMode()
-        ? Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime)
-        : Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTimeNight);
-    mEffectBrightness = map(std::min<uint8_t>(wBrightness, 100), 0, 100, 0, 255);
-}
-
-/**
- * @brief Sets the current time as text for the scrolling text effect.
- */
-void Display::UpdateEffectText(void)
-{
-    char wText[8];
-
-    if (mDateTimeValid)
-    {
-        snprintf(wText, sizeof(wText), "%02u:%02u", mDateTime.mTime.mHour, mDateTime.mTime.mMinute);
-    }
-    else
-    {
-        snprintf(wText, sizeof(wText), "--:--");
-    }
-    mEffects.SetText(wText);
-}
-
-/**
- * @brief Renders one effect frame and shows it on the LED matrix.
- */
-void Display::EffectStep(void)
-{
-    if (mState != STATE_EFFECT)
-    {
-        return;
-    }
-
-    mEffects.Render(millis());
-
-    for (int wY = 0; wY < MATRIX_HEIGHT; wY++)
-    {
-        for (int wX = 0; wX < MATRIX_WIDTH; wX++)
-        {
-            CRGB wColor = mEffects.GetPixel(wX, wY);
-            wColor.nscale8_video(mEffectBrightness);
-
-            /* Even rows are mirrored like BitMatrix::SetZigzagOrder(true) */
-            const int wCol = ((wY % 2) == 0) ? (MATRIX_WIDTH - 1 - wX) : wX;
-            mLeds[wY * MATRIX_WIDTH + wCol] = wColor;
-        }
-    }
-
-    FastLED.show();
 }
 
 /**
@@ -569,7 +438,7 @@ void Display::StartScreenSaver(void)
 }
 
 /**
- * @brief Loads saver speed, intensity and palette, sharing custom colors with effects.
+ * @brief Loads saver speed, intensity, palette and custom colors.
  */
 void Display::LoadScreenSaverSettings(void)
 {
@@ -592,11 +461,11 @@ void Display::LoadScreenSaverSettings(void)
     mSaverIntensity = map(std::min<uint8_t>(wIntensity, 100), 0, 100, 0, 255);
 
     const CRGB wColors[3] = {
-        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor1, ConfigNS::mDefaultDisplayEffectColor1) & COLOR_RGB_MASK),
-        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor2, ConfigNS::mDefaultDisplayEffectColor2) & COLOR_RGB_MASK),
-        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayEffectColor3, ConfigNS::mDefaultDisplayEffectColor3) & COLOR_RGB_MASK)
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayScreenSaverColor1, ConfigNS::mDefaultDisplayScreenSaverColor1) & COLOR_RGB_MASK),
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayScreenSaverColor2, ConfigNS::mDefaultDisplayScreenSaverColor2) & COLOR_RGB_MASK),
+        CRGB(Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayScreenSaverColor3, ConfigNS::mDefaultDisplayScreenSaverColor3) & COLOR_RGB_MASK)
     };
-    mSaverPalette = EffectsNS::GetPalette(
+    mSaverPalette = DisplayFadesNS::GetPalette(
         Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayScreenSaverPalette, ConfigNS::mDefaultDisplayScreenSaverPalette), wColors);
 }
 
@@ -623,7 +492,7 @@ void Display::ScreenSaverStep(void)
             continue;
         }
 
-        EffectsNS::StepColorTwinkle(wSlot.mColor, wSlot.mFadeUp, mSaverSpeed);
+        DisplayFadesNS::StepColorTwinkle(wSlot.mColor, wSlot.mFadeUp, mSaverSpeed);
         if (wSlot.mColor == CRGB(CRGB::Black)) wSlot.mWord = WORD_END_OF_WORDS;
     }
 
@@ -650,13 +519,13 @@ void Display::ScreenSaverStep(void)
 }
 
 /**
- * @brief Twinkles individual letters without invoking the effects engine.
+ * @brief Twinkles individual letters.
  */
 void Display::ScreenSaverLettersStep(void)
 {
     for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
     {
-        EffectsNS::StepColorTwinkle(mLeds[wI], mSaverLetterFadeUp[wI], mSaverSpeed);
+        DisplayFadesNS::StepColorTwinkle(mLeds[wI], mSaverLetterFadeUp[wI], mSaverSpeed);
     }
 
     /* Colortwinkles scales ignition attempts with the number of pixels. */
@@ -882,30 +751,30 @@ void Display::FadeStep(void)
     }
     else if (wElapsed < mFadeOutDurationMs)
     {
-        const uint8_t wAmount = EffectsNS::FadeAmount(wElapsed, mFadeOutDurationMs);
+        const uint8_t wAmount = DisplayFadesNS::FadeAmount(wElapsed, mFadeOutDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
             if (mFadeMask.IsBitSet(wI))
             {
-                mLeds[wI] = EffectsNS::FadeColor(mFadeFrom[wI], mFadeBkgd, wAmount);
+                mLeds[wI] = DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeBkgd, wAmount);
             }
         }
     }
     else
     {
-        const uint8_t wAmount = EffectsNS::FadeAmount(wElapsed - mFadeOutDurationMs, mFadeInDurationMs);
+        const uint8_t wAmount = DisplayFadesNS::FadeAmount(wElapsed - mFadeOutDurationMs, mFadeInDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
             if (mFadeMask.IsBitSet(wI))
             {
                 const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
-                mLeds[wI] = EffectsNS::FadeColor(wStart, mFadeTo[wI], wAmount);
+                mLeds[wI] = DisplayFadesNS::FadeColor(wStart, mFadeTo[wI], wAmount);
             }
             else if (mFadeFrom[wI] != mFadeTo[wI])
             {
-                mLeds[wI] = EffectsNS::FadeColor(mFadeFrom[wI], mFadeTo[wI], wAmount);
+                mLeds[wI] = DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeTo[wI], wAmount);
             }
         }
     }
