@@ -38,6 +38,8 @@ static constexpr int32_t mcScrollCharWidth = Font5x7NS::mGlyphWidth + Font5x7NS:
 static constexpr uint32_t mcFadeStepMs = 20;
 static constexpr uint32_t mcFadeMinMs  = 750;
 static constexpr uint32_t mcFadeMaxMs  = 3000;
+/* Pause at the background between fade-out and fade-in (0 disables the pause). */
+static constexpr uint32_t mcFadeHoldMs = 500;
 
 /** @brief Converts the largest RGB channel difference into a bounded phase duration. */
 static uint32_t FadeDuration(uint8_t aDistance)
@@ -741,6 +743,8 @@ void Display::StartFade(const bool aInitial)
         }
     }
     mFadeOutDurationMs = FadeDuration(wOutDistance);
+    /* Skip the hold when there is no fade-out, including the initial scene. */
+    mFadeHoldDurationMs = (mFadeOutDurationMs > 0) ? mcFadeHoldMs : 0;
 
     uint8_t wInDistance = 0;
     for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
@@ -760,6 +764,7 @@ void Display::StartFade(const bool aInitial)
 
     mFadeStart  = millis();
     mFadeActive = true;
+    mFadeHoldStarted = false;
 
     mpFadeTimer->start();
 }
@@ -767,7 +772,7 @@ void Display::StartFade(const bool aInitial)
 /**
  * @brief Renders one fade frame.
  *
- * @details Masked LEDs fade old color -> background, then background -> new color.
+ * @details Masked LEDs fade old color -> background, hold, then fade to new color.
  *          Other changed LEDs (e.g. background) blend old -> new during fade-in.
  */
 void Display::FadeStep(void)
@@ -779,7 +784,21 @@ void Display::FadeStep(void)
 
     const uint32_t wElapsed = millis() - mFadeStart;
 
-    if (wElapsed >= (mFadeOutDurationMs + mFadeInDurationMs))
+    if (!mFadeHoldStarted && mFadeHoldDurationMs > 0 && wElapsed >= mFadeOutDurationMs)
+    {
+        /* A delayed timer must not skip the background frame or shorten its hold. */
+        for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
+        {
+            if (mFadeMask.IsBitSet(wI)) mLeds[wI] = mFadeBkgd;
+        }
+        FastLED.show();
+        mFadeStart = millis() - mFadeOutDurationMs;
+        mFadeHoldStarted = true;
+        return;
+    }
+
+    const uint32_t wFadeInStart = mFadeOutDurationMs + mFadeHoldDurationMs;
+    if (wElapsed >= (wFadeInStart + mFadeInDurationMs))
     {
         memcpy(mLeds, mFadeTo, sizeof(mLeds));
         StopFade();
@@ -796,9 +815,14 @@ void Display::FadeStep(void)
             }
         }
     }
+    else if (wElapsed < wFadeInStart)
+    {
+        /* The background frame is already visible; no repeated LED update is needed. */
+        return;
+    }
     else
     {
-        const uint16_t wAmount = DisplayFadesNS::FadeAmount(wElapsed - mFadeOutDurationMs, mFadeInDurationMs);
+        const uint16_t wAmount = DisplayFadesNS::FadeAmount(wElapsed - wFadeInStart, mFadeInDurationMs);
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
