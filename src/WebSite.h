@@ -235,6 +235,19 @@ private:
     String BuildHtmlTable(const std::array<std::array<const char*, Columns>, Rows>& arRows,
         bool aSeparateRows = false) const;
 
+    /** @brief Display values for one scheduler slot; weekdays use 0 = Sunday through 6 = Saturday. */
+    struct SchedulerTableRow
+    {
+        bool mActive = false;
+        bool mOn = false;
+        uint8_t mFromDay = 0;
+        uint8_t mToDay = 0;
+        uint8_t mHour = 0;
+        uint8_t mMinute = 0;
+    };
+
+    String BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const;
+
     String EscapeHtml(const char* apText) const;
 
     void UpdateDisplayPreview(const MessageNS::Message& arMessage);

@@ -1277,6 +1277,107 @@ String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>
 }
 
 /**
+ * Builds a scheduler table for later embedding in an ESPUI label.
+ *
+ * @param apRows Slot values, or nullptr for an empty table.
+ * @param aRowCount Number of slots; the array index is used as the slot number.
+ * @return HTML markup only. Inputs and Save buttons require explicit event handling;
+ *         ESPUI does not register controls embedded in a label automatically.
+ *
+ * Updating the containing label replaces its inputs and any unsaved browser edits.
+ */
+String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const
+{
+    static const char* const wcDays[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Hour", "Min", "Action"};
+
+    String wHtml = "<div style='overflow-x:auto;max-width:100%'>"
+        "<table style='border-collapse:collapse;white-space:nowrap;color:#111;background:#fff'>"
+        "<thead><tr>";
+    for (const char* wpHeader : wcHeaders)
+    {
+        wHtml += "<th scope='col' style='padding:4px;text-align:left;color:#0000c0'>";
+        wHtml += wpHeader;
+        wHtml += "</th>";
+    }
+    wHtml += "</tr></thead><tbody>";
+
+    if (apRows != nullptr)
+    {
+        for (std::size_t wSlot = 0; wSlot < aRowCount; ++wSlot)
+        {
+            const SchedulerTableRow& wrRow = apRows[wSlot];
+            const String wSlotText(static_cast<unsigned long>(wSlot));
+
+            /* Stable data attributes let a future event handler identify each slot and field. */
+            wHtml += (wSlot % 2 == 0) ? "<tr style='background:#eee' data-slot='" : "<tr data-slot='";
+            wHtml += wSlotText;
+            wHtml += "'><td style='padding:3px 4px'>";
+            wHtml += wSlotText;
+            wHtml += "</td>";
+
+            auto wAddCheckbox = [&wHtml](const char* apField, const char* apLabel, bool aChecked)
+            {
+                wHtml += "<td style='padding:3px 4px;text-align:center'><input type='checkbox' data-field='";
+                wHtml += apField;
+                wHtml += "' aria-label='";
+                wHtml += apLabel;
+                wHtml += "' style='width:auto;height:auto;margin:0;padding:0;box-shadow:none;background:transparent'";
+                if (aChecked) wHtml += " checked";
+                wHtml += "></td>";
+            };
+
+            auto wAddDay = [&wHtml](const char* apField, const char* apLabel, uint8_t aDay)
+            {
+                wHtml += "<td style='padding:3px 4px'><select data-field='";
+                wHtml += apField;
+                wHtml += "' aria-label='";
+                wHtml += apLabel;
+                wHtml += "' style='width:auto;height:26px;margin:0;padding:1px;color:#111;background:#fff;box-shadow:none'>";
+                /* An invalid stored day must not silently appear as a valid selection. */
+                if (aDay >= 7) wHtml += "<option value='' selected disabled>?</option>";
+                for (uint8_t wDay = 0; wDay < 7; ++wDay)
+                {
+                    wHtml += "<option value='";
+                    wHtml += String(static_cast<unsigned>(wDay));
+                    wHtml += "'";
+                    if (wDay == aDay) wHtml += " selected";
+                    wHtml += ">";
+                    wHtml += wcDays[wDay];
+                    wHtml += "</option>";
+                }
+                wHtml += "</select></td>";
+            };
+
+            auto wAddNumber = [&wHtml](const char* apField, const char* apLabel, uint8_t aValue, const char* apMax)
+            {
+                wHtml += "<td style='padding:3px 4px'><input type='number' min='0' max='";
+                wHtml += apMax;
+                wHtml += "' step='1' data-field='";
+                wHtml += apField;
+                wHtml += "' aria-label='";
+                wHtml += apLabel;
+                wHtml += "' value='";
+                wHtml += String(static_cast<unsigned>(aValue));
+                wHtml += "' style='width:4em;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td>";
+            };
+
+            wAddCheckbox("active", "Active", wrRow.mActive);
+            wAddCheckbox("on", "On", wrRow.mOn);
+            wAddDay("from", "From day", wrRow.mFromDay);
+            wAddDay("to", "To day", wrRow.mToDay);
+            wAddNumber("hour", "Hour", wrRow.mHour, "23");
+            wAddNumber("minute", "Minute", wrRow.mMinute, "59");
+            wHtml += "<td style='padding:3px 4px'><button type='button' data-action='save' "
+                "style='width:auto;min-width:0;height:26px;margin:0;padding:2px 6px'>Save</button></td></tr>";
+        }
+    }
+
+    wHtml += "</tbody></table></div>";
+    return wHtml;
+}
+
+/**
  * Escapes special HTML characters in the given text.
  *
  * @param apText The text to escape.
