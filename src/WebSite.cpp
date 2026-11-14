@@ -698,6 +698,23 @@ void WebSite::InitWebUIControls(void)
 
 
     /**
+     * Tab Settings / Test Scheduler
+     * This preview uses sample data only; it is not connected to a scheduler.
+     */
+    const Control::ControlId_t wSchedulerGroup = AddGroupHelper("Scheduler (test)", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
+    AddLabelControl("", wSchedulerGroup, CSS_STYLE_LABEL_LIGHTER,
+        "Preview only: changes are not saved and do not control the clock.");
+
+    const std::array<SchedulerTableRow, 8> wSchedulerRows = {{
+        {true,  true,  6, 0, 11, 0},
+        {true,  false, 6, 0, 23, 0},
+        {}, {}, {}, {}, {}, {}
+    }};
+    AddLabelControl("", wSchedulerGroup, CSS_STYLE_LABEL "display:block;white-space:normal;",
+        BuildSchedulerTable(wSchedulerRows.data(), wSchedulerRows.size()));
+
+
+    /**
      * Tab Settings / Group System Information
      */
     mWebUIControlID.mSystemInfoGroup = AddGroupHelper("System Informations", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
