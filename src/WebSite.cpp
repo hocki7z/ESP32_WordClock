@@ -45,6 +45,7 @@
 #define CSS_STYLE_TABEL                 "width:100%;border-collapse:collapse;text-align:left;white-space:normal;"
 #define CSS_STYLE_TABEL_NAME_CELL       "width:38%;padding:5px 8px 5px 0;vertical-align:top;"
 #define CSS_STYLE_TABEL_VALUE_CELL      "padding:5px 0;overflow-wrap:anywhere;word-break:break-word;vertical-align:top;"
+#define CSS_STYLE_TABEL_OTHER_CELL      "padding:5px 8px 5px 0;overflow-wrap:anywhere;word-break:break-word;vertical-align:top;"
 #define CSS_STYLE_TABEL_ROW_BORDER      "border-bottom:1px solid #808080;"
 
 /** Periodical task timer period in milliseconds */
@@ -1228,41 +1229,45 @@ String WebSite::BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene) const
 }
 
 /**
- * Builds an HTML table from the given names and values.
+ * Builds an HTML table from a rectangular array of text cells.
  *
- * @param arNames  An array of names for the table rows.
- * @param arValues An array of values corresponding to the names.
- * @param aSeparateRows If true, selparate rows will be created for each name-value pair;
- *                      if false, a single row will be created with all names and values.
+ * @param arRows Rows of non-null text cells, all with the same number of columns.
+ * @param aSeparateRows If true, draw a border between consecutive rows.
  * @return A string containing the HTML representation of the table.
  */
-template <size_t N>
-String WebSite::BuildHtmlTable(const std::array<const char*, N>& arNames,
-    const std::array<const char*, N>& arValues, bool aSeparateRows) const
+template <std::size_t Rows, std::size_t Columns>
+String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>, Rows>& arRows,
+    bool aSeparateRows) const
 {
     /* Initialize the HTML table string */
     String wHtml = "<table style='" CSS_STYLE_TABEL "'>";
 
     /* Build the table rows */
-    for (size_t wI = 0; wI < N; wI++)
+    for (std::size_t wRow = 0; wRow < Rows; wRow++)
     {
         /* Determine if a bottom border should be applied to the row */
         const char* wpBottomBorder = "";
-        if (aSeparateRows && (wI + 1 < N))
+        if (aSeparateRows && (wRow + 1 < Rows))
         {
             wpBottomBorder = CSS_STYLE_TABEL_ROW_BORDER;
         }
 
-        /* Build the HTML for the current row */
-        wHtml += "<tr><td style='" CSS_STYLE_TABEL_NAME_CELL;
-        wHtml += wpBottomBorder;
-        wHtml += "'>";
-        wHtml += EscapeHtml(arNames[wI]);
-        wHtml += "</td><td style='" CSS_STYLE_TABEL_VALUE_CELL;
-        wHtml += wpBottomBorder;
-        wHtml += "'>";
-        wHtml += EscapeHtml(arValues[wI]);
-        wHtml += "</td></tr>";
+        wHtml += "<tr>";
+        for (std::size_t wColumn = 0; wColumn < Columns; wColumn++)
+        {
+            /* Preserve the original name/value layout for two-column tables. */
+            const char* wpCellStyle = ((Columns == 2) && (wColumn == 0))
+                ? CSS_STYLE_TABEL_NAME_CELL
+                : ((wColumn + 1 < Columns) ? CSS_STYLE_TABEL_OTHER_CELL : CSS_STYLE_TABEL_VALUE_CELL);
+
+            wHtml += "<td style='";
+            wHtml += wpCellStyle;
+            wHtml += wpBottomBorder;
+            wHtml += "'>";
+            wHtml += EscapeHtml(arRows[wRow][wColumn]);
+            wHtml += "</td>";
+        }
+        wHtml += "</tr>";
     }
 
     /* Close the HTML table */
@@ -1446,13 +1451,14 @@ void WebSite::UpdateSystemInfo(void)
                 wBuildDateTime = wProductInfo.mBuildDateTimeLocal;
             }
 
-            const std::array<const char*, 2> wProductInfoNames = {
-                "Software version", "Build date/time"
-            };
+            const std::array<std::array<const char*, 2>, 2> wProductInfoRows = {{
+                {"Software version", wSoftwareVersion.c_str()},
+                {"Build date/time", wBuildDateTime.c_str()}
+            }};
 
             /* Update the product information label on the web UI with the constructed HTML table */
             ESPUI.updateLabel(mWebUIControlID.mProductInfoLabel,
-                BuildHtmlTable(wProductInfoNames, {wSoftwareVersion.c_str(), wBuildDateTime.c_str()}));
+                BuildHtmlTable(wProductInfoRows));
         }
     }
 
@@ -1482,13 +1488,14 @@ void WebSite::UpdateSystemInfo(void)
             String wRestartReason = RestartReasonNS::ToString(
                                             RestartReasonNS::GetRestartReason());
 
-            const std::array<const char*, 2> wRuntimeInfoNames = {
-                "Runtime", "Restart reason"
-            };
+            const std::array<std::array<const char*, 2>, 2> wRuntimeInfoRows = {{
+                {"Runtime", wUptimeText},
+                {"Restart reason", wRestartReason.c_str()}
+            }};
 
             /* Update the runtime information label on the web UI. */
             ESPUI.updateLabel(mWebUIControlID.mRuntimeInfoLabel,
-                BuildHtmlTable(wRuntimeInfoNames, {wUptimeText, wRestartReason.c_str()}));
+                BuildHtmlTable(wRuntimeInfoRows));
         }
     }
 
@@ -1539,15 +1546,15 @@ void WebSite::UpdateSystemInfo(void)
             String wMaxAllocHeap = String(wMaxAllocHeapBytes / 1000.0f, 2) + " kB";
             String wMinFreeHeap  = String(wMinFreeHeapBytes  / 1000.0f, 2) + " kB";
 
-            const std::array<const char*, 4> wDeviceInfoNames = {
-            // "Flash",            "Heap",           "Max block",        "Min free"
-                "ESP Flash usage", "ESP Heap usage", "ESP MaxAllocHeap", "ESP MinFreeHeap"
-            };
+            const std::array<std::array<const char*, 2>, 4> wDeviceInfoRows = {{
+                {"ESP Flash usage", wFlashUsage.c_str()},
+                {"ESP Heap usage", wHeapUsage.c_str()},
+                {"ESP MaxAllocHeap", wMaxAllocHeap.c_str()},
+                {"ESP MinFreeHeap", wMinFreeHeap.c_str()}
+            }};
 
             ESPUI.updateLabel(mWebUIControlID.mDeviceInfoLabel,
-                BuildHtmlTable(wDeviceInfoNames, {
-                    wFlashUsage.c_str(), wHeapUsage.c_str(),
-                    wMaxAllocHeap.c_str(), wMinFreeHeap.c_str()}));
+                BuildHtmlTable(wDeviceInfoRows));
         }
     }
 

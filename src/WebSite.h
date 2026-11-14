@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <array>
+#include <cstddef>
 #include <type_traits>
 
 #include <ESPUI.h>
@@ -230,9 +231,9 @@ private:
 
     String BuildDisplayPreviewSvg(const DisplayScene* apDisplayScene = nullptr) const;
 
-    template <size_t N>
-    String BuildHtmlTable(const std::array<const char*, N>& arNames,
-        const std::array<const char*, N>& arValues, bool aSeparateRows = false) const;
+    template <std::size_t Rows, std::size_t Columns>
+    String BuildHtmlTable(const std::array<std::array<const char*, Columns>, Rows>& arRows,
+        bool aSeparateRows = false) const;
 
     String EscapeHtml(const char* apText) const;
 
