@@ -50,9 +50,10 @@ void Settings::Clear(void)
  * @brief Checks if a key exists in ESP32 Preferences storage.
  *
  * @param arKey The name of the key to check.
+ * @param aIndex Index encoded as two to four hexadecimal digits; defaults to zero.
  * @return true if the key exists, false otherwise.
  */
-bool Settings::HasKey(const tKey& arKey)
+bool Settings::HasKey(const tKey& arKey, const uint16_t aIndex)
 {
     /* Lock the mutex */
     FreeRTOScpp::Lock wLock(mMutex);
@@ -63,7 +64,7 @@ bool Settings::HasKey(const tKey& arKey)
     if (mPrefs.begin(mcPrefsParamNamespace, true))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey, aIndex);
 
         /* Check if the key exists */
         wRetValue = mPrefs.isKey(wKeyStr);
@@ -78,10 +79,11 @@ bool Settings::HasKey(const tKey& arKey)
 /**
  * @brief Deletes a key-value pair from ESP32 Preferences storage.
  *
- * @param arKey The name of the key to remove.
+ * @param arKey The name of the key to remove.z
+ * @param aIndex Index encoded as two to four hexadecimal digits; defaults to zero.
  * @return true if the key was successfully removed, false otherwise.
  */
-bool Settings::RemoveKey(const tKey& arKey)
+bool Settings::RemoveKey(const tKey& arKey, const uint16_t aIndex)
 {
     /* Lock the mutex */
     FreeRTOScpp::Lock wLock(mMutex);
@@ -92,7 +94,7 @@ bool Settings::RemoveKey(const tKey& arKey)
     if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey, aIndex);
 
         /* Remove the key */
         wRetValue = mPrefs.remove(wKeyStr);
@@ -123,7 +125,7 @@ bool Settings::GetBytes(const tKey& arKey, uint8_t* apData, const size_t aDataSi
     if (mPrefs.begin(mcPrefsParamNamespace, true))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey);
 
         /* Retrieve the byte array */
         wRetSize = mPrefs.getBytes(wKeyStr, apData, aDataSize);
@@ -156,7 +158,7 @@ bool Settings::SetBytes(const tKey& arKey, const uint8_t* apData, const size_t a
     if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey);
 
         /* Store the byte array */
         wRetSize = mPrefs.putBytes(wKeyStr, apData, aDataSize);
@@ -202,7 +204,7 @@ bool Settings::IncreaseCounter(const tKey& arKey, const uint32_t aNewValue)
     if (mPrefs.begin(mcPrefsCounterNamespace, false))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey);
 
         /* Update the counter value */
         wRetSize = mPrefs.putUInt(wKeyStr, (aNewValue != 0) ? aNewValue : (wCurrValue + 1));
@@ -237,7 +239,7 @@ uint32_t Settings::GetCounter(const tKey& arKey, const uint32_t aDefaultValue)
     if (mPrefs.begin(mcPrefsCounterNamespace, true))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey);
 
         /* Close the Preferences */
         wCounter = mPrefs.getUInt(wKeyStr, 0);

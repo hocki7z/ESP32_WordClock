@@ -7,6 +7,19 @@
 
 namespace SettingsNS
 {
+/**
+ * @brief Gets a property value from ESP32 Preferences storage with default index zero.
+ *
+ * @tparam T The type of the property value to retrieve (e.g., int, bool, String).
+ * @param arKey The name of the property.
+ * @param aDefaultValue The default value to return if the property does not exist.
+ * @return The property value as type T, or the default value if not found.
+ */
+template<typename T>
+T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
+{
+    return GetValue<T>(arKey, 0, aDefaultValue);
+}
 
 /**
  * @brief Get a property value as a specific type from ESP32 Preferences storage.
@@ -18,6 +31,7 @@ namespace SettingsNS
  *
  * @tparam T The type of the property value to retrieve (e.g., int, bool, String).
  * @param arKey The name of the property.
+ * @param aIndex Index encoded as two to four hexadecimal digits; defaults to zero.
  * @param aDefaultValue The default value to return if the property does not exist.
  * @return The property value as type T, or the default value if not found.
  *
@@ -30,7 +44,7 @@ namespace SettingsNS
  *      std::vector<int> myVector = Settings.GetValue<std::vector<int>>(tKey(1234), {});
  */
 template<typename T>
-T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
+T Settings::GetValue(const tKey& arKey, const uint16_t aIndex, const T aDefaultValue)
 {
     /* Lock the mutex to ensure thread-safe access to Preferences */
     FreeRTOScpp::Lock wLock(mMutex);
@@ -38,11 +52,11 @@ T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
     T wRetValue = aDefaultValue;
 
     /* Check if key exists and open preferences in read-only mode */
-    if ((HasKey(arKey) == true) &&
+    if ((HasKey(arKey, aIndex) == true) &&
         (mPrefs.begin(mcPrefsParamNamespace, true)))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey, aIndex);
 
         if constexpr (std::is_same<T, bool>::value) {
             wRetValue = mPrefs.getBool(wKeyStr, aDefaultValue);
@@ -74,11 +88,25 @@ T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
         mPrefs.end();
 
         /* LOG */
-        LOG_WITH_REF(LOG_DEBUG, LOG_LEVEL_SETTINGS, "Settings::GetValue() Key %08X (str %s); Value %s", 
+        LOG_WITH_REF(LOG_DEBUG, LOG_LEVEL_SETTINGS, "Settings::GetValue() Key %08X (str %s); Value %s",
             arKey.mRaw, wKeyStr, String(wRetValue).c_str());
     }
 
     return wRetValue;
+}
+
+/**
+ * @brief Sets a property value in ESP32 Preferences storage with default index zero.
+ *
+ * @tparam T The type of the property value to store (e.g., int, bool, String).
+ * @param arKey The name of the property.
+ * @param aValue The value to store.
+ * @return true if the value was successfully written, false otherwise.
+ */
+template<typename T>
+bool Settings::SetValue(const tKey& arKey, const T aValue)
+{
+    return SetValue<T>(arKey, 0, aValue);
 }
 
 /**
@@ -90,6 +118,7 @@ T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
  *
  * @tparam T The type of the property value to store (e.g., int, bool, String).
  * @param arKey The name of the property.
+ * @param aIndex Index encoded as two to four hexadecimal digits; defaults to zero.
  * @param aValue The value to store.
  * @return true if the value was successfully written, false otherwise.
  *
@@ -102,7 +131,7 @@ T Settings::GetValue(const tKey& arKey, const T aDefaultValue)
  *      bool success = settings.SetValue<std::vector<int>>(tKey(1234), {1,2,3});
  */
 template<typename T>
-bool Settings::SetValue(const tKey& arKey, const T aValue)
+bool Settings::SetValue(const tKey& arKey, const uint16_t aIndex, const T aValue)
 {
     /* Lock the mutex to ensure thread-safe access to Preferences */
     FreeRTOScpp::Lock wLock(mMutex);
@@ -113,7 +142,7 @@ bool Settings::SetValue(const tKey& arKey, const T aValue)
     if (mPrefs.begin(mcPrefsParamNamespace, false))
     {
         /* Get key string representation */
-        const char* wKeyStr = GetString(arKey);
+        const char* wKeyStr = KeyToString(arKey, aIndex);
 
         if constexpr (std::is_same<T, bool>::value) {
             wRetSize = mPrefs.putBool(wKeyStr, aValue);

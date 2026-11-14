@@ -144,14 +144,20 @@ namespace SettingsNS
 
         void Clear(void);
 
-        bool HasKey(const tKey& arKey);
-        bool RemoveKey(const tKey& arKey);
+        bool HasKey(const tKey& arKey, const uint16_t aIndex = 0);
+        bool RemoveKey(const tKey& arKey, const uint16_t aIndex = 0);
 
         template<typename T>
         T GetValue(const tKey& arKey, const T aDefaultValue);
 
         template<typename T>
+        T GetValue(const tKey& arKey, const uint16_t aIndex, const T aDefaultValue);
+
+        template<typename T>
         bool SetValue(const tKey& arKey, const T aValue);
+
+        template<typename T>
+        bool SetValue(const tKey& arKey, const uint16_t aIndex, const T aValue);
 
         bool GetBytes(const tKey& arKey, uint8_t* apData, const size_t aDataSize);
         bool SetBytes(const tKey& arKey, const uint8_t* apData, const size_t aDataSize);
@@ -174,17 +180,19 @@ namespace SettingsNS
         FreeRTOScpp::RecursiveMutex mMutex;
 
         /**
-         * @brief Converts a tKey to its string representation.
+         * @brief Converts this key and an index to their string representation.
          *
          * @param arKey The tKey instance to convert.
-         * @return Pointer to a static char buffer containing the formatted key string.
+         * @param aIndex Index encoded as two to four hexadecimal digits; defaults to zero.
+         * @return Pointer to a shared static buffer, overwritten by the next call.
+         *         Concurrent calls require external synchronization.
          */
-        const char* GetString(const tKey& arKey) const
+        const char* KeyToString(const tKey& arKey, uint16_t aIndex = 0) const
         {
-            static char wKeyStr[15]; // "HEXKEY" (6) + 8 hex digits + null terminator
+            static char wKeyStr[15]; // "0x" + 8 key digits + up to 4 index digits + null terminator
 
-            /* Format with prefix "HEXKEY" using raw key value */
-            snprintf(wKeyStr, sizeof(wKeyStr), "HEXKEY%08X", arKey.mRaw);
+            snprintf(wKeyStr, sizeof(wKeyStr), "0x%08lX%02X",
+                static_cast<unsigned long>(arKey.mRaw), static_cast<unsigned int>(aIndex));
 
             return wKeyStr;
         }
