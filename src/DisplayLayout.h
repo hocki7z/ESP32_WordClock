@@ -48,7 +48,6 @@ typedef struct tWordData
 struct WordGroup
 {
     tColor   mColor = 0;
-    uint8_t  mBrightness = 100;  // Brightness percentage (0-100)
 
     tWord    mWords[MAX_WORDS_PER_GROUP] = {};
     uint8_t  mWordsCount = 0;
@@ -67,7 +66,6 @@ struct WordGroup
     void Clear(void)
     {
         mColor = 0;
-        mBrightness = 100;
         memset(mWords, 0, sizeof(mWords));
         mWordsCount = 0;
         mEnabled = false;
@@ -84,7 +82,6 @@ struct WordGroup
     bool operator==(const WordGroup& arOther) const
     {
         return (mColor == arOther.mColor) &&
-               (mBrightness == arOther.mBrightness) &&
                (mWordsCount == arOther.mWordsCount) &&
                (mEnabled == arOther.mEnabled) &&
                (memcmp(mWords, arOther.mWords, sizeof(mWords)) == 0);
@@ -99,8 +96,7 @@ struct WordGroup
 /** @brief Structure representing the entire display scene */
 struct DisplayScene
 {
-    tColor   mColorBkgd      = 0;
-    uint8_t  mBrightnessBkgd = 100;  // Brightness percentage (0-100)
+    tColor   mColorBkgd = 0;
 
     WordGroup mItIs;
     WordGroup mTime;
@@ -109,7 +105,6 @@ struct DisplayScene
     void Clear(void)
     {
         mColorBkgd      = 0;
-        mBrightnessBkgd = 100;
 
         mItIs.Clear();
         mTime.Clear();
@@ -127,7 +122,6 @@ struct DisplayScene
     bool operator==(const DisplayScene& arOther) const
     {
         return (mColorBkgd == arOther.mColorBkgd) &&
-               (mBrightnessBkgd == arOther.mBrightnessBkgd) &&
                (mItIs == arOther.mItIs) &&
                (mTime == arOther.mTime) &&
                (mExtraMinutes == arOther.mExtraMinutes);

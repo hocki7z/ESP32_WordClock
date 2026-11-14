@@ -4,6 +4,8 @@
  */
 #include "DisplayFades.h"
 
+#include <algorithm>
+
 namespace DisplayFadesNS
 {
     /* Preserve the indices of previously saved palette selections. */
@@ -56,6 +58,23 @@ namespace DisplayFadesNS
         return CRGB(FadeChannel(arFrom.r, arTo.r, aAmount),
                     FadeChannel(arFrom.g, arTo.g, aAmount),
                     FadeChannel(arFrom.b, arTo.b, aAmount));
+    }
+
+    /** @brief Keeps the post-brightness output linear when global brightness changes during a fade. */
+    CRGB FadeColorWithBrightness(const CRGB& arFrom, const CRGB& arTo, uint16_t aAmount,
+        uint8_t aBrightnessFrom, uint8_t aBrightnessTo, uint8_t aBrightnessNow)
+    {
+        if (aBrightnessNow == 0) return CRGB::Black;
+
+        auto wChannel = [aAmount, aBrightnessFrom, aBrightnessTo, aBrightnessNow](uint8_t aFrom, uint8_t aTo) -> uint8_t
+        {
+            const uint32_t wFrom = uint32_t(aFrom) * aBrightnessFrom * (UINT16_MAX - aAmount);
+            const uint32_t wTo = uint32_t(aTo) * aBrightnessTo * aAmount;
+            const uint32_t wEffective = (wFrom + wTo + UINT16_MAX / 2U) / UINT16_MAX;
+            return static_cast<uint8_t>(std::min<uint32_t>(255, (wEffective + aBrightnessNow / 2U) / aBrightnessNow));
+        };
+
+        return CRGB(wChannel(arFrom.r, arTo.r), wChannel(arFrom.g, arTo.g), wChannel(arFrom.b, arTo.b));
     }
 
     void StepColorTwinkle(CRGB& arColor, bool& arFadeUp, uint8_t aSpeed)

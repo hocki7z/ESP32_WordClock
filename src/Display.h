@@ -92,6 +92,8 @@ private:
 
     /* Leds */
     CRGB mLeds[LED_NUMBER];
+    uint8_t mOutputBrightness = LED_DEFAULT_BRIGHTNESS;
+    uint8_t mTargetBrightness = LED_DEFAULT_BRIGHTNESS;
 
     /* Fade transition: start frame, target frame, background and start time */
     CRGB     mFadeFrom[LED_NUMBER];
@@ -101,6 +103,8 @@ private:
     uint32_t mFadeOutDurationMs = 0;
     uint32_t mFadeHoldDurationMs = 0;
     uint32_t mFadeInDurationMs  = 0;
+    uint8_t  mFadeBrightnessFrom = LED_DEFAULT_BRIGHTNESS;
+    uint8_t  mFadeBrightnessTo = LED_DEFAULT_BRIGHTNESS;
     bool     mFadeActive = false;
     bool     mFadeHoldStarted = false;
     bool     mFadeBackgroundChanged = false;
@@ -146,7 +150,8 @@ private:
     bool IsSaverWordFree(const tWord aWord) const;
 
     void Clear(void);
-    void Fill(const CRGB aColor, const uint8_t aBrightness=100);
+    void Fill(const CRGB aColor);
+    void SetOutputBrightness(uint8_t aBrightness);
 
     void UpdateDisplay(const bool aForceRepaint = false, const bool aFade = false);
 
@@ -158,8 +163,7 @@ private:
     bool DisplayTimeScene(const bool aForceRepaint);
 
     bool IsDayMode(void) const;
-
-    tColor ScaleColor(const tColor aColor, const uint8_t aBrightness) const;
+    uint8_t GetMasterBrightness(void) const;
 
     void SetLedColor(const uint16_t aLedIndex, const CRGB aColor);
     void SetLedColor(BitMatrix& arLedMask, const CRGB aColor);

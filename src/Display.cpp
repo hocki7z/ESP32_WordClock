@@ -129,6 +129,8 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     FastLED.setCorrection(TypicalLEDStrip);
     // Set default LED brightness
     FastLED.setBrightness(LED_DEFAULT_BRIGHTNESS);
+    mTargetBrightness = GetMasterBrightness();
+    SetOutputBrightness(mTargetBrightness);
     // Clear FastLED
     FastLED.clear();
 
@@ -212,6 +214,11 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
                 {
                     UpdateDisplay(false, true);
                 }
+                else
+                {
+                    SetOutputBrightness(GetMasterBrightness());
+                    FastLED.show();
+                }
             }
         }
             break;
@@ -225,6 +232,11 @@ void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
             if ((mState == STATE_TIME) || (mState == STATE_SCREEN_SAVER))
             {
                 SwitchMode();
+            }
+            else
+            {
+                SetOutputBrightness(GetMasterBrightness());
+                FastLED.show();
             }
         }
             break;
@@ -450,6 +462,8 @@ void Display::StartScreenSaver(void)
  */
 void Display::LoadScreenSaverSettings(void)
 {
+    SetOutputBrightness(GetMasterBrightness());
+
     const uint8_t wPresentation = Settings.GetValue<uint8_t>(
         ConfigNS::mKeyDisplayScreenSaverPresentation, ConfigNS::mDefaultDisplayScreenSaverPresentation);
     const bool wLetters = (wPresentation == 1);
@@ -626,12 +640,16 @@ void Display::Clear(void)
  * @param aColor The color to fill the matrix with.
  * @param aBrightness The brightness level (0-100), default is 100.
  */
-void Display::Fill(const CRGB aColor, const uint8_t aBrightness)
+void Display::Fill(const CRGB aColor)
 {
-    uint8_t wBrightness = (aBrightness > 100) ? 100 : aBrightness;
-    uint8_t wAlphaScale = map(wBrightness, 0, 100, 0, 255);
+    fill_solid(mLeds, LED_NUMBER, aColor);
+}
 
-    fill_solid(mLeds, LED_NUMBER, aColor.scale8(wAlphaScale));
+/** @brief Applies the shared master brightness to the entire LED output. */
+void Display::SetOutputBrightness(uint8_t aBrightness)
+{
+    mOutputBrightness = aBrightness;
+    FastLED.setBrightness(aBrightness);
 }
 
 /**
@@ -668,8 +686,10 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
         memcpy(mFadeFrom, mLeds, sizeof(mLeds));
     }
 
-    /* Prepare time scene */
-    bool wUpdated = DisplayTimeScene(aForceRepaint || wFadeInterrupted);
+    /* Prepare time scene; brightness-only day/night changes also need a display update. */
+    const uint8_t wOldTargetBrightness = mTargetBrightness;
+    bool wUpdated = DisplayTimeScene(aForceRepaint || wFadeInterrupted) ||
+                    (wOldTargetBrightness != mTargetBrightness);
 
     /* Display scene changed */
     if (wUpdated)
@@ -707,12 +727,13 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
 
             mFadeBackgroundChanged = !wInitial &&
                 ((wFadeInterrupted && mFadeBackgroundChanged) ||
-                 (ScaleColor(wOldScene.mColorBkgd, wOldScene.mBrightnessBkgd) !=
-                  ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd)));
+                 (wOldScene.mColorBkgd != mDisplayScene.mColorBkgd) ||
+                 (mOutputBrightness != mTargetBrightness));
             StartFade(wInitial);
         }
         else
         {
+            SetOutputBrightness(mTargetBrightness);
             /* Show new data on the LED matrix */
             FastLED.show();
         }
@@ -737,12 +758,18 @@ void Display::StartFade(const bool aInitial)
     memcpy(mFadeTo, mLeds, sizeof(mLeds));
     memcpy(mLeds, mFadeFrom, sizeof(mLeds));
 
-    mFadeBkgd   = CRGB(ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd) & COLOR_RGB_MASK);
+    mFadeBkgd   = CRGB(mDisplayScene.mColorBkgd & COLOR_RGB_MASK);
+    mFadeBrightnessFrom = mOutputBrightness;
+    mFadeBrightnessTo = mTargetBrightness;
+    if (aInitial) mFadeBrightnessFrom = mFadeBrightnessTo;
 
     /* Masked pixels go through the background; all other changed pixels fade in directly. */
     uint8_t wOutDistance = 0;
     if (!aInitial)
     {
+        const uint8_t wBrightnessDistance = (mFadeBrightnessFrom > mFadeBrightnessTo)
+            ? mFadeBrightnessFrom - mFadeBrightnessTo : mFadeBrightnessTo - mFadeBrightnessFrom;
+        wOutDistance = wBrightnessDistance;
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
             if (mFadeMask.IsBitSet(wI))
@@ -762,15 +789,24 @@ void Display::StartFade(const bool aInitial)
             (mFadeOutDurationMs > 0 && mFadeBackgroundChanged) ? mFadeTo[wI] : mFadeFrom[wI];
         wInDistance = std::max(wInDistance, DisplayFadesNS::ColorDistance(wStart, mFadeTo[wI]));
     }
+    if (aInitial)
+    {
+        const uint8_t wBrightnessDistance = (mFadeBrightnessFrom > mFadeBrightnessTo)
+            ? mFadeBrightnessFrom - mFadeBrightnessTo : mFadeBrightnessTo - mFadeBrightnessFrom;
+        wInDistance = std::max(wInDistance, wBrightnessDistance);
+    }
     mFadeInDurationMs = FadeDuration(wInDistance);
 
     /* No channel changes: show the exact target without starting a timer. */
     if (mFadeOutDurationMs == 0 && mFadeInDurationMs == 0)
     {
         memcpy(mLeds, mFadeTo, sizeof(mLeds));
+        SetOutputBrightness(mFadeBrightnessTo);
         FastLED.show();
         return;
     }
+
+    if (mFadeOutDurationMs == 0) SetOutputBrightness(mFadeBrightnessTo);
 
     mFadeStart  = millis();
     mFadeActive = true;
@@ -803,6 +839,7 @@ void Display::FadeStep(void)
             if (mFadeMask.IsBitSet(wI)) mLeds[wI] = mFadeBkgd;
             else if (mFadeBackgroundChanged) mLeds[wI] = mFadeTo[wI];
         }
+        SetOutputBrightness(mFadeBrightnessTo);
         FastLED.show();
         mFadeStart = millis() - mFadeOutDurationMs;
         mFadeHoldStarted = true;
@@ -813,21 +850,29 @@ void Display::FadeStep(void)
     if (wElapsed >= (wFadeInStart + mFadeInDurationMs))
     {
         memcpy(mLeds, mFadeTo, sizeof(mLeds));
+        SetOutputBrightness(mFadeBrightnessTo);
         StopFade();
     }
     else if (wElapsed < mFadeOutDurationMs)
     {
         const uint16_t wAmount = DisplayFadesNS::FadeAmount(wElapsed, mFadeOutDurationMs);
+        SetOutputBrightness(DisplayFadesNS::FadeChannel(mFadeBrightnessFrom, mFadeBrightnessTo, wAmount));
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
             if (mFadeMask.IsBitSet(wI))
             {
-                mLeds[wI] = DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeBkgd, wAmount);
+                mLeds[wI] = (mFadeBrightnessFrom != mFadeBrightnessTo)
+                    ? DisplayFadesNS::FadeColorWithBrightness(mFadeFrom[wI], mFadeBkgd, wAmount,
+                        mFadeBrightnessFrom, mFadeBrightnessTo, mOutputBrightness)
+                    : DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeBkgd, wAmount);
             }
             else if (mFadeBackgroundChanged && mFadeFrom[wI] != mFadeTo[wI])
             {
-                mLeds[wI] = DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeTo[wI], wAmount);
+                mLeds[wI] = (mFadeBrightnessFrom != mFadeBrightnessTo)
+                    ? DisplayFadesNS::FadeColorWithBrightness(mFadeFrom[wI], mFadeTo[wI], wAmount,
+                        mFadeBrightnessFrom, mFadeBrightnessTo, mOutputBrightness)
+                    : DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeTo[wI], wAmount);
             }
         }
     }
@@ -839,6 +884,8 @@ void Display::FadeStep(void)
     else
     {
         const uint16_t wAmount = DisplayFadesNS::FadeAmount(wElapsed - wFadeInStart, mFadeInDurationMs);
+        if (mFadeOutDurationMs == 0)
+            SetOutputBrightness(DisplayFadesNS::FadeChannel(mFadeBrightnessFrom, mFadeBrightnessTo, wAmount));
 
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
@@ -914,9 +961,6 @@ bool Display::DisplayTimeScene(const bool aForceRepaint)
 
     tColor  wColorTime;
     tColor  wColorBkgd;
-    uint8_t wBrightnessTime;
-    uint8_t wBrightnessBkgd;
-
     bool wIsDayMode = IsDayMode();
 
     /* Retrieve values from settings */
@@ -928,10 +972,6 @@ bool Display::DisplayTimeScene(const bool aForceRepaint)
         wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgd, ConfigNS::mDefaultDisplayColorBkgd);
         wColorBkgd  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
 
-        wBrightnessTime = Settings.GetValue<uint8_t>(
-            ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime);
-        wBrightnessBkgd = Settings.GetValue<uint8_t>(
-            ConfigNS::mKeyDisplayBrightnessBkgd, ConfigNS::mDefaultDisplayBrightnessBkgd);
     }
     else
     {
@@ -941,19 +981,16 @@ bool Display::DisplayTimeScene(const bool aForceRepaint)
         wDwordValue = Settings.GetValue<uint32_t>(ConfigNS::mKeyDisplayColorBkgdNight, ConfigNS::mDefaultDisplayColorBkgdNight);
         wColorBkgd  = static_cast<tColor>(wDwordValue & COLOR_RGB_MASK);
 
-        wBrightnessTime = Settings.GetValue<uint8_t>(
-            ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTime);
-        wBrightnessBkgd = Settings.GetValue<uint8_t>(
-            ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
     }
+
+    mTargetBrightness = GetMasterBrightness();
 
 //    LOG(LOG_DEBUG, "Display::DisplayTimeScene() IsDayMode %d; Display colors: Time=0x%06X, Bkgd=0x%06X, Brightness: Time=%u%%, Bkgd=%u%%",
 //        wIsDayMode, wColorTime, wColorBkgd, wBrightnessTime, wBrightnessBkgd);
 
     /* Prepare display scene */
     mDisplayScene.Clear();
-    mDisplayScene.mColorBkgd      = wColorBkgd;
-    mDisplayScene.mBrightnessBkgd = wBrightnessBkgd;
+    mDisplayScene.mColorBkgd = wColorBkgd;
 
     /* Check current time validity */
     if ((mDateTime.mTime.mHour   < 24) &&       // Support only 24 hours format
@@ -993,15 +1030,12 @@ bool Display::DisplayTimeScene(const bool aForceRepaint)
 
         mDisplayScene.mItIs.SetEnabled(wItIsEnabled);
         mDisplayScene.mItIs.mColor      = wColorTime;
-        mDisplayScene.mItIs.mBrightness = wBrightnessTime;
 
         mDisplayScene.mTime.SetEnabled(true);       // Always display time words
         mDisplayScene.mTime.mColor      = wColorTime;
-        mDisplayScene.mTime.mBrightness = wBrightnessTime;
 
         mDisplayScene.mExtraMinutes.SetEnabled(wExtraMinutesEnabled);
         mDisplayScene.mExtraMinutes.mColor      = wColorTime;
-        mDisplayScene.mExtraMinutes.mBrightness = wBrightnessTime;
 
         /* Add "IT IS" words */
         mDisplayScene.mItIs.mWords[0] = WORD_ES;
@@ -1103,14 +1137,12 @@ bool Display::DisplayTimeScene(const bool aForceRepaint)
                 wBitMatrix.SetZigzagOrder(true);
 
                 /* Now paint all LEDs marked in the mask */
-                tColor wColor = ScaleColor(arGroup.mColor, arGroup.mBrightness);
-                SetLedColor(wBitMatrix, CRGB(wColor & COLOR_RGB_MASK));
+                SetLedColor(wBitMatrix, CRGB(arGroup.mColor & COLOR_RGB_MASK));
             }
         };
 
         /* Fill background */
-        wColorBkgd = ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd);
-        Fill(CRGB(wColorBkgd & COLOR_RGB_MASK));
+        Fill(CRGB(mDisplayScene.mColorBkgd & COLOR_RGB_MASK));
 
         /* Display word groups */
         wDisplayWordGroup(mDisplayScene.mItIs);
@@ -1173,22 +1205,13 @@ bool Display::IsDayMode(void) const
     return wIsDayMode;
 }
 
-/**
- * @brief Scales the given color based on the specified brightness percentage.
- *
- * @param aColor The original color to be scaled.
- * @param aBrightness The brightness percentage (0-100) to scale the color.
- * @return The scaled color as a tColor value.
- */
-tColor Display::ScaleColor(const tColor aColor, const uint8_t aBrightness) const
+/** @brief Resolves the shared day/night master brightness as FastLED's 0..255 value. */
+uint8_t Display::GetMasterBrightness(void) const
 {
-    uint8_t wBrightness = (aBrightness > 100) ? 100 : aBrightness;
-    uint8_t wAlphaScale = map(wBrightness, 0, 100, 0, 255);
-
-    CRGB wLedColor = CRGB(aColor & COLOR_RGB_MASK);
-    wLedColor.nscale8(wAlphaScale);
-
-    return static_cast<tColor>(wLedColor.as_uint32_t() & COLOR_RGB_MASK);
+    const uint8_t wBrightness = (!mDateTimeValid || IsDayMode())
+        ? Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayBrightnessDay, ConfigNS::mDefaultDisplayBrightnessDay)
+        : Settings.GetValue<uint8_t>(ConfigNS::mKeyDisplayBrightnessNight, ConfigNS::mDefaultDisplayBrightnessNight);
+    return map(std::min<uint8_t>(wBrightness, 100), 0, 100, 0, 255);
 }
 
 /**

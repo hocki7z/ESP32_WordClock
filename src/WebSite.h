@@ -139,10 +139,8 @@ private:
         Control::ControlId_t mDisplayUseDayNightMode;
         Control::ControlId_t mDisplayDayModeStartTime;
         Control::ControlId_t mDisplayDayModeEndTime;
-        Control::ControlId_t mDisplayBrightnessTime;
-        Control::ControlId_t mDisplayBrightnessBkgd;
-        Control::ControlId_t mDisplayBrightnessTimeNight;
-        Control::ControlId_t mDisplayBrightnessBkgdNight;
+        Control::ControlId_t mDisplayBrightnessDay;
+        Control::ControlId_t mDisplayBrightnessNight;
 
         /* Settings tab controls */
         Control::ControlId_t mSettingsTimeGroup;

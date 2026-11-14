@@ -687,24 +687,19 @@ void WebSite::InitWebUIControls(void)
 
     AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup, true); // Draw a line separator
 
-    /* Sliders for day time/background brightness */
+        AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL,
+            "Master brightness (time, background and screen saver)");
+
+    /* One master brightness per day/night profile */
     AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Day");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
-    mWebUIControlID.mDisplayBrightnessTime = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-        ConfigNS::mKeyDisplayBrightnessTime, ConfigNS::mDefaultDisplayBrightnessTime);
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
-    mWebUIControlID.mDisplayBrightnessBkgd = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-            ConfigNS::mKeyDisplayBrightnessBkgd, ConfigNS::mDefaultDisplayBrightnessBkgd);
+    mWebUIControlID.mDisplayBrightnessDay = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessDay, ConfigNS::mDefaultDisplayBrightnessDay);
 
     AddSeparator(mWebUIControlID.mLedDisplayBrightnessGroup);
 
     AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL, "Night");
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "time");
-    mWebUIControlID.mDisplayBrightnessTimeNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-        ConfigNS::mKeyDisplayBrightnessTimeNight, ConfigNS::mDefaultDisplayBrightnessTimeNight);
-    AddLabelControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_LABEL_LIGHTER, "background");
-    mWebUIControlID.mDisplayBrightnessBkgdNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
-        ConfigNS::mKeyDisplayBrightnessBkgdNight, ConfigNS::mDefaultDisplayBrightnessBkgdNight);
+    mWebUIControlID.mDisplayBrightnessNight = AddPercentageSliderControl("", mWebUIControlID.mLedDisplayBrightnessGroup, CSS_STYLE_SLIDER,
+        ConfigNS::mKeyDisplayBrightnessNight, ConfigNS::mDefaultDisplayBrightnessNight);
 
 
     /**

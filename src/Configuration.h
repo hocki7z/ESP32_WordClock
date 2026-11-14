@@ -112,10 +112,9 @@ namespace ConfigNS
     static const SettingsNS::tKey  mKeyDisplayColorBkgdNight        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x13);
     //
     static const SettingsNS::tKey  mKeyDisplayUseDayNightMode       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x20);
-    static const SettingsNS::tKey  mKeyDisplayBrightnessTime        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x21);
-    static const SettingsNS::tKey  mKeyDisplayBrightnessBkgd        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x22);
-    static const SettingsNS::tKey  mKeyDisplayBrightnessTimeNight   = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x23);
-    static const SettingsNS::tKey  mKeyDisplayBrightnessBkgdNight   = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x24);
+    static const SettingsNS::tKey  mKeyDisplayBrightnessDay         = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x21);
+    /* Former separate background brightness keys 0x22 and 0x24 are reserved. */
+    static const SettingsNS::tKey  mKeyDisplayBrightnessNight       = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x23);
     static const SettingsNS::tKey  mKeyDisplayDayModeStartTime      = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x25);
     static const SettingsNS::tKey  mKeyDisplayDayModeEndTime        = SettingsNS::tKey(mParamsConfig, mDisplayGroup, 0x26);
 
@@ -161,10 +160,8 @@ namespace ConfigNS
     /*
      * Brightness values in percentage (0-100)
      */
-    static constexpr uint8_t  mDefaultDisplayBrightnessTime         = 100;
-    static constexpr uint8_t  mDefaultDisplayBrightnessBkgd         = 20;
-    static constexpr uint8_t  mDefaultDisplayBrightnessTimeNight    = 20;
-    static constexpr uint8_t  mDefaultDisplayBrightnessBkgdNight    = 5;
+    static constexpr uint8_t  mDefaultDisplayBrightnessDay           = 100;
+    static constexpr uint8_t  mDefaultDisplayBrightnessNight         = 20;
 
     /*
     * Dword (4 bytes) for saving a time in format hh:mm
