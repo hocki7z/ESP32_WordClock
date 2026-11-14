@@ -10,6 +10,13 @@
 #include "WebSite.h"
 
 
+#define LOG_TASK_STATISTICS     (true)      // Enable/Disable task statistics when global logging is enabled
+
+#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
+
 /******************************************************************************
     Multi Reset Detector Library
  *****************************************************************************/
@@ -56,6 +63,10 @@ static void MultiResetDetection(void);
 static void InitApplication(void);
 static void RunApplication(void);
 
+#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+static void LogTaskStatistics(void);
+#endif
+
 
 /******************************************************************************
     PRIVATE MEMBER VARIABLES
@@ -70,6 +81,11 @@ static CommunicationNS::CommunicationManager* mpCommunicationManager = nullptr;
 static constexpr size_t mcNumberOfTasks = 4;
 /** @brief Array of task management structures */
 static ApplicationNS::tTaskManagement mTaskManagement[mcNumberOfTasks];
+
+#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+/** @brief Period between task and shared-heap reports, in milliseconds */
+static constexpr uint32_t mcTaskStatisticsIntervalMs = 15000;
+#endif
 
 
 /******************************************************************************
@@ -114,6 +130,18 @@ void setup(void)
   */
 void loop(void)
 {
+#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+    static uint32_t wLastTaskStatisticsMs = millis();
+    const uint32_t wNowMs = millis();
+
+    /* Unsigned subtraction keeps the interval correct across millis() rollover. */
+    if ((wNowMs - wLastTaskStatisticsMs) >= mcTaskStatisticsIntervalMs)
+    {
+        wLastTaskStatisticsMs = wNowMs;
+        LogTaskStatistics();
+    }
+#endif
+
     /* Call the multi reset detector loop method every so often,
        so that it can recognise when the timeout expires. */
     if ((mpMultiResetDetector != nullptr) &&
@@ -126,8 +154,13 @@ void loop(void)
     }
     else
     {
+#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+        /* Reuse the loop task for diagnostics instead of allocating another task. */
+        vTaskDelay(pdMS_TO_TICKS(100));
+#else
         /* Do nothing, everything is handled in tasks */
         vTaskDelay(portMAX_DELAY);
+#endif
     }
 }
 
@@ -135,6 +168,52 @@ void loop(void)
 /******************************************************************************
     PRIVATE FUNCTION CODE
  *****************************************************************************/
+
+#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+/**
+ * @brief Log shared heap health and minimum-ever unused task stacks in bytes.
+ *
+ * Heap allocations are shared, not owned by individual tasks. The stock Arduino
+ * framework disables trace support, so only stable application handles and the
+ * current loop task can safely be queried; panic snapshot APIs are not suitable
+ * for live task enumeration. Application task handles remain valid for the life
+ * of this application. Stack watermarks are bytes on ESP-IDF, not FreeRTOS words.
+ */
+static void LogTaskStatistics(void)
+{
+    LOG(LOG_INFO, "Main::TaskStatistics()\theap bytes:\ttotal=%u\tfree=%u\tminFree=%u\tlargestBlock=%u\tsystemTasks=%u",
+        static_cast<unsigned>(ESP.getHeapSize()),
+        static_cast<unsigned>(ESP.getFreeHeap()),
+        static_cast<unsigned>(ESP.getMinFreeHeap()),
+        static_cast<unsigned>(ESP.getMaxAllocHeap()),
+        static_cast<unsigned>(uxTaskGetNumberOfTasks()));
+
+    /* Query only known, long-lived handles: a deleted task handle is unsafe. */
+    auto wLogTask = [](TaskHandle_t aTaskHandle) -> void
+    {
+        if (aTaskHandle == nullptr)
+        {
+            return;
+        }
+
+        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%u\t\t%u",
+            pcTaskGetName(aTaskHandle),
+            static_cast<unsigned>(uxTaskPriorityGet(aTaskHandle)),
+            static_cast<unsigned>(uxTaskGetStackHighWaterMark(aTaskHandle)));
+    };
+
+    LOG(LOG_INFO, "Main::TaskStatistics()\tstack scope: application tasks + Arduino loop (not all system tasks)");
+    LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\tPriority\tMinFreeStackBytes", "Task");
+    for (const auto& wrTaskManagement : mTaskManagement)
+    {
+        if (wrTaskManagement.mpTask != nullptr)
+        {
+            wLogTask(wrTaskManagement.mpTask->getTaskHandle());
+        }
+    }
+    wLogTask(xTaskGetCurrentTaskHandle());
+}
+#endif
 
 /**
  * @brief Detect a multi reset condition
