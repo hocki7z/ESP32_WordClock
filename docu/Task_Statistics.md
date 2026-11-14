@@ -11,7 +11,8 @@ analysis.
   to each of the four application tasks, all at priority 1.
 - [Statistics implementation](../src/main.cpp) reports shared heap health and
   stack watermarks every approximately 15 seconds when enabled.
-- `LOG_TASK_STATISTICS` is currently `false`. To collect reports, set it to
+- `LOG_TASK_STATISTICS` in [TaskDiagnostics.h](../src/TaskDiagnostics.h) is currently
+   `false`. To collect reports, set it to
   `true` and use a build with `USE_LOGGING=true`, such as `nodemcu-32s_debug`.
   Both switches must be enabled. Do not redefine `USE_LOGGING` in the source;
   it is supplied by the [build configuration](../platformio.ini).
@@ -24,7 +25,12 @@ analysis.
 |---|---|
 | `Task` | FreeRTOS task name. |
 | `Priority` | Task scheduling priority at the time of the query. This is not CPU utilization. |
-| `MinFreeStackBytes` | Minimum-ever unused stack space observed since task creation, in bytes on this ESP-IDF platform. It is not current free stack. |
+| `State` | Instantaneous running, ready, blocked, or suspended state; it can change before printing. |
+| `Affinity` | CPU0, CPU1, or any core. This is affinity, not the core currently executing the task. |
+| `StackB` | Configured allocation in bytes, retained by the application task or queried from Arduino for loopTask. |
+| `MinFreeB` | Minimum-ever unused stack space observed since task creation, in bytes on this ESP-IDF platform. It is not current free stack. |
+| `PeakUsedB` | Estimated lifetime peak used bytes: StackB minus MinFreeB. |
+| `PeakUsed` | Estimated lifetime peak used percentage, rounded down to an integer. |
 
 The watermark is derived from untouched stack-fill memory. Subtracting it from
 the allocation estimates the observed peak stack usage; it does not prove that
@@ -56,6 +62,62 @@ Heap is shared across tasks. These fields do not attribute allocations to an
 individual task. A large free-heap total does not guarantee that a single large
 allocation will succeed; compare it with `largestBlock`.
 
+## Queue and handler metrics
+
+Each application task also reports its application-message queue and elapsed
+handler timing. These measurements do not cover every framework queue or the
+separate WebSite control-event queue.
+
+| Metric | Meaning |
+|---|---|
+| Queue depth/capacity | Current queued messages and fixed capacity (10). |
+| Queue observed peak | Maximum depth sampled after a successful send. Concurrent consumption can hide a transient peak; this is a lower-bound observation, not an exact historical maximum. |
+| Queue failed sends | Lifetime count of unsuccessful queue insertions, including routed messages and timer events. A nonzero value warrants investigation. |
+| `messageHandler` | Elapsed time in the normal-message handler. |
+| `timerHandler` | Elapsed time in the timer-event handler, aggregated across that task's timer IDs. |
+| `notificationBatch` | Elapsed time in the other-notification hook; for WebSite this may include an entire batch of control events. |
+| `timerDeliveryDelay` | Time from a timer-message enqueue attempt until its valid timer handler is dispatched. |
+
+Each timing row contains invocation `count`, `lastUs`, and lifetime `maxUs`.
+Measurements include preemption, blocking, and logging inside a handler; they
+are **not CPU execution time**. Waiting for notifications and the base loop's
+post-message yield are not part of handler duration. Initialization is not timed.
+Counters wrap after 2^32 events; durations saturate at 4294967295 microseconds.
+Atomic fields make cross-task reads race-free, but the report is not a single
+transactional snapshot. Queue depth and task state can change while printing.
+
+`timerDeliveryDelay` does not include lateness before the timer callback runs.
+It is **not lateness against the scheduled expiry**. True periodic lateness,
+per-task CPU utilization, handler averages, and mutex contention are not collected.
+Tracking scheduled deadlines reliably requires accounting for timer restarts and
+resets; no approximation is labeled as scheduled lateness here.
+
+### Queue-full behavior
+
+Timer callbacks now attempt a nonblocking send. A full application queue causes
+the timer event to be dropped rather than stalling the shared FreeRTOS timer
+service. When diagnostics are enabled, that failure increments `failedSends`.
+Normal routed sends remain nonblocking. Both paths notify the destination task
+only after a successful insertion. This behavior applies even when diagnostics
+are disabled. A dropped one-shot timer event is not retried automatically;
+investigate queue pressure instead of treating dropped events as harmless.
+
+### Instrumentation overhead and switch scope
+
+The switch is shared across translation units because it changes the queue-item
+layout. Never define it only inside one source file. Either edit its guarded
+default in [TaskDiagnostics.h](../src/TaskDiagnostics.h) or supply a consistent
+project-wide build definition.
+
+Enabled builds add a timestamp to each queued message, atomic counters to tasks
+and queues, and timestamp/counter work around dispatch. Fixed queue storage uses
+`sizeof(DiagnosticEnvelope)` per slot instead of `sizeof(Message)` (40 slots
+across the four application queues). Alignment affects the exact byte overhead.
+The 15-second report itself also consumes CPU time, serial bandwidth, and loop
+stack. Compare stack and timing results with this measurement overhead in mind.
+Disabled builds omit envelopes, timing counters, and collection work; configured
+stack metadata remains available. No reporting task or polling timer is added.
+
 ## Observed results and proposed first step
 
 All sizes in the following table are bytes. The sample was supplied by the user;
@@ -67,7 +129,7 @@ its runtime duration and workload coverage were not established.
 | TimeManagerTask | 4096 | 2464 | 1632 | 3072 | 1440 | 1024 |
 | WifiManagerTask | 4096 | 2100 | 1996 | 3584 | 1588 | 512 |
 | WebSiteTask | 4096 | 1036 | 3060 | 4096 (unchanged) | 1036 | 0 |
-| loopTask | Not established by this analysis | 5196 | Not calculated | No change proposed | Not calculated | 0 |
+| loopTask | Not established for the original sample | 5196 | Not calculated | No change proposed | Not calculated | 0 |
 
 The application-task proposals reduce requested stack allocations by a total of
 2048 bytes (2 KiB). Dynamically allocated stacks consume heap, so reducing them
@@ -158,9 +220,10 @@ and raising priority does not reduce memory use. Raising a task's priority can
 also delay other tasks if it does not block appropriately.
 
 The Arduino loop stack is controlled by the framework, not the four application
-stack constants. Although its reported 5196 bytes of unused stack suggest
-potential savings, do not choose a new allocation without verifying the actual
-configured size and testing startup, reset detection, and diagnostics.
+stack constants. New reports query `getArduinoLoopTaskStackSize()` to show its
+configured size. Although the original sample's 5196 bytes of unused stack
+suggest potential savings, test startup, reset detection, and diagnostics before
+choosing a smaller allocation.
 
 The current statistics implementation reuses `loopTask` rather than allocating
 a new reporting task. When enabled, it wakes approximately every 100 ms after
@@ -172,6 +235,8 @@ and the statistics collection are compiled out.
 
 - [Application task configuration](../src/Configuration.h)
 - [Statistics collection and Arduino loop](../src/main.cpp)
+- [Shared diagnostics switch and counters](../src/TaskDiagnostics.h)
+- [Queue instrumentation and handler dispatch](../src/Application.cpp)
 - [Build environments and logging flags](../platformio.ini)
 - [Application architecture](Application_Module.md)
 - [ESP-IDF v4.4.7 FreeRTOS API reference](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32/api-reference/system/freertos.html)

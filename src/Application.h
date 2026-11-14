@@ -17,6 +17,11 @@
 
 #include "Message.h"
 #include "Communication.h"
+#include "TaskDiagnostics.h"
+
+#if TASK_DIAGNOSTICS_ENABLED
+#include <type_traits>
+#endif
 
 
 /* Log level for this module */
@@ -54,13 +59,68 @@ namespace ApplicationNS
      * The message queue is used for inter-task communication, allowing tasks to exchange
      * MessageNS::Message objects. The queue size is defined by mMessageQueueSize, which
      * specifies the maximum number of messages that can be stored in the queue at any time.
-     * MessageQueueBase provides the base type for the queue, while MessageQueue is a
-     * type alias for a statically sized queue of MessageNS::Message objects.
+        * Both public queue names use the same wrapper so application pointers cannot
+        * bypass instrumentation. Enabled builds store timestamps beside each message.
      */
     static constexpr uint8_t mMessageQueueSize = 10;
 
-    using MessageQueueBase = FreeRTOScpp::QueueTypeBase<MessageNS::Message>;
-    using MessageQueue     = FreeRTOScpp::Queue<MessageNS::Message, mMessageQueueSize>;
+#if TASK_DIAGNOSTICS_ENABLED
+    struct DiagnosticEnvelope
+    {
+        MessageNS::Message Payload{};
+        int64_t EnqueueUs = 0;
+    };
+    static_assert(std::is_trivially_copyable<DiagnosticEnvelope>::value,
+        "FreeRTOS queues require byte-copyable envelopes without ownership");
+    using MessageQueueItem = DiagnosticEnvelope;
+#else
+    using MessageQueueItem = MessageNS::Message;
+#endif
+
+    class MessageQueueBase : public FreeRTOScpp::Queue<MessageQueueItem, mMessageQueueSize>
+    {
+    public:
+        MessageQueueBase(char const* name = 0);
+
+        bool add(MessageNS::Message const& item, TickType_t time = portMAX_DELAY);
+        bool push(MessageNS::Message const& item, TickType_t time = portMAX_DELAY);
+        bool pop(MessageNS::Message& var, TickType_t time = portMAX_DELAY);
+        bool peek(MessageNS::Message& var, TickType_t time = 0);
+
+#if FREERTOSCPP_USE_CHRONO
+        bool add(MessageNS::Message const& item, FreeRTOScpp::Time_ms time)
+        { return add(item, FreeRTOScpp::ms2ticks(time)); }
+        bool push(MessageNS::Message const& item, FreeRTOScpp::Time_ms time)
+        { return push(item, FreeRTOScpp::ms2ticks(time)); }
+        bool pop(MessageNS::Message& var, FreeRTOScpp::Time_ms time)
+        { return pop(var, FreeRTOScpp::ms2ticks(time)); }
+        bool peek(MessageNS::Message& var, FreeRTOScpp::Time_ms time)
+        { return peek(var, FreeRTOScpp::ms2ticks(time)); }
+#endif
+
+        bool add_ISR(MessageNS::Message const& item, portBASE_TYPE& waswoken);
+        bool push_ISR(MessageNS::Message const& item, portBASE_TYPE& waswoken);
+        bool pop_ISR(MessageNS::Message& var, portBASE_TYPE& waswoken);
+        bool peek_ISR(MessageNS::Message& var, portBASE_TYPE& waswoken);
+
+        QueueStatistics GetStatistics() const;
+        // Consumer-only metadata; read immediately after a successful pop.
+        int64_t GetLastDequeuedEnqueueUs() const;
+
+    private:
+        bool Send(MessageNS::Message const& item, TickType_t time, bool aFront);
+        bool SendFromISR(MessageNS::Message const& item, portBASE_TYPE& waswoken, bool aFront);
+        bool Receive(MessageNS::Message& var, TickType_t time, bool aPeek);
+        bool ReceiveFromISR(MessageNS::Message& var, portBASE_TYPE& waswoken, bool aPeek);
+        void RecordSend(bool aSuccess, bool aFromISR);
+#if TASK_DIAGNOSTICS_ENABLED
+        std::atomic<uint32_t> mPeakDepth{0};
+        std::atomic<uint32_t> mFailedSends{0};
+        int64_t mLastDequeuedEnqueueUs = 0;
+#endif
+    };
+
+    using MessageQueue = MessageQueueBase;
 
 
     /**
@@ -194,12 +254,16 @@ namespace ApplicationNS
 
         virtual void Init(tTaskObjects* apTaskObjects);
 
+        // Original stack allocation argument, in the underlying port's units (ESP32: bytes).
+        uint32_t GetConfiguredStackSize() const;
+        TaskStatistics GetStatistics() const;
+
     protected:
         /** @brief Task timer ID */
         static constexpr uint32_t mcTaskTimerId = 0x01;  // binary: 00000000 00000000 00000000 00000001
 
         /** @brief Task objects */
-        tTaskObjects* mpTaskObjects;
+        tTaskObjects* mpTaskObjects = nullptr;
 
         /** @brief Task timer objects */
         tTaskTimerObjects mTaskTimerObjects;
@@ -214,6 +278,14 @@ namespace ApplicationNS
         void SendMessage(const MessageNS::Message &arMessage);
 
     private:
+        const uint32_t mConfiguredStackSize;
+    #if TASK_DIAGNOSTICS_ENABLED
+        TaskDiagnosticsDetail::TimingCounters mIncomingMessageStatistics;
+        TaskDiagnosticsDetail::TimingCounters mTimerHandlerStatistics;
+        TaskDiagnosticsDetail::TimingCounters mUnknownNotificationStatistics;
+        TaskDiagnosticsDetail::TimingCounters mTimerDeliveryDelayUs;
+    #endif
+
         /* Override FreeRTOScpp::TaskClassS<0>::task */
         void task(void) override final;
 

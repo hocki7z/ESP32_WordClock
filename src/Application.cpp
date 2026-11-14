@@ -8,8 +8,173 @@
 #include "Application.h"
 #include "Serialize.h"
 
+#if TASK_DIAGNOSTICS_ENABLED
+#include <esp_timer.h>
+#endif
+
 namespace ApplicationNS
 {
+namespace
+{
+    // Queue items contain only value data; no allocation or ownership is transferred.
+    MessageQueueItem MakeQueueItem(const MessageNS::Message& arMessage)
+    {
+        MessageQueueItem wItem{};
+#if TASK_DIAGNOSTICS_ENABLED
+        wItem.Payload = arMessage;
+        if (arMessage.mSource == MessageNS::tAddress::TASK_TIMER)
+        {
+            wItem.EnqueueUs = esp_timer_get_time();
+        }
+#else
+        wItem = arMessage;
+#endif
+        return wItem;
+    }
+
+    const MessageNS::Message& QueuePayload(const MessageQueueItem& arItem)
+    {
+#if TASK_DIAGNOSTICS_ENABLED
+        return arItem.Payload;
+#else
+        return arItem;
+#endif
+    }
+}
+
+MessageQueueBase::MessageQueueBase(char const* name)
+    : FreeRTOScpp::Queue<MessageQueueItem, mMessageQueueSize>(name)
+{
+}
+
+// Sample after a successful send; a concurrent consumer can make this underestimate peak depth.
+void MessageQueueBase::RecordSend(bool aSuccess, bool aFromISR)
+{
+#if TASK_DIAGNOSTICS_ENABLED
+    if (aSuccess)
+    {
+        TaskDiagnosticsDetail::UpdateMax(mPeakDepth, aFromISR ? waiting_ISR() : waiting());
+    }
+    else
+    {
+        mFailedSends.fetch_add(1, std::memory_order_relaxed);
+    }
+#else
+    (void)aSuccess;
+    (void)aFromISR;
+#endif
+}
+
+bool MessageQueueBase::Send(MessageNS::Message const& item, TickType_t time, bool aFront)
+{
+    const MessageQueueItem wItem = MakeQueueItem(item);
+    const bool wSuccess = aFront ? xQueueSendToFront(queueHandle, &wItem, time) :
+        xQueueSendToBack(queueHandle, &wItem, time);
+    RecordSend(wSuccess, false);
+    return wSuccess;
+}
+
+bool MessageQueueBase::SendFromISR(MessageNS::Message const& item, portBASE_TYPE& waswoken, bool aFront)
+{
+    const MessageQueueItem wItem = MakeQueueItem(item);
+    const bool wSuccess = aFront ? xQueueSendToFrontFromISR(queueHandle, &wItem, &waswoken) :
+        xQueueSendToBackFromISR(queueHandle, &wItem, &waswoken);
+    RecordSend(wSuccess, true);
+    return wSuccess;
+}
+
+// Only successful destructive reads replace consumer metadata; peeks leave it unchanged.
+bool MessageQueueBase::Receive(MessageNS::Message& var, TickType_t time, bool aPeek)
+{
+    MessageQueueItem wItem{};
+    const bool wSuccess = aPeek ? xQueuePeek(queueHandle, &wItem, time) :
+        xQueueReceive(queueHandle, &wItem, time);
+    if (wSuccess)
+    {
+        var = QueuePayload(wItem);
+#if TASK_DIAGNOSTICS_ENABLED
+        if (!aPeek) mLastDequeuedEnqueueUs = wItem.EnqueueUs;
+#endif
+    }
+    return wSuccess;
+}
+
+bool MessageQueueBase::ReceiveFromISR(MessageNS::Message& var, portBASE_TYPE& waswoken, bool aPeek)
+{
+    MessageQueueItem wItem{};
+    const bool wSuccess = aPeek ? xQueuePeekFromISR(queueHandle, &wItem) :
+        xQueueReceiveFromISR(queueHandle, &wItem, &waswoken);
+    if (wSuccess)
+    {
+        var = QueuePayload(wItem);
+#if TASK_DIAGNOSTICS_ENABLED
+        if (!aPeek) mLastDequeuedEnqueueUs = wItem.EnqueueUs;
+#endif
+    }
+    return wSuccess;
+}
+
+bool MessageQueueBase::add(MessageNS::Message const& item, TickType_t time)
+{
+    return Send(item, time, false);
+}
+
+bool MessageQueueBase::push(MessageNS::Message const& item, TickType_t time)
+{
+    return Send(item, time, true);
+}
+
+bool MessageQueueBase::pop(MessageNS::Message& var, TickType_t time)
+{
+    return Receive(var, time, false);
+}
+
+bool MessageQueueBase::peek(MessageNS::Message& var, TickType_t time)
+{
+    return Receive(var, time, true);
+}
+
+bool MessageQueueBase::add_ISR(MessageNS::Message const& item, portBASE_TYPE& waswoken)
+{
+    return SendFromISR(item, waswoken, false);
+}
+
+bool MessageQueueBase::push_ISR(MessageNS::Message const& item, portBASE_TYPE& waswoken)
+{
+    return SendFromISR(item, waswoken, true);
+}
+
+bool MessageQueueBase::pop_ISR(MessageNS::Message& var, portBASE_TYPE& waswoken)
+{
+    return ReceiveFromISR(var, waswoken, false);
+}
+
+bool MessageQueueBase::peek_ISR(MessageNS::Message& var, portBASE_TYPE& waswoken)
+{
+    return ReceiveFromISR(var, waswoken, true);
+}
+
+QueueStatistics MessageQueueBase::GetStatistics() const
+{
+    QueueStatistics wStatistics{};
+    wStatistics.CurrentDepth = waiting();
+    wStatistics.Capacity = mMessageQueueSize;
+#if TASK_DIAGNOSTICS_ENABLED
+    wStatistics.PeakDepth = mPeakDepth.load(std::memory_order_relaxed);
+    wStatistics.FailedSends = mFailedSends.load(std::memory_order_relaxed);
+#endif
+    return wStatistics;
+}
+
+int64_t MessageQueueBase::GetLastDequeuedEnqueueUs() const
+{
+#if TASK_DIAGNOSTICS_ENABLED
+    return mLastDequeuedEnqueueUs;
+#else
+    return 0;
+#endif
+}
+
 /**
  *
  * Implementation of ApplicationNS::TaskNotification class
@@ -122,8 +287,10 @@ void MessageReceiver::Init(MessageQueue* apMessageQueue, TaskHandle_t aTaskHandl
  */
 void MessageReceiver::NotifyMessage(const MessageNS::Message & arMessage)
 {
-    mpMessageQueue->add(arMessage, 0);
-    mpNotification->Notify();
+    if (mpMessageQueue->add(arMessage, 0))
+    {
+        mpNotification->Notify();
+    }
 }
 
 
@@ -194,7 +361,7 @@ void TaskTimer::timer(void)
     if (mpTaskTimerObjects)
     {
         /* Create message for task */
-        MessageNS::Message wMessage;
+        MessageNS::Message wMessage{};
         wMessage.mSource      = MessageNS::tAddress::TASK_TIMER;
         wMessage.mDestination = MessageNS::tAddress::TASK;
 
@@ -206,11 +373,11 @@ void TaskTimer::timer(void)
             /* Set payload length */
             wMessage.mPayloadLength = sizeof(mTimerId);
 
-            /* Add message to the task queue */
-            mpTaskTimerObjects->mpTaskMessagesQueue->add(wMessage);
-
-            /* Notify task */
-            mpTaskNotification->Notify();
+            // Never block the shared timer service on a full task queue.
+            if (mpTaskTimerObjects->mpTaskMessagesQueue->add(wMessage, 0))
+            {
+                mpTaskNotification->Notify();
+            }
         }
         else
         {
@@ -236,9 +403,27 @@ void TaskTimer::timer(void)
  * @param aStackSize The stack size for the task.
  */
 Task::Task(char const* apName, tTaskPriority aPriority, const uint32_t aStackSize)
-    : FreeRTOScpp::TaskClassS<0>(apName, aPriority, aStackSize)
+    : FreeRTOScpp::TaskClassS<0>(apName, aPriority, aStackSize),
+      mConfiguredStackSize(aStackSize)
 {
     // do nothing
+}
+
+uint32_t Task::GetConfiguredStackSize() const
+{
+    return mConfiguredStackSize;
+}
+
+TaskStatistics Task::GetStatistics() const
+{
+    TaskStatistics wStatistics{};
+#if TASK_DIAGNOSTICS_ENABLED
+    wStatistics.IncomingMessage = mIncomingMessageStatistics.Snapshot();
+    wStatistics.TimerHandler = mTimerHandlerStatistics.Snapshot();
+    wStatistics.UnknownNotification = mUnknownNotificationStatistics.Snapshot();
+    wStatistics.TimerDeliveryDelayUs = mTimerDeliveryDelayUs.Snapshot();
+#endif
+    return wStatistics;
 }
 
 /**
@@ -313,8 +498,8 @@ void Task::task(void)
  */
 void Task::ProcessTask(void)
 {
-    uint32_t wNotificationValue;
-    MessageNS::Message wMessage;
+    uint32_t wNotificationValue = 0;
+    MessageNS::Message wMessage{};
 
     /* Start task timer if it exists */
     if (mpTaskTimer != nullptr)
@@ -345,7 +530,13 @@ void Task::ProcessTask(void)
                     else
                     {
                         /* Process incoming message */
+#if TASK_DIAGNOSTICS_ENABLED
+                        const int64_t wStartUs = esp_timer_get_time();
+#endif
                         ProcessIncomingMessage(wMessage);
+#if TASK_DIAGNOSTICS_ENABLED
+                        mIncomingMessageStatistics.Record(esp_timer_get_time() - wStartUs);
+#endif
                     }
 
                     /* Allow other tasks to run */
@@ -356,7 +547,13 @@ void Task::ProcessTask(void)
             /* Process any other notifications */
             if (wNotificationValue != 0)
             {
+#if TASK_DIAGNOSTICS_ENABLED
+                const int64_t wStartUs = esp_timer_get_time();
+#endif
                 ProcessUnknownNotification(wNotificationValue);
+#if TASK_DIAGNOSTICS_ENABLED
+                mUnknownNotificationStatistics.Record(esp_timer_get_time() - wStartUs);
+#endif
             }
         }
     }
@@ -396,11 +593,31 @@ void Task::ProcessIncomingTimerMessage(const MessageNS::Message &arMessage)
 {
     if (arMessage.mId == MessageNS::tMessageId::MSG_EVENT_SW_TIMER_TIMEOUT)
     {
+        // The decoder sees the whole fixed buffer, so validate the advertised length first.
+        if (arMessage.mPayloadLength != sizeof(uint32_t) ||
+            arMessage.mPayloadLength > sizeof(arMessage.mPayload))
+        {
+            LOG_WITH_REF(LOG_ERROR, LOG_LEVEL_APPLICATION_NS,
+                "%s::task() Invalid timer payload length %u",
+                pcTaskGetName(NULL), static_cast<unsigned>(arMessage.mPayloadLength));
+            return;
+        }
+
         /* Retrieve timer ID from message payload */
-        uint32_t wTimerId;
+        uint32_t wTimerId = 0;
         if (SerializeNS::DeserializeData(arMessage.mPayload, &wTimerId) == sizeof(wTimerId))
         {
+#if TASK_DIAGNOSTICS_ENABLED
+            const int64_t wEnqueueUs = mpTaskObjects->mpMessageQueue->GetLastDequeuedEnqueueUs();
+            const int64_t wDispatchUs = esp_timer_get_time();
+            // This measures callback/enqueue-to-dispatch delay, not scheduled expiry lateness.
+            mTimerDeliveryDelayUs.Record(wDispatchUs - wEnqueueUs);
+            const int64_t wStartUs = esp_timer_get_time();
+#endif
             ProcessTimerEvent(wTimerId);
+#if TASK_DIAGNOSTICS_ENABLED
+            mTimerHandlerStatistics.Record(esp_timer_get_time() - wStartUs);
+#endif
         }
         else
         {

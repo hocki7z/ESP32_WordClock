@@ -215,16 +215,18 @@ static void LogTaskStatistics(void)
         const unsigned wPercent = wValidStack ?
             static_cast<unsigned>((static_cast<uint64_t>(wUsed) * 100) / aStackBytes) : 0;
 
-        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%u\t%-9s\t%s\t%u\t%u\t%u\t%u%%\t%s",
+        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s  %4u  %-9s  %-8s  %7u  %8u  %9u  %7u%%%s",
             pcTaskGetName(aTaskHandle),
             static_cast<unsigned>(uxTaskPriorityGet(aTaskHandle)),
             wpState, wpAffinity, static_cast<unsigned>(aStackBytes),
             static_cast<unsigned>(wFree), static_cast<unsigned>(wUsed), wPercent,
-            wValidStack ? "" : "invalid stack metadata");
+            wValidStack ? "" : "  invalid stack metadata");
     };
 
     LOG(LOG_INFO, "Main::TaskStatistics()\tstack scope: application tasks + Arduino loop (not all system tasks)");
-    LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\tPrio\tState\t\tAffinity\tStackB\tMinFreeB\tPeakUsedB\tPeakUsed", "Task");
+    // Matching header/data widths avoid dependence on terminal tab-stop settings.
+    LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s  %4s  %-9s  %-8s  %7s  %8s  %9s  %8s",
+        "Task", "Prio", "State", "Affinity", "StackB", "MinFreeB", "PeakUsedB", "PeakUsed");
     for (const auto& wrTaskManagement : mTaskManagement)
     {
         if (wrTaskManagement.mpTask != nullptr)
@@ -235,7 +237,9 @@ static void LogTaskStatistics(void)
     }
     wLogTask(xTaskGetCurrentTaskHandle(), getArduinoLoopTaskStackSize());
 
-    LOG(LOG_INFO, "Main::TaskStatistics()\tqueues: task\tdepth/capacity\tobservedPeak\tfailedSends");
+    LOG(LOG_INFO, "Main::TaskStatistics()\tqueues (application messages; peak is sampled)");
+    LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s  %5s  %8s  %12s  %11s",
+        "Task", "Depth", "Capacity", "ObservedPeak", "FailedSends");
     for (const auto& wrTaskManagement : mTaskManagement)
     {
         if (wrTaskManagement.mpTask == nullptr || wrTaskManagement.mpMessageQueue == nullptr)
@@ -244,15 +248,26 @@ static void LogTaskStatistics(void)
         }
         const char* wpName = pcTaskGetName(wrTaskManagement.mpTask->getTaskHandle());
         const auto wQueue = wrTaskManagement.mpMessageQueue->GetStatistics();
-        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%u/%u\t\t%u\t\t%u",
+        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s  %5u  %8u  %12u  %11u",
             wpName, static_cast<unsigned>(wQueue.CurrentDepth), static_cast<unsigned>(wQueue.Capacity),
             static_cast<unsigned>(wQueue.PeakDepth), static_cast<unsigned>(wQueue.FailedSends));
+    }
 
+    LOG(LOG_INFO, "Main::TaskStatistics()\ttiming (elapsed wall time, not CPU time)");
+    LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s  %-18s  %10s  %10s  %10s",
+        "Task", "Metric", "Count", "LastUs", "MaxUs");
+    for (const auto& wrTaskManagement : mTaskManagement)
+    {
+        if (wrTaskManagement.mpTask == nullptr)
+        {
+            continue;
+        }
+        const char* wpName = pcTaskGetName(wrTaskManagement.mpTask->getTaskHandle());
         const auto wStats = wrTaskManagement.mpTask->GetStatistics();
         // Measurements are elapsed wall time, including preemption, not CPU utilization.
         auto wLogTiming = [wpName](const char* apMetric, const ApplicationNS::TimingStatistics& arTiming)
         {
-            LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%s\tcount=%u\tlastUs=%u\tmaxUs=%u",
+            LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s  %-18s  %10u  %10u  %10u",
                 wpName, apMetric, static_cast<unsigned>(arTiming.Count),
                 static_cast<unsigned>(arTiming.LastUs), static_cast<unsigned>(arTiming.MaxUs));
         };
