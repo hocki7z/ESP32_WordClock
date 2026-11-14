@@ -26,7 +26,7 @@ static constexpr tColor mIntroColor = 0xFFA500;     // CRGB::Orange
 /* Duration of the intro before the startup text is scrolled */
 static constexpr uint32_t mcIntroDelayMs = 3000;
 /* Delay between two scroll steps (one matrix column) */
-static constexpr uint32_t mcScrollStepMs = 70;
+static constexpr uint32_t mcScrollStepMs = 50;
 /* Scrolling text color */
 static constexpr tColor mScrollTextColor = mIntroColor;
 /* Top row of the scrolling text (vertically centered) */
@@ -35,9 +35,9 @@ static constexpr uint8_t mcScrollTextRow = (MATRIX_HEIGHT - Font5x7NS::mGlyphHei
 static constexpr int32_t mcScrollCharWidth = Font5x7NS::mGlyphWidth + Font5x7NS::mGlyphSpacing;
 
 /* Update approximately one RGB channel level per step, with bounded phase durations. */
-static constexpr uint32_t mcFadeStepMs = 20;
-static constexpr uint32_t mcFadeMinMs  = 750;
-static constexpr uint32_t mcFadeMaxMs  = 3000;
+static constexpr uint32_t mcFadeStepMs = 20;    /* Fade step duration in msec, used to calculate fade-in/out durations based on the largest RGB channel difference. */
+static constexpr uint32_t mcFadeMinMs  = 1000;  /* Minimum fade duration */
+static constexpr uint32_t mcFadeMaxMs  = 3000;  /* Maximum fade duration */
 /* Pause at the background between fade-out and fade-in (0 disables the pause). */
 static constexpr uint32_t mcFadeHoldMs = 500;
 
@@ -687,7 +687,10 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
                 AddGroupToMask(mFadeMask, arNew);
             };
 
-            mFadeMask.ClearAll();
+            /* The previous mask is physical; restore logical order before adding words.
+             * This also fades residual pixels from an interrupted transition. */
+            if (wFadeInterrupted) mFadeMask.SetZigzagOrder(true);
+            else mFadeMask.ClearAll();
             if (wItIsChanged)
             {
                 wAddGroups(wOldScene.mItIs, mDisplayScene.mItIs);
@@ -702,6 +705,10 @@ void Display::UpdateDisplay(const bool aForceRepaint, const bool aFade)
             }
             mFadeMask.SetZigzagOrder(true);
 
+            mFadeBackgroundChanged = !wInitial &&
+                ((wFadeInterrupted && mFadeBackgroundChanged) ||
+                 (ScaleColor(wOldScene.mColorBkgd, wOldScene.mBrightnessBkgd) !=
+                  ScaleColor(mDisplayScene.mColorBkgd, mDisplayScene.mBrightnessBkgd)));
             StartFade(wInitial);
         }
         else
@@ -740,6 +747,8 @@ void Display::StartFade(const bool aInitial)
         {
             if (mFadeMask.IsBitSet(wI))
                 wOutDistance = std::max(wOutDistance, DisplayFadesNS::ColorDistance(mFadeFrom[wI], mFadeBkgd));
+            else if (mFadeBackgroundChanged)
+                wOutDistance = std::max(wOutDistance, DisplayFadesNS::ColorDistance(mFadeFrom[wI], mFadeTo[wI]));
         }
     }
     mFadeOutDurationMs = FadeDuration(wOutDistance);
@@ -749,7 +758,8 @@ void Display::StartFade(const bool aInitial)
     uint8_t wInDistance = 0;
     for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
     {
-        const CRGB& wStart = (mFadeOutDurationMs > 0 && mFadeMask.IsBitSet(wI)) ? mFadeBkgd : mFadeFrom[wI];
+        const CRGB& wStart = (mFadeOutDurationMs > 0 && mFadeMask.IsBitSet(wI)) ? mFadeBkgd :
+            (mFadeOutDurationMs > 0 && mFadeBackgroundChanged) ? mFadeTo[wI] : mFadeFrom[wI];
         wInDistance = std::max(wInDistance, DisplayFadesNS::ColorDistance(wStart, mFadeTo[wI]));
     }
     mFadeInDurationMs = FadeDuration(wInDistance);
@@ -773,7 +783,8 @@ void Display::StartFade(const bool aInitial)
  * @brief Renders one fade frame.
  *
  * @details Masked LEDs fade old color -> background, hold, then fade to new color.
- *          Other changed LEDs (e.g. background) blend old -> new during fade-in.
+ *          If the background changes, unmasked pixels transition during fade-out;
+ *          otherwise other changed pixels blend old -> new during fade-in.
  */
 void Display::FadeStep(void)
 {
@@ -790,6 +801,7 @@ void Display::FadeStep(void)
         for (uint16_t wI = 0; wI < LED_NUMBER; wI++)
         {
             if (mFadeMask.IsBitSet(wI)) mLeds[wI] = mFadeBkgd;
+            else if (mFadeBackgroundChanged) mLeds[wI] = mFadeTo[wI];
         }
         FastLED.show();
         mFadeStart = millis() - mFadeOutDurationMs;
@@ -813,6 +825,10 @@ void Display::FadeStep(void)
             {
                 mLeds[wI] = DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeBkgd, wAmount);
             }
+            else if (mFadeBackgroundChanged && mFadeFrom[wI] != mFadeTo[wI])
+            {
+                mLeds[wI] = DisplayFadesNS::FadeColor(mFadeFrom[wI], mFadeTo[wI], wAmount);
+            }
         }
     }
     else if (wElapsed < wFadeInStart)
@@ -830,6 +846,10 @@ void Display::FadeStep(void)
             {
                 const CRGB wStart = (mFadeOutDurationMs > 0) ? mFadeBkgd : mFadeFrom[wI];
                 mLeds[wI] = DisplayFadesNS::FadeColor(wStart, mFadeTo[wI], wAmount);
+            }
+            else if (mFadeBackgroundChanged && mFadeOutDurationMs > 0)
+            {
+                mLeds[wI] = mFadeTo[wI];
             }
             else if (mFadeFrom[wI] != mFadeTo[wI])
             {

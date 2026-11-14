@@ -103,6 +103,7 @@ private:
     uint32_t mFadeInDurationMs  = 0;
     bool     mFadeActive = false;
     bool     mFadeHoldStarted = false;
+    bool     mFadeBackgroundChanged = false;
     /* LEDs of the word groups (old and new) that fade out to background and in again */
     BitMatrix mFadeMask{MATRIX_WIDTH, MATRIX_HEIGHT};
 
