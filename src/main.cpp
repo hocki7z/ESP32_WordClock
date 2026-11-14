@@ -10,9 +10,8 @@
 #include "WebSite.h"
 
 
-#define LOG_TASK_STATISTICS     (true)      // Enable/Disable task statistics when global logging is enabled
-
-#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+// Diagnostic switches are shared by all translation units in TaskDiagnostics.h.
+#if TASK_DIAGNOSTICS_ENABLED
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #endif
@@ -63,7 +62,7 @@ static void MultiResetDetection(void);
 static void InitApplication(void);
 static void RunApplication(void);
 
-#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+#if TASK_DIAGNOSTICS_ENABLED
 static void LogTaskStatistics(void);
 #endif
 
@@ -82,7 +81,7 @@ static constexpr size_t mcNumberOfTasks = 4;
 /** @brief Array of task management structures */
 static ApplicationNS::tTaskManagement mTaskManagement[mcNumberOfTasks];
 
-#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+#if TASK_DIAGNOSTICS_ENABLED
 /** @brief Period between task and shared-heap reports, in milliseconds */
 static constexpr uint32_t mcTaskStatisticsIntervalMs = 15000;
 #endif
@@ -130,7 +129,7 @@ void setup(void)
   */
 void loop(void)
 {
-#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+#if TASK_DIAGNOSTICS_ENABLED
     static uint32_t wLastTaskStatisticsMs = millis();
     const uint32_t wNowMs = millis();
 
@@ -154,7 +153,7 @@ void loop(void)
     }
     else
     {
-#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+#if TASK_DIAGNOSTICS_ENABLED
         /* Reuse the loop task for diagnostics instead of allocating another task. */
         vTaskDelay(pdMS_TO_TICKS(100));
 #else
@@ -169,7 +168,7 @@ void loop(void)
     PRIVATE FUNCTION CODE
  *****************************************************************************/
 
-#if (USE_LOGGING == true) && (LOG_TASK_STATISTICS == true)
+#if TASK_DIAGNOSTICS_ENABLED
 /**
  * @brief Log shared heap health and minimum-ever unused task stacks in bytes.
  *
@@ -189,29 +188,79 @@ static void LogTaskStatistics(void)
         static_cast<unsigned>(uxTaskGetNumberOfTasks()));
 
     /* Query only known, long-lived handles: a deleted task handle is unsafe. */
-    auto wLogTask = [](TaskHandle_t aTaskHandle) -> void
+    auto wLogTask = [](TaskHandle_t aTaskHandle, uint32_t aStackBytes) -> void
     {
         if (aTaskHandle == nullptr)
         {
             return;
         }
 
-        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%u\t\t%u",
+        const char* wpState = "invalid";
+        switch (eTaskGetState(aTaskHandle))
+        {
+            case eRunning: wpState = "running"; break;
+            case eReady: wpState = "ready"; break;
+            case eBlocked: wpState = "blocked"; break;
+            case eSuspended: wpState = "suspended"; break;
+            case eDeleted: wpState = "deleted"; break;
+            default: break;
+        }
+        const BaseType_t wAffinity = xTaskGetAffinity(aTaskHandle);
+        const char* wpAffinity = wAffinity == tskNO_AFFINITY ? "any" :
+            (wAffinity == 0 ? "CPU0" : (wAffinity == 1 ? "CPU1" : "unknown"));
+        const uint32_t wFree = uxTaskGetStackHighWaterMark(aTaskHandle);
+        // Avoid unsigned underflow if allocation metadata does not match the watermark.
+        const bool wValidStack = aStackBytes != 0 && wFree <= aStackBytes;
+        const uint32_t wUsed = wValidStack ? aStackBytes - wFree : 0;
+        const unsigned wPercent = wValidStack ?
+            static_cast<unsigned>((static_cast<uint64_t>(wUsed) * 100) / aStackBytes) : 0;
+
+        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%u\t%-9s\t%s\t%u\t%u\t%u\t%u%%\t%s",
             pcTaskGetName(aTaskHandle),
             static_cast<unsigned>(uxTaskPriorityGet(aTaskHandle)),
-            static_cast<unsigned>(uxTaskGetStackHighWaterMark(aTaskHandle)));
+            wpState, wpAffinity, static_cast<unsigned>(aStackBytes),
+            static_cast<unsigned>(wFree), static_cast<unsigned>(wUsed), wPercent,
+            wValidStack ? "" : "invalid stack metadata");
     };
 
     LOG(LOG_INFO, "Main::TaskStatistics()\tstack scope: application tasks + Arduino loop (not all system tasks)");
-    LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\tPriority\tMinFreeStackBytes", "Task");
+    LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\tPrio\tState\t\tAffinity\tStackB\tMinFreeB\tPeakUsedB\tPeakUsed", "Task");
     for (const auto& wrTaskManagement : mTaskManagement)
     {
         if (wrTaskManagement.mpTask != nullptr)
         {
-            wLogTask(wrTaskManagement.mpTask->getTaskHandle());
+            wLogTask(wrTaskManagement.mpTask->getTaskHandle(),
+                wrTaskManagement.mpTask->GetConfiguredStackSize());
         }
     }
-    wLogTask(xTaskGetCurrentTaskHandle());
+    wLogTask(xTaskGetCurrentTaskHandle(), getArduinoLoopTaskStackSize());
+
+    LOG(LOG_INFO, "Main::TaskStatistics()\tqueues: task\tdepth/capacity\tobservedPeak\tfailedSends");
+    for (const auto& wrTaskManagement : mTaskManagement)
+    {
+        if (wrTaskManagement.mpTask == nullptr || wrTaskManagement.mpMessageQueue == nullptr)
+        {
+            continue;
+        }
+        const char* wpName = pcTaskGetName(wrTaskManagement.mpTask->getTaskHandle());
+        const auto wQueue = wrTaskManagement.mpMessageQueue->GetStatistics();
+        LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%u/%u\t\t%u\t\t%u",
+            wpName, static_cast<unsigned>(wQueue.CurrentDepth), static_cast<unsigned>(wQueue.Capacity),
+            static_cast<unsigned>(wQueue.PeakDepth), static_cast<unsigned>(wQueue.FailedSends));
+
+        const auto wStats = wrTaskManagement.mpTask->GetStatistics();
+        // Measurements are elapsed wall time, including preemption, not CPU utilization.
+        auto wLogTiming = [wpName](const char* apMetric, const ApplicationNS::TimingStatistics& arTiming)
+        {
+            LOG(LOG_INFO, "Main::TaskStatistics()\t%-16s\t%s\tcount=%u\tlastUs=%u\tmaxUs=%u",
+                wpName, apMetric, static_cast<unsigned>(arTiming.Count),
+                static_cast<unsigned>(arTiming.LastUs), static_cast<unsigned>(arTiming.MaxUs));
+        };
+        wLogTiming("messageHandler", wStats.IncomingMessage);
+        wLogTiming("timerHandler", wStats.TimerHandler);
+        wLogTiming("notificationBatch", wStats.UnknownNotification);
+        wLogTiming("timerDeliveryDelay", wStats.TimerDeliveryDelayUs);
+    }
 }
 #endif
 
