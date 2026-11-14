@@ -75,6 +75,7 @@ private:
     ApplicationNS::TaskTimer* mpScrollTimer = nullptr;
     ApplicationNS::TaskTimer* mpFadeTimer   = nullptr;
     ApplicationNS::TaskTimer* mpSaverTimer  = nullptr;
+    hw_timer_t* mpFadeHardwareTimer = nullptr;
 
     /* Current display state */
     tDisplayState mState = STATE_INTRO;
@@ -131,6 +132,7 @@ private:
 
     /* ApplicationNS::Task::ProcessTimerEvent() */
     void ProcessTimerEvent(const uint32_t aTimerId) override;
+    void ProcessUnknownNotification(const uint32_t aNotificationValue) override;
 
     void ShowIntro(void);
 

@@ -6,6 +6,7 @@
  */
 
 #include <WiFi.h>
+#include <esp_intr_alloc.h>
 
 #include "Global.h"
 #include "Display.h"
@@ -38,8 +39,23 @@ static constexpr int32_t mcScrollCharWidth = Font5x7NS::mGlyphWidth + Font5x7NS:
 static constexpr uint32_t mcFadeStepMs = 20;    /* Fade step duration in msec, used to calculate fade-in/out durations based on the largest RGB channel difference. */
 static constexpr uint32_t mcFadeMinMs  = 1000;  /* Minimum fade duration */
 static constexpr uint32_t mcFadeMaxMs  = 3000;  /* Maximum fade duration */
+static constexpr uint32_t mcFadeTimerNotification = 0x02;
 /* Pause at the background between fade-out and fade-in (0 disables the pause). */
 static constexpr uint32_t mcFadeHoldMs = 500;
+
+/* One display task owns the hardware timer and receives its ISR notification. */
+static TaskHandle_t gFadeTimerTaskHandle = nullptr;
+
+/** @brief Wake the display task; LED work is deliberately deferred out of ISR context. */
+void IRAM_ATTR DisplayFadeTimerISR(void)
+{
+    TaskHandle_t wTaskHandle = gFadeTimerTaskHandle;
+    if (wTaskHandle == nullptr) return;
+
+    BaseType_t wHigherPriorityTaskWoken = pdFALSE;
+    xTaskNotifyFromISR(wTaskHandle, mcFadeTimerNotification, eSetBits, &wHigherPriorityTaskWoken);
+    if (wHigherPriorityTaskWoken) portYIELD_FROM_ISR();
+}
 
 /** @brief Converts the largest RGB channel difference into a bounded phase duration. */
 static uint32_t FadeDuration(uint8_t aDistance)
@@ -69,6 +85,15 @@ Display::Display(char const* apName, ApplicationNS::tTaskPriority aPriority, con
  */
 Display::~Display()
 {
+    if (mpFadeHardwareTimer)
+    {
+        timerAlarmDisable(mpFadeHardwareTimer);
+        timerDetachInterrupt(mpFadeHardwareTimer);
+        timerEnd(mpFadeHardwareTimer);
+        mpFadeHardwareTimer = nullptr;
+    }
+    gFadeTimerTaskHandle = nullptr;
+
     if (mpIntroTimer)
     {
         mpIntroTimer->stop();
@@ -114,8 +139,21 @@ void Display::Init(ApplicationNS::tTaskObjects* apTaskObjects)
     mpScrollTimer = new ApplicationNS::TaskTimer(mScrollTimerId, pdMS_TO_TICKS(mcScrollStepMs), true);
     mpScrollTimer->Init(&mTimerObjects);
 
-    mpFadeTimer = new ApplicationNS::TaskTimer(mFadeTimerId, pdMS_TO_TICKS(mcFadeStepMs), true);
-    mpFadeTimer->Init(&mTimerObjects);
+    /* A 1 MHz hardware timer only signals the task; rendering stays task-owned. */
+    gFadeTimerTaskHandle = this->getTaskHandle();
+    mpFadeHardwareTimer = timerBegin(0, 80, true);
+    if (mpFadeHardwareTimer)
+    {
+        timerAttachInterruptFlag(mpFadeHardwareTimer, &DisplayFadeTimerISR, false, ESP_INTR_FLAG_IRAM);
+        timerAlarmWrite(mpFadeHardwareTimer, uint64_t(mcFadeStepMs) * 1000U, true);
+        timerAlarmDisable(mpFadeHardwareTimer);
+    }
+    else
+    {
+        LOG(LOG_WARN, "Display::Init() Hardware fade timer unavailable; using FreeRTOS timer");
+        mpFadeTimer = new ApplicationNS::TaskTimer(mFadeTimerId, pdMS_TO_TICKS(mcFadeStepMs), true);
+        mpFadeTimer->Init(&mTimerObjects);
+    }
 
     mpSaverTimer = new ApplicationNS::TaskTimer(mSaverTimerId, pdMS_TO_TICKS(mcSaverStepMs), true);
     mpSaverTimer->Init(&mTimerObjects);
@@ -176,7 +214,7 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
             ScrollTextStep();
             break;
 
-        case mFadeTimerId:
+        case mFadeTimerId:  // Software fallback when hardware timer allocation fails
             FadeStep();
             break;
 
@@ -188,6 +226,17 @@ void Display::ProcessTimerEvent(const uint32_t aTimerId)
             LOG(LOG_ERROR, "Display::ProcessTimerEvent() Unknown timer ID %08X", aTimerId);
             break;
     }
+}
+
+void Display::ProcessUnknownNotification(const uint32_t aNotificationValue)
+{
+    uint32_t wRemaining = aNotificationValue;
+    if (wRemaining & mcFadeTimerNotification)
+    {
+        wRemaining &= ~mcFadeTimerNotification;
+        FadeStep();
+    }
+    if (wRemaining != 0) ApplicationNS::Task::ProcessUnknownNotification(wRemaining);
 }
 
 void Display::ProcessIncomingMessage(const MessageNS::Message &arMessage)
@@ -812,7 +861,15 @@ void Display::StartFade(const bool aInitial)
     mFadeActive = true;
     mFadeHoldStarted = false;
 
-    mpFadeTimer->start();
+    if (mpFadeHardwareTimer)
+    {
+        timerWrite(mpFadeHardwareTimer, 0);
+        timerAlarmEnable(mpFadeHardwareTimer);
+    }
+    else if (mpFadeTimer)
+    {
+        mpFadeTimer->start();
+    }
 }
 
 /**
@@ -917,7 +974,8 @@ bool Display::StopFade(void)
 {
     const bool wWasActive = mFadeActive;
 
-    mpFadeTimer->stop();
+    if (mpFadeHardwareTimer) timerAlarmDisable(mpFadeHardwareTimer);
+    if (mpFadeTimer) mpFadeTimer->stop();
     mFadeActive = false;
 
     return wWasActive;
