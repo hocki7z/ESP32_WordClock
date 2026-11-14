@@ -1308,12 +1308,12 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
     static const char* const wcDays[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
     static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Hour", "Min", "Action"};
 
-    String wHtml = "<div style='overflow-x:auto;max-width:100%'>"
-        "<table style='border-collapse:collapse;white-space:nowrap;color:#111;background:#fff'>"
+    String wHtml = "<div style='overflow-x:auto;width:100%;max-width:100%'>"
+        "<table style='width:100%;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
         "<thead><tr>";
     for (const char* wpHeader : wcHeaders)
     {
-        wHtml += "<th scope='col' style='padding:4px;text-align:left;color:#0000c0'>";
+        wHtml += "<th scope='col' style='padding:4px;text-align:left;color:#fff'>";
         wHtml += wpHeader;
         wHtml += "</th>";
     }
@@ -1327,7 +1327,7 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             const String wSlotText(static_cast<unsigned long>(wSlot));
 
             /* Stable data attributes let a future event handler identify each slot and field. */
-            wHtml += (wSlot % 2 == 0) ? "<tr style='background:#eee' data-slot='" : "<tr data-slot='";
+            wHtml += "<tr data-slot='";
             wHtml += wSlotText;
             wHtml += "'><td style='padding:3px 4px'>";
             wHtml += wSlotText;
