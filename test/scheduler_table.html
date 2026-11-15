@@ -44,6 +44,7 @@ if (window.Pickr) {
 	const create = window.Pickr.create;
 	window.Pickr.create = options => {
 		const picker = create(options);
+		if (!options.el.matches('[data-scheduler] [data-color-anchor]')) return picker;
 		let finished;
 		pickerReady.push(new Promise(resolve => { finished = resolve; }));
 		const destroy = picker.destroyAndRemove.bind(picker);
@@ -84,6 +85,46 @@ if (window.Pickr) {
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 	}
 	const allUnselected = () => !root.querySelector('tbody [data-row-selected]:checked');
+	// Assert computed geometry under the selected ESPUI styles, not just CSS text.
+	function checkLayout(tableRoot, state) {
+		const visible = Array.from(tableRoot.querySelectorAll('tbody tr[data-slot]'));
+		const near = (a, b) => Math.abs(a - b) < 1;
+		check(Array.from(tableRoot.querySelectorAll('thead th')).every(cell => {
+			const css = getComputedStyle(cell);
+			return css.textAlign === 'center' && css.verticalAlign === 'middle';
+		}), state + ': headers centered horizontally and vertically');
+		check(visible.every(row => Array.from(row.cells).every(cell => {
+			const group = cell.querySelector('[data-scheduler-cell]');
+			const bounds = cell.getBoundingClientRect();
+			const children = Array.from(group.children).filter(child => child.getClientRects().length);
+			const rects = children.map(child => child.getBoundingClientRect());
+			const css = getComputedStyle(cell);
+			// Borders contribute half a pixel to the interior's vertical midpoint.
+			const middleY = (bounds.top + bounds.bottom - parseFloat(css.borderBottomWidth)) / 2;
+			return css.textAlign === 'center' && css.verticalAlign === 'middle' &&
+				near((Math.min(...rects.map(rect => rect.left)) + Math.max(...rects.map(rect => rect.right))) / 2,
+					(bounds.left + bounds.right) / 2) &&
+				rects.every(rect => near((rect.top + rect.bottom) / 2, middleY));
+		})), state + ': every item/group centered in its cell');
+		const borderFailures = visible.flatMap((row, index) => Array.from(row.cells).flatMap((cell, column) => {
+			const css = getComputedStyle(cell);
+			// Fractional browser zoom can rasterize a 1 CSS-pixel border as 0.8px.
+			const valid = index === visible.length - 1 ? parseFloat(css.borderBottomWidth) === 0 :
+				Math.abs(parseFloat(css.borderBottomWidth) - 1) <= 0.25 &&
+				css.borderBottomStyle === 'solid' && css.borderBottomColor === 'rgb(128, 128, 128)';
+			return valid ? [] : ['slot ' + row.dataset.slot + ', column ' + column + ': ' + css.borderBottom];
+		}));
+		check(borderFailures.length === 0, state + ': gray separators only between displayed rows' +
+			(borderFailures.length ? ' (' + borderFailures[0] + ')' : ''));
+		check(visible.every(row => ['[data-field="from"]', '[data-field="to"]', '[data-field="time"]',
+			'[data-color-anchor]', '[data-field="message"]', '[data-field="range"]'].every(selector => {
+			const input = row.querySelector(selector);
+			const css = getComputedStyle(input);
+			return near(input.getBoundingClientRect().height, 26) && css.boxSizing === 'border-box' &&
+				css.marginTop === '0px' && css.marginBottom === '0px' && css.marginLeft === '0px' && css.marginRight === '0px' &&
+				css.paddingTop === '2px' && css.paddingBottom === '2px';
+		})), state + ': color/day/time/text fields share 26px sizing and spacing');
+	}
 	try {
 		// Reproduce the old hidden-only failure under a host display override (not a Pickr API issue).
 		const probe = document.createElement('input');
@@ -93,15 +134,22 @@ if (window.Pickr) {
 		for (let slot = 0; slot < 8; slot++) {
 			const tr = document.createElement('tr');
 			tr.dataset.slot = slot;
-			tr.innerHTML = '<td><input type="checkbox" data-row-selected aria-label="Select slot ' + slot + '" style="display:inline-block;width:auto;height:auto;margin:0 6px 0 0;padding:0;box-shadow:none;background:transparent"><span data-slot-label>' + slot + '</span></td>' + ['active', 'on', 'from', 'to', 'time'].map(field => {
+			tr.innerHTML = '<td><input type="checkbox" data-row-selected aria-label="Select slot ' + slot + '" style="display:inline-block;width:auto;height:auto;margin:0;padding:0;box-shadow:none;background:transparent"><span data-slot-label>' + slot + '</span></td>' + ['active', 'on', 'from', 'to', 'time'].map(field => {
 				if (field === 'from' || field === 'to') {
-					return '<td><select data-field="' + field + '">' + ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, value) => '<option value="' + value + '">' + day + '</option>').join('') + '</select></td>';
+					return '<td><select data-field="' + field + '" style="width:auto;color:#111;background:#fff;box-shadow:none">' + ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, value) => '<option value="' + value + '">' + day + '</option>').join('') + '</select></td>';
 				}
-				return '<td><input data-field="' + field + '" type="' + (field === 'time' ? 'time' : 'checkbox') + '" step="60" value="00:00"></td>';
-			}).join('') + '<td><button type="button" data-color-anchor disabled>Color</button><span data-color-status role="status">Color picker loading…</span><input type="text" hidden style="display:none!important" data-field="color" value="#ffffff"></td>' +
-				'<td><input type="text" data-field="message" maxlength="64" value="' + (slot === 0 ? 'Initial &amp; firmware' : '') + '"></td>' +
-				'<td><select data-field="range"><option value="0">0..100</option><option value="1">20..50</option></select></td>' +
-				'<td><input type="range" data-field="value" min="0" max="100" value="0"><output data-value-output>0</output></td>';
+				return '<td><input data-field="' + field + '" type="' + (field === 'time' ? 'time' : 'checkbox') + '" step="60" value="00:00" style="width:auto;' + (field === 'time' ? 'color:#111;background:#fff;' : 'height:auto;padding:0;background:transparent;') + 'box-shadow:none"></td>';
+			}).join('') + '<td><input type="text" data-color-anchor readonly role="button" aria-haspopup="dialog" aria-label="Choose color" disabled><span data-color-status role="status">Color picker loading…</span><input type="text" hidden style="display:none!important" data-field="color" value="#ffffff"></td>' +
+				'<td><input type="text" data-field="message" maxlength="64" style="width:180px;color:#111;background:#fff" value="' + (slot === 0 ? 'Initial &amp; firmware' : '') + '"></td>' +
+				'<td><select data-field="range" style="width:90px;color:#111;background:#fff"><option value="0">0..100</option><option value="1">20..50</option></select></td>' +
+				'<td><input type="range" data-field="value" min="0" max="100" value="0" style="width:120px"><output data-value-output>0</output></td>';
+			// Mirror the production cell groups, including the detached template.
+			for (const cell of tr.cells) {
+				const group = document.createElement('div');
+				group.dataset.schedulerCell = '';
+				group.append(...cell.childNodes);
+				cell.append(group);
+			}
 			if (slot === 0) {
 				// Simulate actual firmware defaults (attributes, not browser-only properties).
 				tr.querySelector('[data-field="active"]').setAttribute('checked', '');
@@ -201,12 +249,17 @@ if (window.Pickr) {
 		await settle();
 		check(window.Pickr && actualPickers.length === 8, 'actual bundled Pickr initializes eight anchors');
 		await Promise.all(pickerReady);
-		check(storageHiddenUntilInit, 'text storage stays hidden and button disabled until real Pickr init');
+		check(storageHiddenUntilInit, 'text storage stays hidden and anchor disabled until real Pickr init');
 		const nativeInput = first.querySelector('[data-field="color"]');
-		const colorButton = first.querySelector('[data-color-anchor]');
+		const colorAnchor = first.querySelector('[data-color-anchor]');
 		check(getComputedStyle(nativeInput).display === 'none', 'ESPUI CSS cannot expose initialized native color input');
 		check(nativeInput.type === 'text' && nativeInput.getClientRects().length === 0 && !root.querySelector('input[type="color"]'), 'no native color input or native popup click target exists');
-		check(getComputedStyle(colorButton).display === 'inline-block' && colorButton.getBoundingClientRect().width > 0, 'scheduler Pickr button is visible under ESPUI CSS');
+		check(getComputedStyle(colorAnchor).display !== 'none' && colorAnchor.getBoundingClientRect().width > 0, 'scheduler Pickr anchor is visible under ESPUI CSS');
+		check(colorAnchor.tagName === 'INPUT' && colorAnchor.type === 'text' && colorAnchor.readOnly &&
+			colorAnchor.getAttribute('aria-label') === 'Choose color' && colorAnchor.getAttribute('role') === 'button',
+			'color anchor is an accessible readonly text field, independent of schema storage');
+		check(colorAnchor.value === '0x12ABEF' && nativeInput.value === '#12ABEF', 'display is uppercase 0xRRGGBB while schema remains #RRGGBB');
+		checkLayout(root, 'initial table with trailing template');
 		const picker = actualPickers[0];
 		const color = () => picker.getColor().toHEXA().toString().slice(0, 7).toUpperCase();
 		const draft = value => {
@@ -218,18 +271,46 @@ if (window.Pickr) {
 		check(color() === rows[0].color, 'Pickr initial color matches setter');
 		check(picker.getRoot().app.querySelectorAll('.pcr-swatches button').length === 12, 'Pickr has twelve common swatches');
 		check(picker.getRoot().app.dataset.theme === 'monolith', 'Pickr theme matches native ESPUI and bundled stylesheet');
+		check(Array.from(picker.getRoot().app.querySelectorAll('.pcr-type')).every(input =>
+			input.hidden && getComputedStyle(input).display === 'none'), 'all format toggles including HEX are absent from layout under ESPUI CSS');
+		check(picker.getRoot().app.querySelector('.pcr-result').type === 'text' &&
+			!picker.getRoot().app.querySelector('.pcr-result').hidden &&
+			!picker.getRoot().app.querySelector('.pcr-save').hidden && !picker.getRoot().app.querySelector('.pcr-cancel').hidden,
+			'hex text entry and Save/Cancel remain enabled');
 		check(!first.querySelector('[data-color-status]').textContent, 'ready picker clears loading feedback');
+		for (const [hex, rgb, foreground] of [
+			['#000000', 'rgb(0, 0, 0)', 'rgb(255, 255, 255)'],
+			['#FFFFFF', 'rgb(255, 255, 255)', 'rgb(0, 0, 0)'],
+			['#0000FF', 'rgb(0, 0, 255)', 'rgb(255, 255, 255)'],
+			['#00FF00', 'rgb(0, 255, 0)', 'rgb(0, 0, 0)']
+		]) {
+			api.setRow(first, { ...rows[0], color: hex });
+			check(colorAnchor.value === '0x' + hex.slice(1) && getComputedStyle(colorAnchor).backgroundColor === rgb &&
+				getComputedStyle(colorAnchor).color === foreground && api.getRow(first).color === hex,
+				'actual background and luminance-based text contrast for ' + hex);
+		}
 		api.setRow(first, { ...rows[0], color: '#AABBCC' });
 		check(color() === '#AABBCC', 'setter synchronizes actual Pickr');
-		colorButton.click();
-		check(picker.isOpen() && picker.getRoot().app.classList.contains('visible'), 'scheduler button opens actual monolith Pickr popup');
+		colorAnchor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		check(picker.isOpen(), 'Enter opens the readonly anchor picker');
+		picker.hide();
+		colorAnchor.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+		check(picker.isOpen(), 'Space opens the readonly anchor picker');
+		picker.hide();
+		colorAnchor.click();
+		check(picker.isOpen() && picker.getRoot().app.classList.contains('visible'), 'scheduler anchor opens actual monolith Pickr popup');
+		check(Array.from(picker.getRoot().app.querySelectorAll('.pcr-type')).every(input => input.getClientRects().length === 0) &&
+			['.pcr-result', '.pcr-save', '.pcr-cancel'].every(selector => picker.getRoot().app.querySelector(selector).getBoundingClientRect().width > 0),
+			'open dialog shows hex entry/Save/Cancel but no HEX representation button');
 		draft('#FF0000');
 		check(api.getRow(first).color === '#AABBCC', 'draft color does not commit');
 		picker.getRoot().app.querySelector('.pcr-save').click();
 		check(api.getRow(first).color === '#FF0000', 'Pickr Save commits selected color');
+		check(colorAnchor.value === '0xFF0000', 'Pickr Save updates displayed 0x value');
 		picker.show(); draft('#00FF00');
 		picker.getRoot().app.querySelector('.pcr-cancel').click();
 		check(api.getRow(first).color === '#FF0000' && color() === '#FF0000', 'Pickr Cancel discards draft');
+		check(colorAnchor.value === '0xFF0000', 'Pickr Cancel preserves committed anchor label');
 		picker.show(); draft('#0000FF'); picker.hide();
 		check(api.getRow(first).color === '#FF0000' && color() === '#FF0000', 'Pickr hide discards draft');
 		api.setRows(rows);
@@ -294,6 +375,7 @@ if (window.Pickr) {
 		api.removeRow(first);
 		check(destroyedPickers === 1 && !removedPopup.isConnected, 'Remove destroys open Pickr and removes popup');
 		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7', 'Remove does not reindex surviving slots');
+		checkLayout(root, 'after removal');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7,0', 'Add chooses first free stable slot');
 		check(JSON.stringify(api.getRows().at(-1)) === JSON.stringify({slot:0,active:false,on:false,from:0,to:0,hour:0,minute:0,color:'#FFFFFF',message:'',range:0,value:0}), 'Add creates default values, not cloned edits');
@@ -301,6 +383,9 @@ if (window.Pickr) {
 		check(allUnselected() && removeSelected.disabled, 'Add leaves rows unselected');
 		const added = root.querySelector('tr[data-slot="0"]');
 		check(added.querySelector('[data-row-selected]').getAttribute('aria-label') === 'Select slot 0' && added.querySelector('[data-slot-label]').textContent === '0', 'Add updates template selection label and visible stable slot');
+		await Promise.all(pickerReady); await settle();
+		checkLayout(root, 'after addition');
+		check(added.querySelector('[data-color-anchor]').value === '0xFFFFFF', 'new row initializes anchor label from default storage');
 		selectSlot(0);
 		removeSelected.click();
 		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7' && removeSelected.disabled, 'single selected removal preserves all other IDs and disables Remove');
@@ -316,6 +401,8 @@ if (window.Pickr) {
 		const sparse = [rows[7], rows[2]];
 		api.setRows(sparse);
 		check(JSON.stringify(api.getRows()) === JSON.stringify(sparse), 'sparse setter/getter preserves IDs, order and extended fields');
+		await Promise.all(pickerReady); await settle();
+		checkLayout(root, 'sparse reordered rows');
 		const beforeInvalid = JSON.stringify(api.getRows());
 		rejects(() => api.setRows([rows[1], {...rows[6], message:'ä'.repeat(33)}]), 'invalid final row rejected before structural changes');
 		check(JSON.stringify(api.getRows()) === beforeInvalid, 'invalid batch leaves row count, values and identities unchanged');
@@ -323,6 +410,7 @@ if (window.Pickr) {
 		check(JSON.stringify(JSON.parse(submitted.options.body).rows) === JSON.stringify(sparse), 'Save sends only sparse displayed slots');
 		api.setRows([]);
 		check(api.getRows().length === 0 && !root.querySelector('[data-action="add-scheduler-row"]').disabled, 'setter supports zero rows and enables Add');
+		checkLayout(root, 'empty table');
 		await api.save();
 		check(JSON.parse(submitted.options.body).rows.length === 0, 'empty Save submits explicit empty batch');
 		check(removeSelected.disabled, 'global Remove disabled when table is empty, including after Save');
@@ -331,6 +419,8 @@ if (window.Pickr) {
 		check(api.getRows().length === 0, 'disabled global Remove leaves empty table unchanged');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		check(api.getRows().length === 1 && api.getRows()[0].slot === 0, 'Add works from template after removing all rows');
+		await Promise.all(pickerReady); await settle();
+		checkLayout(root, 'single row without separator');
 		check(removeSelected.disabled && allUnselected(), 'Add from empty leaves selection clear and Remove disabled');
 		selectSlot(0);
 		removeSelected.click();
@@ -355,6 +445,8 @@ if (window.Pickr) {
 		check(submitted === submittedBeforeReload, 'Reload does not submit or save');
 		await Promise.all(pickerReady); await settle();
 		const activePicker = actualPickers.at(-8);
+		checkLayout(root, 'reloaded table');
+		check(root.querySelector('[data-color-anchor]').value === '0x2244FF', 'Reload restores firmware color display');
 		activePicker.show();
 		const reloadedPopup = activePicker.getRoot().app;
 		const destroyedBeforeReload = destroyedPickers;
@@ -367,9 +459,10 @@ if (window.Pickr) {
 		window.Pickr = {}; // Loader placeholder is not a usable API.
 		api.addRow();
 		const fallback = root.querySelector('tr[data-slot]');
-		check(fallback.querySelector('[data-color-anchor]').disabled && getComputedStyle(fallback.querySelector('[data-field="color"]')).display === 'none', 'missing library disables button without native fallback');
+		check(fallback.querySelector('[data-color-anchor]').disabled && getComputedStyle(fallback.querySelector('[data-field="color"]')).display === 'none', 'missing library disables anchor without native fallback');
 		check(fallback.querySelector('[data-color-status]').textContent.includes('unavailable'), 'missing library has clear feedback');
 		api.setRow(fallback, { ...rows[0], color: '#334455' });
+		check(fallback.querySelector('[data-color-anchor]').value === '0x334455', 'anchor display synchronizes even before Pickr is available');
 		check(typeof pickerRetryTask === 'function', 'unavailable library schedules bounded-work retry');
 		window.Pickr = bundledPickr;
 		clearTimeout(pickerRetryId); pickerRetryTask();
@@ -399,15 +492,27 @@ if (window.Pickr) {
 		api.reload(replacementRoot);
 		check(JSON.stringify(api.getRows(replacementRoot)) === JSON.stringify(initial), 'whole-label updates cannot overwrite original Reload baseline');
 		await Promise.all(pickerReady); await settle();
+		checkLayout(replacementRoot, 'whole-label replacement and Reload');
+		const otherAnchor = document.createElement('button');
+		document.body.append(otherAnchor);
+		const otherPicker = window.Pickr.create({ el: otherAnchor, useAsButton: true, theme: 'monolith', default: '#FFFFFF',
+			components: { interaction: { hex: true, input: true, save: true, cancel: true } } });
+		await new Promise(resolve => otherPicker.on('init', resolve));
+		otherPicker.show();
+		check(otherPicker.getRoot().app.querySelector('.pcr-type[data-type="HEXA"]').getBoundingClientRect().width > 0,
+			'non-scheduler Pickr retains its HEX toggle');
+		otherPicker.destroyAndRemove(); otherAnchor.remove();
 		output.textContent += '\n' + passed + ' tests passed.';
 		const summary = document.createElement('p');
 		summary.textContent = passed + ' tests passed.';
 		output.after(summary);
 		document.querySelector('h1').textContent = 'Scheduler table tests: ' + passed + ' passed';
+		document.title = document.querySelector('h1').textContent;
 		document.body.dataset.testResult = 'passed';
 	} catch (error) {
 		output.textContent += '\nFAIL: ' + error.message;
 		document.querySelector('h1').textContent = 'Scheduler table tests: FAIL after ' + passed + ' checks: ' + error.message;
+		document.title = document.querySelector('h1').textContent;
 		document.body.dataset.testResult = 'failed';
 	}
 })();

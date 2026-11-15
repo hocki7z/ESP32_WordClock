@@ -1464,7 +1464,7 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
         "<thead><tr>";
     for (const char* wpHeader : wcHeaders)
     {
-        wHtml += "<th scope='col' style='padding:4px;text-align:left;color:#fff'>";
+        wHtml += "<th scope='col' style='padding:4px;text-align:center;vertical-align:middle;color:#fff'>";
         wHtml += wpHeader;
         wHtml += "</th>";
     }
@@ -1484,31 +1484,31 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             /* Stable data attributes let a future event handler identify each slot and field. */
             wHtml += "<tr data-slot='";
             wHtml += wSlotText;
-            wHtml += "'><td style='padding:3px 4px'><input type='checkbox' data-row-selected aria-label='Select slot ";
+            wHtml += "'><td><div data-scheduler-cell><input type='checkbox' data-row-selected aria-label='Select slot ";
             wHtml += wSlotText;
-            wHtml += "' style='display:inline-block;width:auto;height:auto;margin:0 6px 0 0;padding:0;box-shadow:none;background:transparent'>"
+            wHtml += "' style='display:inline-block;width:auto;height:auto;margin:0;padding:0;box-shadow:none;background:transparent'>"
                 "<span data-slot-label>";
             wHtml += wSlotText;
-            wHtml += "</span></td>";
+            wHtml += "</span></div></td>";
 
             auto wAddCheckbox = [&wHtml](const char* apField, const char* apLabel, bool aChecked)
             {
-                wHtml += "<td style='padding:3px 4px;text-align:center'><input type='checkbox' data-field='";
+                wHtml += "<td><div data-scheduler-cell><input type='checkbox' data-field='";
                 wHtml += apField;
                 wHtml += "' aria-label='";
                 wHtml += apLabel;
                 wHtml += "' style='width:auto;height:auto;margin:0;padding:0;box-shadow:none;background:transparent'";
                 if (aChecked) wHtml += " checked";
-                wHtml += "></td>";
+                wHtml += "></div></td>";
             };
 
             auto wAddDay = [&wHtml](const char* apField, const char* apLabel, uint8_t aDay)
             {
-                wHtml += "<td style='padding:3px 4px'><select data-field='";
+                wHtml += "<td><div data-scheduler-cell><select data-field='";
                 wHtml += apField;
                 wHtml += "' aria-label='";
                 wHtml += apLabel;
-                wHtml += "' style='width:auto;height:26px;margin:0;padding:1px;color:#111;background:#fff;box-shadow:none'>";
+                wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'>";
                 /* An invalid stored day must not silently appear as a valid selection. */
                 if (aDay >= 7) wHtml += "<option value='' selected disabled>?</option>";
                 for (uint8_t wDay = 0; wDay < 7; ++wDay)
@@ -1521,7 +1521,7 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
                     wHtml += wcDays[wDay];
                     wHtml += "</option>";
                 }
-                wHtml += "</select></td>";
+                wHtml += "</select></div></td>";
             };
 
             wAddCheckbox("active", "Active", wrRow.mActive);
@@ -1536,24 +1536,24 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
                 snprintf(wTimeText, sizeof(wTimeText), "%02u:%02u",
                     static_cast<unsigned>(wrRow.mHour), static_cast<unsigned>(wrRow.mMinute));
             }
-            wHtml += "<td style='padding:3px 4px'><input type='time' step='60' data-field='time' "
+            wHtml += "<td><div data-scheduler-cell><input type='time' step='60' data-field='time' "
                 "aria-label='Time' value='";
             wHtml += wTimeText;
-            wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td>";
+            wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></div></td>";
             /* Text storage can never invoke a native color dialog, even if host CSS unhides it. */
-            wHtml += "<td><button type='button' data-color-anchor aria-label='Choose color' disabled>Color</button>"
+            wHtml += "<td><div data-scheduler-cell><input type='text' data-color-anchor readonly role='button' aria-haspopup='dialog' aria-label='Choose color' disabled>"
                 "<span data-color-status role='status'>Color picker loading…</span>"
                 "<input type='text' data-field='color' aria-label='Color' hidden style='display:none!important' value='";
             wHtml += EscapeHtml(wrRow.mColor);
-            wHtml += "'></td><td><input type='text' data-field='message' aria-label='Message' maxlength='64' value='";
+            wHtml += "'></div></td><td><div data-scheduler-cell><input type='text' data-field='message' aria-label='Message' maxlength='64' value='";
             wHtml += EscapeHtml(wrRow.mMessage);
-            wHtml += "' style='width:180px;color:#111;background:#fff'></td>"
-                "<td><select data-field='range' aria-label='Range' style='width:90px;color:#111;background:#fff'>"
+            wHtml += "' style='width:180px;color:#111;background:#fff'></div></td>"
+                "<td><div data-scheduler-cell><select data-field='range' aria-label='Range' style='width:90px;color:#111;background:#fff'>"
                 "<option value='0'";
             if (wrRow.mRange == 0) wHtml += " selected";
             wHtml += ">0..100</option><option value='1'";
             if (wrRow.mRange == 1) wHtml += " selected";
-            wHtml += ">20..50</option></select></td><td><input type='range' data-field='value' aria-label='Value' min='";
+            wHtml += ">20..50</option></select></div></td><td><div data-scheduler-cell><input type='range' data-field='value' aria-label='Value' min='";
             wHtml += (wrRow.mRange == 1 ? "20" : "0");
             wHtml += "' max='";
             wHtml += (wrRow.mRange == 1 ? "50" : "100");
@@ -1561,7 +1561,7 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             wHtml += String(static_cast<unsigned>(wrRow.mValue));
             wHtml += "' style='width:120px'><output data-value-output>";
             wHtml += String(static_cast<unsigned>(wrRow.mValue));
-            wHtml += "</output></td></tr>";
+            wHtml += "</output></div></td></tr>";
             if (wIsTemplate) wHtml += "</template>";
         }
     }

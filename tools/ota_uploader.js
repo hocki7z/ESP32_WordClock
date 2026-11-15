@@ -120,6 +120,35 @@
     let rowTemplate;
     const initialized = new WeakSet();
 
+    // Override ESPUI's full-width/block inputs only inside scheduler cells. Flex
+    // groups center checkbox/label and slider/output pairs as a single unit.
+    const style = document.createElement('style');
+    style.textContent = `
+        [data-scheduler] table { border-collapse:collapse; }
+        [data-scheduler] table th, [data-scheduler] table td {
+            text-align:center; vertical-align:middle; padding:3px 4px;
+        }
+        [data-scheduler] tbody tr[data-slot]:not(:last-of-type) > td {
+            border-bottom:1px solid #808080;
+        }
+        [data-scheduler] [data-scheduler-cell] {
+            display:flex; align-items:center; justify-content:center; gap:6px; min-height:26px;
+        }
+        [data-scheduler] [data-scheduler-cell] input,
+        [data-scheduler] [data-scheduler-cell] select {
+            display:inline-block; flex:0 0 auto; height:26px; margin:0; padding:2px;
+            box-sizing:border-box; text-align:center; vertical-align:middle;
+        }
+        [data-scheduler] [data-color-anchor] {
+            width:100px; font-family:monospace; cursor:pointer;
+        }
+        [data-scheduler] [data-color-status]:empty { display:none; }
+        /* Pickr emits hidden format buttons; host ESPUI input rules can unhide
+           them. Keep this override exclusive to scheduler popups. */
+        .wordclock-scheduler-picker .pcr-interaction .pcr-type { display:none !important; }
+    `;
+    document.head.append(style);
+
     function capacity(root) {
         const count = Number(root.dataset.slotCount || slotCount);
         return Number.isInteger(count) && count >= 0 && count <= slotCount ? count : slotCount;
@@ -204,14 +233,24 @@
     // Silent updates plus a guard prevent Pickr events recursively committing draft colors.
     function syncPicker(element) {
         const anchor = element.querySelector('[data-color-anchor]');
+        const color = element.querySelector('[data-field="color"]').value;
+        if (!anchor || !/^#[0-9a-f]{6}$/i.test(color)) return;
+        anchor.value = '0x' + color.slice(1).toUpperCase();
+        anchor.style.backgroundColor = color;
+        // WCAG relative luminance: choose the larger black/white contrast ratio,
+        // not the RGB integer's magnitude (which misclassifies green and blue).
+        const channels = color.slice(1).match(/../g).map(hex => {
+            const value = parseInt(hex, 16) / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+        anchor.style.color = luminance > 0.179 ? '#000000' : '#FFFFFF';
         const state = pickers.get(anchor);
         if (!state || !state.ready) return;
-        const color = element.querySelector('[data-field="color"]').value;
         state.syncing = true;
         try {
             state.picker.setColor(color, true);
             state.picker.applyColor(true);
-            if (anchor.style.backgroundColor !== color) anchor.style.backgroundColor = color;
         } finally {
             state.syncing = false;
         }
@@ -240,6 +279,7 @@
             input.type = 'text';
             input.hidden = true;
             input.style.setProperty('display', 'none', 'important');
+            syncPicker(element);
             anchor.hidden = false;
             anchor.style.display = 'inline-block';
             anchor.disabled = true;
@@ -256,9 +296,12 @@
             try {
                 state.picker = window.Pickr.create({
                     el: anchor, useAsButton: true, theme: 'monolith', default: input.value,
+                    appClass: 'wordclock-scheduler-picker',
+                    i18n: { 'btn:toggle': 'Choose color' },
                     lockOpacity: true, defaultRepresentation: 'HEX', comparison: true,
                     swatches, components: { preview: true, opacity: false, hue: true,
-                        interaction: { hex: true, input: true, save: true, cancel: true } }
+                        interaction: { hex: false, rgba: false, hsla: false, hsva: false,
+                            cmyk: false, input: true, save: true, cancel: true } }
                 });
             } catch (error) {
                 report('Color picker unavailable (initialization failed).');
@@ -269,7 +312,6 @@
                 if (pickers.get(anchor) !== state) return;
                 state.ready = true;
                 syncPicker(element);
-                anchor.textContent = 'Color';
                 anchor.disabled = false;
                 report('');
             }).on('show', () => {
@@ -488,6 +530,13 @@
     window.WordClockScheduler = { getRow, setRow, getRows, setRows, save, reload, addRow, removeRow, removeSelectedRows };
 
     // Delegation survives ESPUI replacing the label or loading it after this script runs.
+    document.addEventListener('keydown', event => {
+        if (event.target.matches('[data-scheduler] [data-color-anchor]') &&
+            (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            if (!event.target.disabled) event.target.click();
+        }
+    });
     document.addEventListener('click', event => {
         const button = event.target.closest('[data-scheduler] [data-action]');
         if (!button || button.disabled) return;
