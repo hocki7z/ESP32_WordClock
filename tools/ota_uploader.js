@@ -107,6 +107,7 @@
 /* Scheduler controls are raw label HTML, so their transport is independent of ESPUI callbacks. */
 (() => {
     const slotCount = 8;
+    const fields = ['active', 'on', 'from', 'to', 'time'];
 
     // Reject incomplete rows before updating controls or submitting anything to the device.
     function validateRow(row) {
@@ -129,14 +130,20 @@
             if (!input || input.value.trim() === '') throw new Error('Missing ' + name + '.');
             return Number(input.value);
         };
+        // Time inputs expose HH:MM regardless of the browser's localized display format.
+        const time = field('time');
+        if (!time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time.value)) {
+            throw new Error('Enter a valid time for slot ' + element.dataset.slot + '.');
+        }
+        const [hour, minute] = time.value.split(':').map(Number);
         return validateRow({
             slot: Number(element.dataset.slot),
             active: field('active').checked,
             on: field('on').checked,
             from: number('from'),
             to: number('to'),
-            hour: number('hour'),
-            minute: number('minute')
+            hour,
+            minute
         });
     }
 
@@ -144,11 +151,11 @@
     function setRow(element, row) {
         validateRow(row);
         if (Number(element.dataset.slot) !== row.slot) throw new Error('Slot mismatch.');
-        const fields = ['active', 'on', 'from', 'to', 'hour', 'minute'];
         const inputs = fields.map(name => element.querySelector('[data-field="' + name + '"]'));
         if (inputs.some(input => !input)) throw new Error('Incomplete scheduler row.');
         fields.forEach((name, index) => {
             if (name === 'active' || name === 'on') inputs[index].checked = row[name];
+            else if (name === 'time') inputs[index].value = String(row.hour).padStart(2, '0') + ':' + String(row.minute).padStart(2, '0');
             else inputs[index].value = String(row[name]);
         });
     }
@@ -177,7 +184,7 @@
             ordered[row.slot] = row;
         }
         for (const element of elements) {
-            for (const name of ['active', 'on', 'from', 'to', 'hour', 'minute']) {
+            for (const name of fields) {
                 if (!element.querySelector('[data-field="' + name + '"]')) throw new Error('Incomplete scheduler row.');
             }
         }

@@ -833,11 +833,13 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
                     return;
                 }
                 wSeen[wSlot] = true;
-                wEvent.mSchedulerRows[wSlot] = {
-                    wRow["active"].as<bool>(), wRow["on"].as<bool>(),
-                    wRow["from"].as<uint8_t>(), wRow["to"].as<uint8_t>(),
-                    wRow["hour"].as<uint8_t>(), wRow["minute"].as<uint8_t>()
-                };
+                auto& wrSnapshot = wEvent.mSchedulerRows[wSlot];
+                wrSnapshot.mActive = wRow["active"].as<bool>();
+                wrSnapshot.mOn = wRow["on"].as<bool>();
+                wrSnapshot.mFromDay = wRow["from"].as<uint8_t>();
+                wrSnapshot.mToDay = wRow["to"].as<uint8_t>();
+                wrSnapshot.mHour = wRow["hour"].as<uint8_t>();
+                wrSnapshot.mMinute = wRow["minute"].as<uint8_t>();
             }
 
             if (!mpControlEventQueue || !mpControlEventNotification ||
@@ -1386,7 +1388,7 @@ String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>
 String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const
 {
     static const char* const wcDays[] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
-    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Hour", "Min"};
+    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time"};
 
     String wHtml = "<div data-scheduler style='width:100%'><div style='overflow-x:auto;width:100%;max-width:100%'>"
         "<table style='width:100%;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
@@ -1446,26 +1448,22 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
                 wHtml += "</select></td>";
             };
 
-            auto wAddNumber = [&wHtml](const char* apField, const char* apLabel, uint8_t aValue, const char* apMax)
-            {
-                wHtml += "<td style='padding:3px 4px'><input type='number' min='0' max='";
-                wHtml += apMax;
-                wHtml += "' step='1' data-field='";
-                wHtml += apField;
-                wHtml += "' aria-label='";
-                wHtml += apLabel;
-                wHtml += "' value='";
-                wHtml += String(static_cast<unsigned>(aValue));
-                wHtml += "' style='width:4em;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td>";
-            };
-
             wAddCheckbox("active", "Active", wrRow.mActive);
             wAddCheckbox("on", "On", wrRow.mOn);
             wAddDay("from", "From day", wrRow.mFromDay);
             wAddDay("to", "To day", wrRow.mToDay);
-            wAddNumber("hour", "Hour", wrRow.mHour, "23");
-            wAddNumber("minute", "Minute", wrRow.mMinute, "59");
-            wHtml += "</tr>";
+
+            /* Invalid source times remain empty rather than silently displaying a different time. */
+            char wTimeText[6]{};
+            if ((wrRow.mHour < 24) && (wrRow.mMinute < 60))
+            {
+                snprintf(wTimeText, sizeof(wTimeText), "%02u:%02u",
+                    static_cast<unsigned>(wrRow.mHour), static_cast<unsigned>(wrRow.mMinute));
+            }
+            wHtml += "<td style='padding:3px 4px'><input type='time' step='60' data-field='time' "
+                "aria-label='Time' value='";
+            wHtml += wTimeText;
+            wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td></tr>";
         }
     }
 

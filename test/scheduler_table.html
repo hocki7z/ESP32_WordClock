@@ -6,7 +6,7 @@
 <h1>Scheduler table tests</h1>
 <div data-scheduler>
 	<table style="width:100%;color:white;background:transparent">
-		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Hour</th><th>Min</th></tr></thead>
+		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th></tr></thead>
 		<tbody></tbody>
 	</table>
 	<button type="button" data-action="save-scheduler">Save</button>
@@ -34,11 +34,11 @@
 		for (let slot = 0; slot < 8; slot++) {
 			const tr = document.createElement('tr');
 			tr.dataset.slot = slot;
-			tr.innerHTML = '<td>' + slot + '</td>' + ['active', 'on', 'from', 'to', 'hour', 'minute'].map(field => {
+			tr.innerHTML = '<td>' + slot + '</td>' + ['active', 'on', 'from', 'to', 'time'].map(field => {
 				if (field === 'from' || field === 'to') {
 					return '<td><select data-field="' + field + '">' + ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, value) => '<option value="' + value + '">' + day + '</option>').join('') + '</select></td>';
 				}
-				return '<td><input data-field="' + field + '" type="' + (field === 'active' || field === 'on' ? 'checkbox' : 'number') + '" value="0"></td>';
+				return '<td><input data-field="' + field + '" type="' + (field === 'time' ? 'time' : 'checkbox') + '" step="60" value="00:00"></td>';
 			}).join('');
 			root.querySelector('tbody').append(tr);
 		}
@@ -48,6 +48,7 @@
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'all slots round-trip');
 		const first = root.querySelector('tr[data-slot="0"]');
 		check(api.getRow(first).active === true, 'checkbox getter');
+		check(first.querySelector('[data-field="time"]').value === '23:59', 'time setter formats HH:MM');
 		api.setRow(first, { ...rows[0], on: false });
 		check(api.getRow(first).on === false, 'single-row setter');
 		api.setRows(rows);
@@ -55,10 +56,14 @@
 		rejects(() => api.setRows(rows.map(row => ({ ...row, active: 1 }))), 'reject nonboolean');
 		rejects(() => api.setRows(rows.map(row => ({ ...row, slot: 0 }))), 'reject duplicate slots');
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'invalid setter leaves table unchanged');
-		first.querySelector('[data-field="minute"]').value = '';
-		rejects(() => api.getRows(), 'reject empty numeric input');
+		first.querySelector('[data-field="time"]').value = '';
+		rejects(() => api.getRows(), 'reject empty time input');
 		api.setRows(rows);
 		check(api.getRow(first).minute === 59, 'setter repairs invalid current values');
+		check(api.getRows()[1].hour === 0 && api.getRows()[1].minute === 0, 'midnight round-trip');
+		first.querySelector('[data-field="time"]').value = '12:34:56';
+		rejects(() => api.getRows(), 'reject seconds in minute-resolution schedule');
+		api.setRows(rows);
 		let submitted;
 		window.fetch = async (url, options) => {
 			submitted = { url, options };
@@ -67,13 +72,13 @@
 		await api.save();
 		check(submitted.url === '/scheduler/save' && submitted.options.method === 'POST', 'POST endpoint');
 		check(JSON.stringify(JSON.parse(submitted.options.body).rows) === JSON.stringify(rows), 'submission includes inactive slots');
-		check(!root.querySelector('button').disabled, 'button restored after submission');
+		check(!root.querySelector('[data-action="save-scheduler"]').disabled, 'button restored after submission');
 		window.fetch = async () => ({ ok: false, text: async () => 'Queue unavailable.' });
 		await api.save();
 		check(root.querySelector('[data-scheduler-status]').textContent === 'Queue unavailable.', 'server error feedback');
-		root.querySelector('button').click();
+		root.querySelector('[data-action="save-scheduler"]').click();
 		await new Promise(resolve => setTimeout(resolve, 0));
-		check(!root.querySelector('button').disabled, 'delegated Save click completes');
+		check(!root.querySelector('[data-action="save-scheduler"]').disabled, 'delegated Save click completes');
 		output.textContent += '\n' + passed + ' tests passed.';
 	} catch (error) {
 		output.textContent += '\nFAIL: ' + error.message;
