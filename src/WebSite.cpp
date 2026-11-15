@@ -241,11 +241,12 @@ void WebSite::HandleControlEvent(const ControlEvent& arEvent)
         for (std::size_t wSlot = 0; wSlot < mcSchedulerSlotCount; ++wSlot)
         {
             const SchedulerTableRow& wrRow = arEvent.mSchedulerRows[wSlot];
-            LOG(LOG_DEBUG, "Slot: %u; Active: %u; On: %u; From: %u; To: %u; Hour: %u; Min: %u",
+            LOG(LOG_DEBUG, "Slot: %u; Active: %u; On: %u; From: %u; To: %u; Hour: %u; Min: %u; Color: %s; Range: %u; Value: %u; Message: %s",
                 static_cast<unsigned>(wSlot), static_cast<unsigned>(wrRow.mActive),
                 static_cast<unsigned>(wrRow.mOn), static_cast<unsigned>(wrRow.mFromDay),
                 static_cast<unsigned>(wrRow.mToDay), static_cast<unsigned>(wrRow.mHour),
-                static_cast<unsigned>(wrRow.mMinute));
+                static_cast<unsigned>(wrRow.mMinute), wrRow.mColor,
+                static_cast<unsigned>(wrRow.mRange), static_cast<unsigned>(wrRow.mValue), wrRow.mMessage);
         }
         return;
     }
@@ -722,9 +723,9 @@ void WebSite::InitWebUIControls(void)
         "Test mode: Save submits all slots for logging only; settings are not persisted.");
 
     const std::array<SchedulerTableRow, mcSchedulerSlotCount> wSchedulerRows = {{
-        // Active, On, From day, To day, Hour, Minute (Monday = 0)
-        {true,  true,  0, 4, 18, 30}, // Slot 0: weekdays, ON at 18:30
-        {true,  false, 0, 4, 23,  0}, // Slot 1: weekdays, OFF at 23:00
+        // Active, On, From day, To day, Hour, Minute, Color, Message, Range, Value (Monday = 0)
+        {true,  true,  0, 4, 18, 30, "#FFAA00", "Evening", 0, 80}, // 0..100
+        {true,  false, 0, 4, 23,  0, "#2244FF", "Night",   1, 35}, // 20..50
         {true,  true,  5, 6, 10,  0}, // Slot 2: weekends, ON at 10:00
         {true,  false, 5, 6, 23, 30}, // Slot 3: weekends, OFF at 23:30
         {}, {}, {}, {}               // Slots 4–7: inactive
@@ -819,25 +820,52 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
                 if (wRow.isNull() || !wRow["slot"].is<unsigned>() ||
                     !wRow["active"].is<bool>() || !wRow["on"].is<bool>() ||
                     !wRow["from"].is<unsigned>() || !wRow["to"].is<unsigned>() ||
-                    !wRow["hour"].is<unsigned>() || !wRow["minute"].is<unsigned>())
+                    !wRow["hour"].is<unsigned>() || !wRow["minute"].is<unsigned>() ||
+                    !wRow["color"].is<const char*>() || !wRow["message"].is<const char*>() ||
+                    !wRow["range"].is<unsigned>() || !wRow["value"].is<unsigned>())
                 {
                     apRequest->send(400, "text/plain", "Invalid scheduler field types.");
                     return;
                 }
                 const unsigned wSlot = wRow["slot"].as<unsigned>();
+                const JsonString wColor = wRow["color"].as<JsonString>();
+                const JsonString wMessage = wRow["message"].as<JsonString>();
+                bool wTextValid = (wColor.size() == 7) && (wColor.c_str()[0] == '#') && (wMessage.size() <= 64);
+                for (std::size_t wI = 1; wTextValid && (wI < wColor.size()); ++wI)
+                {
+                    const char wC = wColor.c_str()[wI];
+                    wTextValid = ((wC >= '0') && (wC <= '9')) || ((wC >= 'A') && (wC <= 'F')) || ((wC >= 'a') && (wC <= 'f'));
+                }
+                /* Single-line messages must not inject terminal control characters into logs. */
+                for (std::size_t wI = 0; wTextValid && (wI < wMessage.size()); ++wI)
+                {
+                    const unsigned char wC = static_cast<unsigned char>(wMessage.c_str()[wI]);
+                    wTextValid = (wC >= 32) && (wC != 127);
+                }
+                const unsigned wRange = wRow["range"].as<unsigned>();
+                const unsigned wSliderValue = wRow["value"].as<unsigned>();
                 if ((wSlot >= mcSchedulerSlotCount) || wSeen[wSlot] ||
                     (wRow["from"].as<unsigned>() > 6) || (wRow["to"].as<unsigned>() > 6) ||
-                    (wRow["hour"].as<unsigned>() > 23) || (wRow["minute"].as<unsigned>() > 59))
+                    (wRow["hour"].as<unsigned>() > 23) || (wRow["minute"].as<unsigned>() > 59) ||
+                    !wTextValid || (wRange > 1) ||
+                    (wSliderValue < ((wRange == 1) ? 20U : 0U)) ||
+                    (wSliderValue > ((wRange == 1) ? 50U : 100U)))
                 {
                     apRequest->send(400, "text/plain", "Duplicate slot or scheduler value out of range.");
                     return;
                 }
                 wSeen[wSlot] = true;
-                wEvent.mSchedulerRows[wSlot] = {
-                    wRow["active"].as<bool>(), wRow["on"].as<bool>(),
-                    wRow["from"].as<uint8_t>(), wRow["to"].as<uint8_t>(),
-                    wRow["hour"].as<uint8_t>(), wRow["minute"].as<uint8_t>()
-                };
+                auto& wrSnapshot = wEvent.mSchedulerRows[wSlot];
+                wrSnapshot.mActive = wRow["active"].as<bool>();
+                wrSnapshot.mOn = wRow["on"].as<bool>();
+                wrSnapshot.mFromDay = wRow["from"].as<uint8_t>();
+                wrSnapshot.mToDay = wRow["to"].as<uint8_t>();
+                wrSnapshot.mHour = wRow["hour"].as<uint8_t>();
+                wrSnapshot.mMinute = wRow["minute"].as<uint8_t>();
+                snprintf(wrSnapshot.mColor, sizeof(wrSnapshot.mColor), "%s", wColor.c_str());
+                snprintf(wrSnapshot.mMessage, sizeof(wrSnapshot.mMessage), "%s", wMessage.c_str());
+                wrSnapshot.mRange = static_cast<uint8_t>(wRange);
+                wrSnapshot.mValue = static_cast<uint8_t>(wSliderValue);
             }
 
             if (!mpControlEventQueue || !mpControlEventNotification ||
@@ -848,9 +876,9 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
             }
             mpControlEventNotification->Notify();
             apRequest->send(202, "text/plain", "All slots queued for logging; settings are not persisted.");
-        }, 4096);
+        }, 8192);
     wpHandler->setMethod(HTTP_POST);
-    wpHandler->setMaxContentLength(2048);
+    wpHandler->setMaxContentLength(8192);
     apServer->addHandler(wpHandler);
     mpSchedulerServer = apServer;
 }
@@ -1386,10 +1414,10 @@ String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>
 String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const
 {
     static const char* const wcDays[] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
-    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Hour", "Min"};
+    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time", "Color", "Message", "Range", "Value"};
 
     String wHtml = "<div data-scheduler style='width:100%'><div style='overflow-x:auto;width:100%;max-width:100%'>"
-        "<table style='width:100%;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
+        "<table style='width:100%;min-width:1050px;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
         "<thead><tr>";
     for (const char* wpHeader : wcHeaders)
     {
@@ -1446,26 +1474,39 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
                 wHtml += "</select></td>";
             };
 
-            auto wAddNumber = [&wHtml](const char* apField, const char* apLabel, uint8_t aValue, const char* apMax)
-            {
-                wHtml += "<td style='padding:3px 4px'><input type='number' min='0' max='";
-                wHtml += apMax;
-                wHtml += "' step='1' data-field='";
-                wHtml += apField;
-                wHtml += "' aria-label='";
-                wHtml += apLabel;
-                wHtml += "' value='";
-                wHtml += String(static_cast<unsigned>(aValue));
-                wHtml += "' style='width:4em;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td>";
-            };
-
             wAddCheckbox("active", "Active", wrRow.mActive);
             wAddCheckbox("on", "On", wrRow.mOn);
             wAddDay("from", "From day", wrRow.mFromDay);
             wAddDay("to", "To day", wrRow.mToDay);
-            wAddNumber("hour", "Hour", wrRow.mHour, "23");
-            wAddNumber("minute", "Minute", wrRow.mMinute, "59");
-            wHtml += "</tr>";
+
+            /* Invalid source times remain empty rather than silently displaying a different time. */
+            char wTimeText[6]{};
+            if ((wrRow.mHour < 24) && (wrRow.mMinute < 60))
+            {
+                snprintf(wTimeText, sizeof(wTimeText), "%02u:%02u",
+                    static_cast<unsigned>(wrRow.mHour), static_cast<unsigned>(wrRow.mMinute));
+            }
+            wHtml += "<td style='padding:3px 4px'><input type='time' step='60' data-field='time' "
+                "aria-label='Time' value='";
+            wHtml += wTimeText;
+            wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td>";
+            wHtml += "<td style='padding:3px 4px'><input type='color' data-field='color' aria-label='Color' value='";
+            wHtml += EscapeHtml(wrRow.mColor);
+            wHtml += "' style='width:54px;height:26px;margin:0;padding:0'><button type='button' data-color-picker hidden "
+                "style='width:90px;height:26px;margin:0;padding:2px'>Color</button></td>"
+                "<td style='padding:3px 4px'><input type='text' data-field='message' aria-label='Message' maxlength='64' value='";
+            wHtml += EscapeHtml(wrRow.mMessage);
+            wHtml += "' style='width:180px;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff'></td>"
+                "<td style='padding:3px 4px'><select data-field='range' aria-label='Value range' style='width:auto;height:26px;margin:0;padding:1px;color:#111;background:#fff'>"
+                "<option value='0'";
+            if (wrRow.mRange == 0) wHtml += " selected";
+            wHtml += ">0..100</option><option value='1'";
+            if (wrRow.mRange == 1) wHtml += " selected";
+            wHtml += ">20..50</option></select></td><td style='padding:3px 4px'><input type='range' data-field='value' aria-label='Value' step='1' min='";
+            wHtml += (wrRow.mRange == 1) ? "20' max='50" : "0' max='100";
+            wHtml += "' value='";
+            wHtml += String(static_cast<unsigned>(wrRow.mValue));
+            wHtml += "' style='width:140px;margin:0;padding:0;vertical-align:middle'><output data-value-output style='display:inline-block;min-width:3em;text-align:right'></output></td></tr>";
         }
     }
 

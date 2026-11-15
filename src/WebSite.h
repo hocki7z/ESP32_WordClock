@@ -43,6 +43,10 @@ private:
         uint8_t mToDay = 0;
         uint8_t mHour = 0;
         uint8_t mMinute = 0;
+        char mColor[8] = "#FFFFFF";
+        char mMessage[65] = {}; // At most 64 UTF-8 bytes, excluding the terminator
+        uint8_t mRange = 0;    // 0: 0..100; 1: 20..50
+        uint8_t mValue = 0;
     };
 
     static constexpr std::size_t mcSchedulerSlotCount = 8;

@@ -107,6 +107,87 @@
 /* Scheduler controls are raw label HTML, so their transport is independent of ESPUI callbacks. */
 (() => {
     const slotCount = 8;
+    const ranges = [[0, 100], [20, 50]];
+    const fields = ['active', 'on', 'from', 'to', 'time', 'color', 'message', 'range', 'value'];
+    const pickers = new Map();
+
+    // Keep native controls as the source of truth; Pickr is a progressive enhancement.
+    function syncRow(element) {
+        const field = name => element.querySelector('[data-field="' + name + '"]');
+        const bounds = ranges[Number(field('range').value)];
+        const slider = field('value');
+        if (bounds) {
+            slider.min = bounds[0];
+            slider.max = bounds[1];
+        }
+        const output = element.querySelector('[data-value-output]');
+        if (output.textContent !== slider.value) output.textContent = slider.value;
+        const color = field('color').value.toUpperCase();
+        const button = element.querySelector('[data-color-picker]');
+        if (button) {
+            if (button.textContent !== color) button.textContent = color;
+            button.style.background = color;
+            button.style.color = parseInt(color.slice(1), 16) > 0x7FFFFF ? '#111' : '#fff';
+        }
+        const entry = pickers.get(element);
+        if (entry && !entry.syncing) {
+            entry.baseline = color;
+            entry.syncing = true;
+            entry.picker.setColor(color, true);
+            entry.picker.applyColor(true);
+            entry.syncing = false;
+        }
+    }
+
+    // ESPUI can replace labels, so dispose detached popups and initialize new anchors once.
+    function initControls() {
+        for (const [element, entry] of pickers) {
+            if (!element.isConnected) {
+                entry.picker.destroyAndRemove();
+                pickers.delete(element);
+            }
+        }
+        for (const element of document.querySelectorAll('[data-scheduler] tr[data-slot]')) {
+            const button = element.querySelector('[data-color-picker]');
+            if (!button || pickers.has(element)) continue;
+            syncRow(element);
+            if (!window.Pickr) continue;
+            const color = element.querySelector('[data-field="color"]');
+            const entry = { picker: null, syncing: false, ready: false, open: false, baseline: color.value };
+            entry.picker = window.Pickr.create({
+                el: button, useAsButton: true, theme: 'monolith', default: color.value,
+                lockOpacity: true, defaultRepresentation: 'HEX', comparison: true,
+                swatches: [
+                    '#FFFFFF', '#000000', '#FF0000', '#FF8000',
+                    '#FFFF00', '#00FF00', '#00FFFF', '#0000FF',
+                    '#8000FF', '#FF00FF', '#FF80C0', '#FFAA00'
+                ],
+                components: { preview: true, hue: true, opacity: false,
+                    interaction: { input: true, save: true, cancel: true, clear: false } }
+            });
+            pickers.set(element, entry);
+            entry.picker.on('init', () => { entry.ready = true; syncRow(element); });
+            entry.picker.on('show', () => {
+                entry.baseline = color.value;
+                entry.open = true;
+            });
+            entry.picker.on('save', selected => {
+                if (!entry.ready || !entry.open || entry.syncing || !selected) return;
+                color.value = selected.toHEXA().toString().slice(0, 7);
+                entry.baseline = color.value;
+                syncRow(element);
+                entry.picker.hide();
+            });
+            entry.picker.on('cancel', () => entry.picker.hide());
+            entry.picker.on('hide', () => {
+                entry.open = false;
+                color.value = entry.baseline;
+                syncRow(element);
+            });
+            color.hidden = true;
+            button.hidden = false;
+        }
+    }
 
     // Reject incomplete rows before updating controls or submitting anything to the device.
     function validateRow(row) {
@@ -119,6 +200,14 @@
                 throw new Error('Invalid ' + field + ' for slot ' + row.slot + '.');
             }
         }
+        if (typeof row.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(row.color)) throw new Error('Invalid color.');
+        if (typeof row.message !== 'string' || new TextEncoder().encode(row.message).length > 64 || /[\x00-\x1f\x7f]/.test(row.message)) {
+            throw new Error('Message must be a single line of at most 64 UTF-8 bytes.');
+        }
+        const bounds = ranges[row.range];
+        if (!Number.isInteger(row.range) || !bounds || !Number.isInteger(row.value) || row.value < bounds[0] || row.value > bounds[1]) {
+            throw new Error('Value is outside the selected range.');
+        }
         return row;
     }
 
@@ -129,14 +218,24 @@
             if (!input || input.value.trim() === '') throw new Error('Missing ' + name + '.');
             return Number(input.value);
         };
+        // Time inputs expose HH:MM regardless of the browser's localized display format.
+        const time = field('time');
+        if (!time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time.value)) {
+            throw new Error('Enter a valid time for slot ' + element.dataset.slot + '.');
+        }
+        const [hour, minute] = time.value.split(':').map(Number);
         return validateRow({
             slot: Number(element.dataset.slot),
             active: field('active').checked,
             on: field('on').checked,
             from: number('from'),
             to: number('to'),
-            hour: number('hour'),
-            minute: number('minute')
+            hour,
+            minute,
+            color: field('color').value.toUpperCase(),
+            message: field('message').value,
+            range: number('range'),
+            value: number('value')
         });
     }
 
@@ -144,13 +243,19 @@
     function setRow(element, row) {
         validateRow(row);
         if (Number(element.dataset.slot) !== row.slot) throw new Error('Slot mismatch.');
-        const fields = ['active', 'on', 'from', 'to', 'hour', 'minute'];
         const inputs = fields.map(name => element.querySelector('[data-field="' + name + '"]'));
         if (inputs.some(input => !input)) throw new Error('Incomplete scheduler row.');
         fields.forEach((name, index) => {
             if (name === 'active' || name === 'on') inputs[index].checked = row[name];
-            else inputs[index].value = String(row[name]);
+            else if (name === 'time') inputs[index].value = String(row.hour).padStart(2, '0') + ':' + String(row.minute).padStart(2, '0');
+            else if (name !== 'value') inputs[index].value = String(row[name]);
         });
+        // Apply range bounds before assigning the value, avoiding the browser's automatic clamping.
+        const slider = element.querySelector('[data-field="value"]');
+        slider.min = ranges[row.range][0];
+        slider.max = ranges[row.range][1];
+        slider.value = row.value;
+        syncRow(element);
     }
 
     function getElements(root) {
@@ -177,7 +282,7 @@
             ordered[row.slot] = row;
         }
         for (const element of elements) {
-            for (const name of ['active', 'on', 'from', 'to', 'hour', 'minute']) {
+            for (const name of fields) {
                 if (!element.querySelector('[data-field="' + name + '"]')) throw new Error('Incomplete scheduler row.');
             }
         }
@@ -215,6 +320,14 @@
     }
 
     window.WordClockScheduler = { getRow, setRow, getRows, setRows, save };
+
+    document.addEventListener('input', event => {
+        const element = event.target.closest('[data-scheduler] tr[data-slot]');
+        if (element && ['range', 'value', 'color'].includes(event.target.dataset.field)) syncRow(element);
+    });
+    const schedulerObserver = new MutationObserver(initControls);
+    schedulerObserver.observe(document.documentElement, { childList: true, subtree: true });
+    initControls();
 
     // Delegation survives ESPUI replacing the label or loading it after this script runs.
     document.addEventListener('click', event => {
