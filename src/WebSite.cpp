@@ -9,6 +9,7 @@
 #include <esp_ota_ops.h>
 
 #include <ESPUI.h>
+#include <AsyncJson.h>
 
 #include "Global.h"
 
@@ -234,6 +235,21 @@ void WebSite::ProcessUnknownNotification(uint32_t aNotificationValue)
  */
 void WebSite::HandleControlEvent(const ControlEvent& arEvent)
 {
+    /* Scheduler submissions are preview data, not settings changes. Log from this task. */
+    if (arEvent.mControlParam.mHandler == ControlHandler::SchedulerSave)
+    {
+        for (std::size_t wSlot = 0; wSlot < mcSchedulerSlotCount; ++wSlot)
+        {
+            const SchedulerTableRow& wrRow = arEvent.mSchedulerRows[wSlot];
+            LOG(LOG_DEBUG, "Slot: %u; Active: %u; On: %u; From: %u; To: %u; Hour: %u; Min: %u",
+                static_cast<unsigned>(wSlot), static_cast<unsigned>(wrRow.mActive),
+                static_cast<unsigned>(wrRow.mOn), static_cast<unsigned>(wrRow.mFromDay),
+                static_cast<unsigned>(wrRow.mToDay), static_cast<unsigned>(wrRow.mHour),
+                static_cast<unsigned>(wrRow.mMinute));
+        }
+        return;
+    }
+
     /* Flag to indicate whether to send a message or not */
     bool wSendMessage = false;  // default - false
 
@@ -703,12 +719,15 @@ void WebSite::InitWebUIControls(void)
      */
     const Control::ControlId_t wSchedulerGroup = AddGroupHelper("Scheduler (test)", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
     AddLabelControl("", wSchedulerGroup, CSS_STYLE_LABEL_LIGHTER,
-        "Preview only: changes are not saved and do not control the clock.");
+        "Test mode: Save submits all slots for logging only; settings are not persisted.");
 
-    const std::array<SchedulerTableRow, 8> wSchedulerRows = {{
-        {true,  true,  6, 0, 11, 0},
-        {true,  false, 6, 0, 23, 0},
-        {}, {}, {}, {}, {}, {}
+    const std::array<SchedulerTableRow, mcSchedulerSlotCount> wSchedulerRows = {{
+        // Active, On, From day, To day, Hour, Minute (Monday = 0)
+        {true,  true,  0, 4, 18, 30}, // Slot 0: weekdays, ON at 18:30
+        {true,  false, 0, 4, 23,  0}, // Slot 1: weekdays, OFF at 23:00
+        {true,  true,  5, 6, 10,  0}, // Slot 2: weekends, ON at 10:00
+        {true,  false, 5, 6, 23, 30}, // Slot 3: weekends, OFF at 23:30
+        {}, {}, {}, {}               // Slots 4–7: inactive
     }};
     AddLabelControl("", wSchedulerGroup, CSS_STYLE_LABEL "display:block;white-space:normal;",
         BuildSchedulerTable(wSchedulerRows.data(), wSchedulerRows.size()));
@@ -769,9 +788,71 @@ void WebSite::StartWebServer(bool aIsWifiAPMode)
 
     /* Register OTA update routes */
     OTAUpdateNS::RegisterRoutes(ESPUI.WebServer(), this);
+    RegisterSchedulerRoutes(ESPUI.WebServer());
 
     /* Start task timer */
     mpTaskTimer->start();
+}
+
+/** @brief Validate a complete scheduler submission and queue an owned snapshot for logging. */
+void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
+{
+    if ((apServer == nullptr) || (apServer == mpSchedulerServer)) return;
+
+    auto* wpHandler = new AsyncCallbackJsonWebHandler("/scheduler/save",
+        [this](AsyncWebServerRequest* apRequest, JsonVariant& arJson)
+        {
+            JsonArray wRows = arJson["rows"].as<JsonArray>();
+            if (wRows.isNull() || (wRows.size() != mcSchedulerSlotCount))
+            {
+                apRequest->send(400, "text/plain", "Expected eight scheduler slots.");
+                return;
+            }
+
+            ControlEvent wEvent{};
+            wEvent.mControlParam.mHandler = ControlHandler::SchedulerSave;
+            std::array<bool, mcSchedulerSlotCount> wSeen{};
+            for (JsonVariant wValue : wRows)
+            {
+                JsonObject wRow = wValue.as<JsonObject>();
+                /* Validate JSON types before conversion so missing or fractional values cannot pass. */
+                if (wRow.isNull() || !wRow["slot"].is<unsigned>() ||
+                    !wRow["active"].is<bool>() || !wRow["on"].is<bool>() ||
+                    !wRow["from"].is<unsigned>() || !wRow["to"].is<unsigned>() ||
+                    !wRow["hour"].is<unsigned>() || !wRow["minute"].is<unsigned>())
+                {
+                    apRequest->send(400, "text/plain", "Invalid scheduler field types.");
+                    return;
+                }
+                const unsigned wSlot = wRow["slot"].as<unsigned>();
+                if ((wSlot >= mcSchedulerSlotCount) || wSeen[wSlot] ||
+                    (wRow["from"].as<unsigned>() > 6) || (wRow["to"].as<unsigned>() > 6) ||
+                    (wRow["hour"].as<unsigned>() > 23) || (wRow["minute"].as<unsigned>() > 59))
+                {
+                    apRequest->send(400, "text/plain", "Duplicate slot or scheduler value out of range.");
+                    return;
+                }
+                wSeen[wSlot] = true;
+                wEvent.mSchedulerRows[wSlot] = {
+                    wRow["active"].as<bool>(), wRow["on"].as<bool>(),
+                    wRow["from"].as<uint8_t>(), wRow["to"].as<uint8_t>(),
+                    wRow["hour"].as<uint8_t>(), wRow["minute"].as<uint8_t>()
+                };
+            }
+
+            if (!mpControlEventQueue || !mpControlEventNotification ||
+                (mpControlEventQueue->add(wEvent, 0) != pdTRUE))
+            {
+                apRequest->send(503, "text/plain", "Scheduler queue unavailable; please retry.");
+                return;
+            }
+            mpControlEventNotification->Notify();
+            apRequest->send(202, "text/plain", "All slots queued for logging; settings are not persisted.");
+        }, 4096);
+    wpHandler->setMethod(HTTP_POST);
+    wpHandler->setMaxContentLength(2048);
+    apServer->addHandler(wpHandler);
+    mpSchedulerServer = apServer;
 }
 
 /**
@@ -1298,17 +1379,16 @@ String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>
  *
  * @param apRows Slot values, or nullptr for an empty table.
  * @param aRowCount Number of slots; the array index is used as the slot number.
- * @return HTML markup only. Inputs and Save buttons require explicit event handling;
- *         ESPUI does not register controls embedded in a label automatically.
+ * @return HTML with one Save button; the custom JavaScript submits a complete snapshot.
  *
  * Updating the containing label replaces its inputs and any unsaved browser edits.
  */
 String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const
 {
-    static const char* const wcDays[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
-    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Hour", "Min", "Action"};
+    static const char* const wcDays[] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
+    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Hour", "Min"};
 
-    String wHtml = "<div style='overflow-x:auto;width:100%;max-width:100%'>"
+    String wHtml = "<div data-scheduler style='width:100%'><div style='overflow-x:auto;width:100%;max-width:100%'>"
         "<table style='width:100%;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
         "<thead><tr>";
     for (const char* wpHeader : wcHeaders)
@@ -1385,12 +1465,13 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             wAddDay("to", "To day", wrRow.mToDay);
             wAddNumber("hour", "Hour", wrRow.mHour, "23");
             wAddNumber("minute", "Minute", wrRow.mMinute, "59");
-            wHtml += "<td style='padding:3px 4px'><button type='button' data-action='save' "
-                "style='width:auto;min-width:0;height:26px;margin:0;padding:2px 6px'>Save</button></td></tr>";
+            wHtml += "</tr>";
         }
     }
 
-    wHtml += "</tbody></table></div>";
+    wHtml += "</tbody></table></div><button type='button' data-action='save-scheduler' "
+        "style='width:100%;margin:8px 0;box-sizing:border-box'>Save</button>"
+        "<span data-scheduler-status role='status' style='display:block;white-space:normal'></span></div>";
     return wHtml;
 }
 

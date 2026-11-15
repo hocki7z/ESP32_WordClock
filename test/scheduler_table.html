@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Scheduler table tests</title>
+<body style="background:#34495e;color:white;font-family:sans-serif">
+<h1>Scheduler table tests</h1>
+<div data-scheduler>
+	<table style="width:100%;color:white;background:transparent">
+		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Hour</th><th>Min</th></tr></thead>
+		<tbody></tbody>
+	</table>
+	<button type="button" data-action="save-scheduler">Save</button>
+	<span data-scheduler-status role="status"></span>
+</div>
+<pre id="results"></pre>
+<script src="../tools/ota_uploader.js"></script>
+<script>
+// Synthetic controls exercise the production JavaScript. Fetch is mocked: no device is contacted.
+(async () => {
+	const root = document.querySelector('[data-scheduler]');
+	const output = document.getElementById('results');
+	let passed = 0;
+	function check(condition, name) {
+		if (!condition) throw new Error(name);
+		passed++;
+		output.textContent += 'PASS: ' + name + '\n';
+	}
+	function rejects(action, name) {
+		let rejected = false;
+		try { action(); } catch { rejected = true; }
+		check(rejected, name);
+	}
+	try {
+		for (let slot = 0; slot < 8; slot++) {
+			const tr = document.createElement('tr');
+			tr.dataset.slot = slot;
+			tr.innerHTML = '<td>' + slot + '</td>' + ['active', 'on', 'from', 'to', 'hour', 'minute'].map(field => {
+				if (field === 'from' || field === 'to') {
+					return '<td><select data-field="' + field + '">' + ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, value) => '<option value="' + value + '">' + day + '</option>').join('') + '</select></td>';
+				}
+				return '<td><input data-field="' + field + '" type="' + (field === 'active' || field === 'on' ? 'checkbox' : 'number') + '" value="0"></td>';
+			}).join('');
+			root.querySelector('tbody').append(tr);
+		}
+		const api = window.WordClockScheduler;
+		const rows = Array.from({ length: 8 }, (_, slot) => ({ slot, active: slot === 0, on: slot === 0, from: 5, to: 6, hour: slot === 0 ? 23 : 0, minute: slot === 0 ? 59 : 0 }));
+		api.setRows(rows);
+		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'all slots round-trip');
+		const first = root.querySelector('tr[data-slot="0"]');
+		check(api.getRow(first).active === true, 'checkbox getter');
+		api.setRow(first, { ...rows[0], on: false });
+		check(api.getRow(first).on === false, 'single-row setter');
+		api.setRows(rows);
+		rejects(() => api.setRows(rows.map(row => ({ ...row, hour: 24 }))), 'reject invalid hour');
+		rejects(() => api.setRows(rows.map(row => ({ ...row, active: 1 }))), 'reject nonboolean');
+		rejects(() => api.setRows(rows.map(row => ({ ...row, slot: 0 }))), 'reject duplicate slots');
+		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'invalid setter leaves table unchanged');
+		first.querySelector('[data-field="minute"]').value = '';
+		rejects(() => api.getRows(), 'reject empty numeric input');
+		api.setRows(rows);
+		check(api.getRow(first).minute === 59, 'setter repairs invalid current values');
+		let submitted;
+		window.fetch = async (url, options) => {
+			submitted = { url, options };
+			return { ok: true, text: async () => 'Queued for logging; not persisted.' };
+		};
+		await api.save();
+		check(submitted.url === '/scheduler/save' && submitted.options.method === 'POST', 'POST endpoint');
+		check(JSON.stringify(JSON.parse(submitted.options.body).rows) === JSON.stringify(rows), 'submission includes inactive slots');
+		check(!root.querySelector('button').disabled, 'button restored after submission');
+		window.fetch = async () => ({ ok: false, text: async () => 'Queue unavailable.' });
+		await api.save();
+		check(root.querySelector('[data-scheduler-status]').textContent === 'Queue unavailable.', 'server error feedback');
+		root.querySelector('button').click();
+		await new Promise(resolve => setTimeout(resolve, 0));
+		check(!root.querySelector('button').disabled, 'delegated Save click completes');
+		output.textContent += '\n' + passed + ' tests passed.';
+	} catch (error) {
+		output.textContent += '\nFAIL: ' + error.message;
+	}
+})();
+</script>
+</body>
+</html>

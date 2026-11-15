@@ -34,6 +34,19 @@ public:
 
 private:
 
+    /** @brief Scheduler display values; weekdays use 0 = Monday through 6 = Sunday. */
+    struct SchedulerTableRow
+    {
+        bool mActive = false;
+        bool mOn = false;
+        uint8_t mFromDay = 0;
+        uint8_t mToDay = 0;
+        uint8_t mHour = 0;
+        uint8_t mMinute = 0;
+    };
+
+    static constexpr std::size_t mcSchedulerSlotCount = 8;
+
     /** @brief Tag identifying which Handle*Control() function should process a control's change, carried via ESPUI's void* callback param */
     enum class ControlHandler : uint8_t
     {
@@ -54,6 +67,7 @@ private:
         WifiConnectButton,
         WifiScanButton,
         WifiForgetButton,
+        SchedulerSave,
     };
 
     /** @brief Parameters associated with a control (used as the void* callback param in ESPUI) */
@@ -86,6 +100,9 @@ private:
                 char mPassword[SSID_PASSWORD_SIZE];
             } mWifi;
         } mPayload{};
+
+        /* Owned batch snapshot; never retain request or JSON pointers in the queue. */
+        std::array<SchedulerTableRow, mcSchedulerSlotCount> mSchedulerRows{};
     };
 
     /** @brief Ensure ControlEvent remains trivially copyable */
@@ -191,6 +208,8 @@ private:
 
     void InitWebUIControls(void);
     void StartWebServer(bool aIsWifiAPMode);
+    void RegisterSchedulerRoutes(AsyncWebServer* apServer);
+    AsyncWebServer* mpSchedulerServer = nullptr;
 
     Control::ControlId_t AddGroupHelper(const char * apLabel, Control::ControlId_t aParent = Control::noParent, Control::Color aColor = Control::Color::None,
         const bool aExpandable = false, const bool aExpanded = false);
@@ -234,17 +253,6 @@ private:
     template <std::size_t Rows, std::size_t Columns>
     String BuildHtmlTable(const std::array<std::array<const char*, Columns>, Rows>& arRows,
         bool aSeparateRows = false) const;
-
-    /** @brief Display values for one scheduler slot; weekdays use 0 = Sunday through 6 = Saturday. */
-    struct SchedulerTableRow
-    {
-        bool mActive = false;
-        bool mOn = false;
-        uint8_t mFromDay = 0;
-        uint8_t mToDay = 0;
-        uint8_t mHour = 0;
-        uint8_t mMinute = 0;
-    };
 
     String BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const;
 

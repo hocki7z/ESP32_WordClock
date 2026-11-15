@@ -103,3 +103,122 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
     addFirmwareUploader();
 })();
+
+/* Scheduler controls are raw label HTML, so their transport is independent of ESPUI callbacks. */
+(() => {
+    const slotCount = 8;
+
+    // Reject incomplete rows before updating controls or submitting anything to the device.
+    function validateRow(row) {
+        const limits = { slot: slotCount - 1, from: 6, to: 6, hour: 23, minute: 59 };
+        if (!row || typeof row.active !== 'boolean' || typeof row.on !== 'boolean') {
+            throw new Error('Active and On must be boolean values.');
+        }
+        for (const [field, max] of Object.entries(limits)) {
+            if (!Number.isInteger(row[field]) || row[field] < 0 || row[field] > max) {
+                throw new Error('Invalid ' + field + ' for slot ' + row.slot + '.');
+            }
+        }
+        return row;
+    }
+
+    function getRow(element) {
+        const field = name => element.querySelector('[data-field="' + name + '"]');
+        const number = name => {
+            const input = field(name);
+            if (!input || input.value.trim() === '') throw new Error('Missing ' + name + '.');
+            return Number(input.value);
+        };
+        return validateRow({
+            slot: Number(element.dataset.slot),
+            active: field('active').checked,
+            on: field('on').checked,
+            from: number('from'),
+            to: number('to'),
+            hour: number('hour'),
+            minute: number('minute')
+        });
+    }
+
+    // Setting a row changes browser values only; it neither saves nor triggers control events.
+    function setRow(element, row) {
+        validateRow(row);
+        if (Number(element.dataset.slot) !== row.slot) throw new Error('Slot mismatch.');
+        const fields = ['active', 'on', 'from', 'to', 'hour', 'minute'];
+        const inputs = fields.map(name => element.querySelector('[data-field="' + name + '"]'));
+        if (inputs.some(input => !input)) throw new Error('Incomplete scheduler row.');
+        fields.forEach((name, index) => {
+            if (name === 'active' || name === 'on') inputs[index].checked = row[name];
+            else inputs[index].value = String(row[name]);
+        });
+    }
+
+    function getElements(root) {
+        if (!root) throw new Error('Scheduler table not available.');
+        const elements = Array.from(root.querySelectorAll('tbody tr[data-slot]'));
+        if (elements.length !== slotCount || elements.some((element, index) => Number(element.dataset.slot) !== index)) {
+            throw new Error('Expected eight unique scheduler slots.');
+        }
+        return elements;
+    }
+
+    function getRows(root = document.querySelector('[data-scheduler]')) {
+        return getElements(root).map(getRow);
+    }
+
+    // Validate the complete batch before applying any row, avoiding partial updates on bad data.
+    function setRows(rows, root = document.querySelector('[data-scheduler]')) {
+        const elements = getElements(root);
+        if (!Array.isArray(rows) || rows.length !== slotCount) throw new Error('Expected eight scheduler rows.');
+        const ordered = new Array(slotCount);
+        for (const row of rows) {
+            validateRow(row);
+            if (ordered[row.slot]) throw new Error('Duplicate scheduler slot.');
+            ordered[row.slot] = row;
+        }
+        for (const element of elements) {
+            for (const name of ['active', 'on', 'from', 'to', 'hour', 'minute']) {
+                if (!element.querySelector('[data-field="' + name + '"]')) throw new Error('Incomplete scheduler row.');
+            }
+        }
+        elements.forEach((element, index) => setRow(element, ordered[index]));
+    }
+
+    async function save(root = document.querySelector('[data-scheduler]')) {
+        if (!root) throw new Error('Scheduler table not available.');
+        const button = root.querySelector('[data-action="save-scheduler"]');
+        const status = root.querySelector('[data-scheduler-status]');
+        if (button.disabled) return;
+        const abort = new AbortController();
+        let timeout;
+        try {
+            const rows = getRows(root);
+            button.disabled = true;
+            status.textContent = 'Submitting all slots…';
+            timeout = setTimeout(() => abort.abort(), 10000);
+            const response = await fetch('/scheduler/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rows }),
+                signal: abort.signal
+            });
+            const message = await response.text();
+            if (!response.ok) throw new Error(message || ('Submission failed (' + response.status + ').'));
+            status.textContent = message;
+        } catch (error) {
+            status.textContent = error.name === 'AbortError'
+                ? 'Request timed out; logging may already have occurred.' : error.message;
+        } finally {
+            clearTimeout(timeout);
+            button.disabled = false;
+        }
+    }
+
+    window.WordClockScheduler = { getRow, setRow, getRows, setRows, save };
+
+    // Delegation survives ESPUI replacing the label or loading it after this script runs.
+    document.addEventListener('click', event => {
+        const button = event.target.closest('[data-action="save-scheduler"]');
+        if (button) save(button.closest('[data-scheduler]'));
+    });
+})();
