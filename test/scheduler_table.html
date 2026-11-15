@@ -12,12 +12,13 @@
 <div data-scheduler>
 	<div style="width:100%;overflow-x:auto">
 	<table style="width:100%;min-width:1050px;color:white;background:transparent">
-		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th><th>Color</th><th>Message</th><th>Range</th><th>Value</th><th>Action</th></tr></thead>
+		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th><th>Color</th><th>Message</th><th>Range</th><th>Value</th></tr></thead>
 		<tbody></tbody>
 	</table>
 	</div>
 	<p>Logging only; no persistence. Reload restores initial firmware rows.</p>
 	<button type="button" data-action="add-scheduler-row">Add row</button>
+	<button type="button" data-action="remove-last-scheduler-row" disabled>Remove last row</button>
 	<button type="button" data-action="reload-scheduler">Reload</button>
 	<button type="button" data-action="save-scheduler">Save</button>
 	<span data-scheduler-status role="status"></span>
@@ -94,7 +95,7 @@ if (window.Pickr) {
 			}).join('') + '<td><button type="button" data-color-anchor disabled>Color</button><span data-color-status role="status">Color picker loading…</span><input type="text" hidden style="display:none!important" data-field="color" value="#ffffff"></td>' +
 				'<td><input type="text" data-field="message" maxlength="64" value="' + (slot === 0 ? 'Initial &amp; firmware' : '') + '"></td>' +
 				'<td><select data-field="range"><option value="0">0..100</option><option value="1">20..50</option></select></td>' +
-				'<td><input type="range" data-field="value" min="0" max="100" value="0"><output data-value-output>0</output></td><td><button type="button" data-action="remove-scheduler-row">Remove</button></td>';
+				'<td><input type="range" data-field="value" min="0" max="100" value="0"><output data-value-output>0</output></td>';
 			if (slot === 0) {
 				// Simulate actual firmware defaults (attributes, not browser-only properties).
 				tr.querySelector('[data-field="active"]').setAttribute('checked', '');
@@ -122,6 +123,10 @@ if (window.Pickr) {
 			color: '#12ABEF', message: slot === 0 ? '<b>Grüße 🌈 & "hello"</b>' : '', range: slot % 2, value: slot % 2 ? 35 : 80 }));
 		api.setRows(rows);
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'all slots round-trip');
+		const removeLast = root.querySelector('[data-action="remove-last-scheduler-row"]');
+		check(removeLast.textContent === 'Remove last row' && removeLast.previousElementSibling.dataset.action === 'add-scheduler-row' && !removeLast.closest('table'), 'explicit global Remove last row beside Add below table');
+		check(root.querySelectorAll('thead th').length === 10 && Array.from(root.querySelectorAll('tbody tr[data-slot]')).every(row => row.cells.length === 10) && !root.querySelector('[data-action="remove-scheduler-row"]') && template.content.firstElementChild.cells.length === 10, 'no Action header or per-row action cells, including template');
+		check(!removeLast.disabled, 'Remove last row enabled for populated table');
 		const first = root.querySelector('tr[data-slot="0"]');
 		check(api.getRow(first).active === true, 'checkbox getter');
 		check(first.querySelector('[data-field="time"]').value === '23:59', 'time setter formats HH:MM');
@@ -226,6 +231,17 @@ if (window.Pickr) {
 		window.fetch = async () => ({ ok: false, text: async () => 'Queue unavailable.' });
 		await api.save();
 		check(root.querySelector('[data-scheduler-status]').textContent === 'Queue unavailable.', 'server error feedback');
+		check(!removeLast.disabled, 'Remove last row restored after failed Save');
+		let finishSave;
+		window.fetch = () => new Promise(resolve => { finishSave = resolve; });
+		const pendingSave = api.save();
+		check(Array.from(root.querySelectorAll('[data-action]')).every(button => button.disabled), 'all scheduler actions disabled while Save is busy');
+		removeLast.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'delegated Remove ignored while busy');
+		finishSave({ ok: true, text: async () => 'Queued for logging; not persisted.' });
+		await pendingSave;
+		check(!removeLast.disabled && root.querySelector('[data-action="add-scheduler-row"]').disabled && !root.querySelector('[data-action="reload-scheduler"]').disabled, 'Save completion restores structural action limits');
+		window.fetch = async () => ({ ok: false, text: async () => 'Queue unavailable.' });
 		root.querySelector('[data-action="save-scheduler"]').click();
 		await new Promise(resolve => setTimeout(resolve, 0));
 		check(!root.querySelector('[data-action="save-scheduler"]').disabled, 'delegated Save click completes');
@@ -236,13 +252,16 @@ if (window.Pickr) {
 		};
 		picker.show();
 		const removedPopup = picker.getRoot().app;
-		first.querySelector('[data-action="remove-scheduler-row"]').click();
+		api.removeRow(first);
 		check(destroyedPickers === 1 && !removedPopup.isConnected, 'Remove destroys open Pickr and removes popup');
 		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7', 'Remove does not reindex surviving slots');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7,0', 'Add chooses first free stable slot');
 		check(JSON.stringify(api.getRows().at(-1)) === JSON.stringify({slot:0,active:false,on:false,from:0,to:0,hour:0,minute:0,color:'#FFFFFF',message:'',range:0,value:0}), 'Add creates default values, not cloned edits');
 		check(root.querySelector('[data-action="add-scheduler-row"]').disabled, 'Add disabled at eight rows');
+		removeLast.click();
+		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7', 'global Remove removes last visible row, not highest slot ID');
+		root.querySelector('[data-action="add-scheduler-row"]').click();
 		rejects(() => api.addRow(), 'API enforces maximum row count');
 		rejects(() => api.setRows([...rows, rows[0]]), 'setter rejects oversized batch');
 		const sparse = [rows[7], rows[2]];
@@ -257,13 +276,20 @@ if (window.Pickr) {
 		check(api.getRows().length === 0 && !root.querySelector('[data-action="add-scheduler-row"]').disabled, 'setter supports zero rows and enables Add');
 		await api.save();
 		check(JSON.parse(submitted.options.body).rows.length === 0, 'empty Save submits explicit empty batch');
+		check(removeLast.disabled, 'global Remove disabled when table is empty, including after Save');
+		removeLast.click();
+		removeLast.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		check(api.getRows().length === 0, 'disabled global Remove leaves empty table unchanged');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		check(api.getRows().length === 1 && api.getRows()[0].slot === 0, 'Add works from template after removing all rows');
-		root.querySelector('[data-action="remove-scheduler-row"]').click();
+		check(!removeLast.disabled, 'Add re-enables global Remove');
+		removeLast.click();
 		check(api.getRows().length === 0, 'Remove supports final row');
+		check(removeLast.disabled, 'removing final row disables global Remove');
 		const submittedBeforeReload = submitted;
 		root.querySelector('[data-action="reload-scheduler"]').click();
 		check(JSON.stringify(api.getRows()) === JSON.stringify(initial), 'Reload restores full initial firmware snapshot including removed rows and early-edited values');
+		check(!removeLast.disabled, 'Reload re-enables global Remove');
 		check(submitted === submittedBeforeReload, 'Reload does not submit or save');
 		await Promise.all(pickerReady); await settle();
 		const activePicker = actualPickers.at(-8);

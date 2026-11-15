@@ -147,12 +147,20 @@
             Object.freeze(initialRows);
         }
         initialized.add(root);
-        updateAdd(root);
+        updateActions(root);
     }
 
-    function updateAdd(root) {
-        const button = root.querySelector('[data-action="add-scheduler-row"]');
-        if (button) button.disabled = root.querySelectorAll('tbody tr[data-slot]').length >= capacity(root);
+    // Keep structural actions unavailable during Save, then restore row-count limits.
+    function updateActions(root) {
+        const busy = root.querySelector('[data-action="save-scheduler"]').disabled;
+        const count = root.querySelectorAll('tbody tr[data-slot]').length;
+        for (const button of root.querySelectorAll('[data-action]')) {
+            switch (button.dataset.action) {
+                case 'add-scheduler-row': button.disabled = busy || count >= capacity(root); break;
+                case 'remove-last-scheduler-row': button.disabled = busy || count === 0; break;
+                case 'reload-scheduler': button.disabled = busy; break;
+            }
+        }
     }
 
     function disposePicker(element) {
@@ -396,7 +404,7 @@
             setRow(element, rows[index]);
             root.querySelector('tbody').append(element);
         });
-        updateAdd(root);
+        updateActions(root);
         refreshPickers();
     }
 
@@ -421,7 +429,7 @@
         prepare(root);
         disposePicker(element);
         element.remove();
-        updateAdd(root);
+        updateActions(root);
         if (!root.querySelector('tbody tr[data-slot]')) {
             clearTimeout(pickerRetry);
             pickerRetry = undefined;
@@ -438,6 +446,7 @@
         try {
             const rows = getRows(root);
             button.disabled = true;
+            updateActions(root);
             status.textContent = 'Submitting displayed rows for logging only…';
             timeout = setTimeout(() => abort.abort(), 10000);
             const response = await fetch('/scheduler/save', {
@@ -455,6 +464,7 @@
         } finally {
             clearTimeout(timeout);
             button.disabled = false;
+            updateActions(root);
         }
     }
 
@@ -463,7 +473,7 @@
     // Delegation survives ESPUI replacing the label or loading it after this script runs.
     document.addEventListener('click', event => {
         const button = event.target.closest('[data-scheduler] [data-action]');
-        if (!button) return;
+        if (!button || button.disabled) return;
         const root = button.closest('[data-scheduler]');
         try {
             prepare(root);
@@ -471,7 +481,11 @@
                 case 'save-scheduler': save(root); break;
                 case 'reload-scheduler': reload(root); break;
                 case 'add-scheduler-row': addRow(root); break;
-                case 'remove-scheduler-row': removeRow(button.closest('tr[data-slot]')); break;
+                case 'remove-last-scheduler-row': {
+                    const last = getElements(root).at(-1);
+                    if (last) removeRow(last);
+                    break;
+                }
             }
         } catch (error) {
             root.querySelector('[data-scheduler-status]').textContent = error.message;

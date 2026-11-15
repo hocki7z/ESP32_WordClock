@@ -1455,7 +1455,7 @@ String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>
 String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const
 {
     static const char* const wcDays[] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
-    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time", "Color", "Message", "Range", "Value", "Action"};
+    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time", "Color", "Message", "Range", "Value"};
 
     String wHtml = "<div data-scheduler data-slot-count='";
     wHtml += String(static_cast<unsigned>(mcSchedulerSlotCount));
@@ -1558,13 +1558,16 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             wHtml += String(static_cast<unsigned>(wrRow.mValue));
             wHtml += "' style='width:120px'><output data-value-output>";
             wHtml += String(static_cast<unsigned>(wrRow.mValue));
-            wHtml += "</output></td><td><button type='button' data-action='remove-scheduler-row'>Remove</button></td></tr>";
+            wHtml += "</output></td></tr>";
             if (wIsTemplate) wHtml += "</template>";
         }
     }
 
     wHtml += "</tbody></table></div>"
         "<button type='button' data-action='add-scheduler-row'>Add row</button>"
+        "<button type='button' data-action='remove-last-scheduler-row'";
+    if (wCount == 0) wHtml += " disabled";
+    wHtml += ">Remove last row</button>"
         "<button type='button' data-action='reload-scheduler'>Reload</button>"
         "<button type='button' data-action='save-scheduler' "
         "style='width:100%;margin:8px 0;box-sizing:border-box'>Save</button>"
