@@ -419,6 +419,15 @@
         return getElements(root).map(getRow);
     }
 
+    // Slot numbers describe current positions, not row identity. Keep the nodes
+    // (and anchor-keyed Pickr state) intact when only their position changes.
+    function setSlot(element, slot) {
+        element.dataset.slot = slot;
+        const label = element.querySelector('[data-slot-label]');
+        if (label.textContent !== String(slot)) label.textContent = slot;
+        element.querySelector('[data-row-selected]').setAttribute('aria-label', 'Select slot ' + slot);
+    }
+
     // Validate the complete batch before applying any row, avoiding partial updates on bad data.
     function setRows(rows, root = document.querySelector('[data-scheduler]'), recreate = false) {
         if (!root) throw new Error('Scheduler table not available.');
@@ -445,11 +454,9 @@
             element.remove();
         });
         targets.forEach((element, index) => {
-            element.dataset.slot = rows[index].slot;
-            element.querySelector('[data-slot-label]').textContent = rows[index].slot;
+            setSlot(element, rows[index].slot);
             const selection = element.querySelector('[data-row-selected]');
             selection.checked = false;
-            selection.setAttribute('aria-label', 'Select slot ' + rows[index].slot);
             setRow(element, rows[index]);
             root.querySelector('tbody').append(element);
         });
@@ -478,6 +485,9 @@
         prepare(root);
         disposePicker(element);
         element.remove();
+        // Do not round-trip values through setRows: incomplete browser edits and
+        // open/draft Pickr state on surviving rows must remain untouched.
+        root.querySelectorAll('tbody tr[data-slot]').forEach(setSlot);
         updateActions(root);
         if (!root.querySelector('tbody tr[data-slot]')) {
             clearTimeout(pickerRetry);

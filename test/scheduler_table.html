@@ -28,6 +28,7 @@
 <script>
 // Record real instances, not mocks, to verify initialization and disposal.
 const actualPickers = [];
+const actualPickerByAnchor = new WeakMap();
 const pickerReady = [];
 let destroyedPickers = 0;
 let storageHiddenUntilInit = true;
@@ -50,6 +51,7 @@ if (window.Pickr) {
 		const destroy = picker.destroyAndRemove.bind(picker);
 		picker.destroyAndRemove = () => { destroyedPickers++; finished(); return destroy(); };
 		actualPickers.push(picker);
+		actualPickerByAnchor.set(options.el, picker);
 		picker.on('init', () => {
 			const input = options.el.closest('tr').querySelector('[data-field="color"]');
 			storageHiddenUntilInit &&= input.type === 'text' && getComputedStyle(input).display === 'none' &&
@@ -365,7 +367,7 @@ if (window.Pickr) {
 		root.querySelector('[data-action="save-scheduler"]').click();
 		await new Promise(resolve => setTimeout(resolve, 0));
 		check(!root.querySelector('[data-action="save-scheduler"]').disabled, 'delegated Save click completes');
-		// Sparse rows retain slot identities; removal also disposes an open real popup.
+		// Removal compacts displayed indices without rebuilding surviving controls.
 		window.fetch = async (url, options) => {
 			submitted = { url, options };
 			return { ok: true, text: async () => 'Queued for logging; not persisted.' };
@@ -374,30 +376,93 @@ if (window.Pickr) {
 		const removedPopup = picker.getRoot().app;
 		api.removeRow(first);
 		check(destroyedPickers === 1 && !removedPopup.isConnected, 'Remove destroys open Pickr and removes popup');
-		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7', 'Remove does not reindex surviving slots');
+		check(JSON.stringify(api.getRows()) === JSON.stringify(rows.slice(1).map((row, slot) => ({ ...row, slot }))), 'public Remove renumbers survivors while preserving values and order');
 		checkLayout(root, 'after removal');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
-		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7,0', 'Add chooses first free stable slot');
-		check(JSON.stringify(api.getRows().at(-1)) === JSON.stringify({slot:0,active:false,on:false,from:0,to:0,hour:0,minute:0,color:'#FFFFFF',message:'',range:0,value:0}), 'Add creates default values, not cloned edits');
+		check(api.getRows().map(row => row.slot).join() === '0,1,2,3,4,5,6,7', 'Add appends slot N after renumbering');
+		check(JSON.stringify(api.getRows().at(-1)) === JSON.stringify({slot:7,active:false,on:false,from:0,to:0,hour:0,minute:0,color:'#FFFFFF',message:'',range:0,value:0}), 'Add creates default values, not cloned edits');
 		check(root.querySelector('[data-action="add-scheduler-row"]').disabled, 'Add disabled at eight rows');
 		check(allUnselected() && removeSelected.disabled, 'Add leaves rows unselected');
-		const added = root.querySelector('tr[data-slot="0"]');
-		check(added.querySelector('[data-row-selected]').getAttribute('aria-label') === 'Select slot 0' && added.querySelector('[data-slot-label]').textContent === '0', 'Add updates template selection label and visible stable slot');
+		const added = root.querySelector('tr[data-slot="7"]');
+		check(added.querySelector('[data-row-selected]').getAttribute('aria-label') === 'Select slot 7' && added.querySelector('[data-slot-label]').textContent === '7', 'Add updates template selection label and visible slot');
 		await Promise.all(pickerReady); await settle();
 		checkLayout(root, 'after addition');
 		check(added.querySelector('[data-color-anchor]').value === '0xFFFFFF', 'new row initializes anchor label from default storage');
-		selectSlot(0);
+		selectSlot(7);
 		removeSelected.click();
-		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7' && removeSelected.disabled, 'single selected removal preserves all other IDs and disables Remove');
+		check(api.getRows().map(row => row.slot).join() === '0,1,2,3,4,5,6' && removeSelected.disabled, 'single selected removal keeps consecutive slots and disables Remove');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		rejects(() => api.addRow(), 'API enforces maximum row count');
 		rejects(() => api.setRows([...rows, rows[0]]), 'setter rejects oversized batch');
 		await Promise.all(pickerReady); await settle();
 		const beforeBatch = destroyedPickers;
+		const batchRows = api.getRows();
 		selectSlot(2); selectSlot(5); selectSlot(6);
 		removeSelected.click();
-		check(api.getRows().map(row => row.slot).join() === '1,3,4,7,0', 'batch removes nonadjacent and adjacent selected rows only, preserving order and IDs');
+		check(JSON.stringify(api.getRows()) === JSON.stringify(batchRows.filter(row => ![2,5,6].includes(row.slot)).map((row, slot) => ({ ...row, slot }))), 'batch removes original targets despite index shifts, preserving values and order');
 		check(destroyedPickers === beforeBatch + 3 && removeSelected.disabled, 'batch disposes each selected Pickr exactly once and clears Remove availability');
+		// Exact requested example: track original rows by reference, not mutable indices.
+		const example = rows.map((row, slot) => ({ ...row, active: slot % 2 === 0, on: slot % 3 === 0,
+			from: slot % 7, to: (slot + 2) % 7, hour: slot + 8, minute: slot * 7,
+			color: '#' + (0x123450 + slot).toString(16).toUpperCase(),
+			message: 'Original row ' + slot + ' Grüße 🌈', value: slot % 2 ? 20 + slot : 60 + slot }));
+		api.setRows(example);
+		await Promise.all(pickerReady); await settle();
+		const originalElements = Array.from(root.querySelectorAll('tbody tr[data-slot]'));
+		const retainedElements = [1,2,3,6].map(slot => originalElements[slot]);
+		const expected = [1,2,3,6].map((original, slot) => ({ ...example[original], slot }));
+		const retainedAnchors = retainedElements.map(element => element.querySelector('[data-color-anchor]'));
+		const retainedPickers = retainedAnchors.map(anchor => actualPickerByAnchor.get(anchor));
+		const retainedPopup = retainedPickers[3].getRoot().app;
+		retainedAnchors[3].click();
+		const retainedDraft = retainedPopup.querySelector('.pcr-result');
+		retainedDraft.value = '#ABCDEF';
+		retainedDraft.dispatchEvent(new Event('input', { bubbles: true }));
+		const beforeExample = { created: actualPickers.length, destroyed: destroyedPickers };
+		[0,4,5,7].forEach(slot => selectSlot(slot));
+		removeSelected.click();
+		await settle();
+		check(JSON.stringify(api.getRows()) === JSON.stringify(expected), 'remove original 0,4,5,7 retains original 1,2,3,6 values/order with slots 0,1,2,3');
+		check(Array.from(root.querySelectorAll('tbody tr[data-slot]')).every((element, slot) =>
+			element === retainedElements[slot] && element.dataset.slot === String(slot) &&
+			element.querySelector('[data-slot-label]').textContent === String(slot) &&
+			element.querySelector('[data-row-selected]').getAttribute('aria-label') === 'Select slot ' + slot),
+			'exact example keeps original nodes and synchronizes dataset, visible and accessible slot labels');
+		check(actualPickers.length === beforeExample.created && destroyedPickers === beforeExample.destroyed + 4 &&
+			retainedAnchors.every((anchor, slot) => actualPickerByAnchor.get(anchor) === retainedPickers[slot] && anchor.isConnected),
+			'exact example destroys only removed Pickrs and never recreates surviving instances');
+		check(retainedPickers[3].isOpen() && retainedPopup.isConnected && retainedDraft.value.toUpperCase() === '#ABCDEF',
+			'renumbering preserves surviving open popup and uncommitted color draft');
+		await api.save();
+		check(JSON.stringify(JSON.parse(submitted.options.body)) === JSON.stringify({ rows: expected }),
+			'exact example serializes retained values in order with indices 0,1,2,3 and no selection fields');
+		retainedPopup.querySelector('.pcr-save').click();
+		check(api.getRow(retainedElements[3]).slot === 3 && api.getRow(retainedElements[3]).color === '#ABCDEF' &&
+			retainedAnchors[3].value === '0xABCDEF', 'surviving Pickr Save callback commits to original row 6 now at slot 3');
+		retainedAnchors[3].click();
+		retainedDraft.value = '#000000';
+		retainedDraft.dispatchEvent(new Event('input', { bubbles: true }));
+		retainedPopup.querySelector('.pcr-cancel').click();
+		check(api.getRow(retainedElements[3]).color === '#ABCDEF', 'surviving Pickr Cancel still discards drafts after renumbering');
+		checkLayout(root, 'exact example after compaction');
+		api.addRow();
+		check(api.getRows().at(-1).slot === 4 && api.getRows().length === 5, 'exact example next Add receives N = 4');
+		// Public removal must also preserve invalid, unsaved edits rather than validating/resetting them.
+		retainedElements[1].querySelector('[data-field="time"]').value = '';
+		retainedElements[1].querySelector('[data-field="message"]').value = 'ä'.repeat(33);
+		selectSlot(3);
+		api.removeRow(retainedElements[0]);
+		check(retainedElements[1].dataset.slot === '0' && retainedElements[1].querySelector('[data-field="time"]').value === '' &&
+			retainedElements[1].querySelector('[data-field="message"]').value === 'ä'.repeat(33), 'public removal preserves incomplete and invalid browser edits while renumbering');
+		check(retainedElements[3].dataset.slot === '2' && retainedElements[3].querySelector('[data-row-selected]').checked &&
+			retainedElements[3].querySelector('[data-row-selected]').getAttribute('aria-label') === 'Select slot 2' && !removeSelected.disabled,
+			'public removal preserves surviving selection with updated accessibility and action state');
+		api.reload();
+		check(JSON.stringify(api.getRows()) === JSON.stringify(initial) &&
+			Array.from(root.querySelectorAll('tbody tr[data-slot]')).every((element, slot) => element.dataset.slot === String(slot) &&
+				element.querySelector('[data-slot-label]').textContent === String(slot) &&
+				element.querySelector('[data-row-selected]').getAttribute('aria-label') === 'Select slot ' + slot),
+			'exact example Reload restores untouched original initial snapshot and labels 0..7');
 		const sparse = [rows[7], rows[2]];
 		api.setRows(sparse);
 		check(JSON.stringify(api.getRows()) === JSON.stringify(sparse), 'sparse setter/getter preserves IDs, order and extended fields');
