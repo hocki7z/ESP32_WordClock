@@ -1484,9 +1484,12 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             /* Stable data attributes let a future event handler identify each slot and field. */
             wHtml += "<tr data-slot='";
             wHtml += wSlotText;
-            wHtml += "'><td data-slot-label style='padding:3px 4px'>";
+            wHtml += "'><td style='padding:3px 4px'><input type='checkbox' data-row-selected aria-label='Select slot ";
             wHtml += wSlotText;
-            wHtml += "</td>";
+            wHtml += "' style='display:inline-block;width:auto;height:auto;margin:0 6px 0 0;padding:0;box-shadow:none;background:transparent'>"
+                "<span data-slot-label>";
+            wHtml += wSlotText;
+            wHtml += "</span></td>";
 
             auto wAddCheckbox = [&wHtml](const char* apField, const char* apLabel, bool aChecked)
             {
@@ -1565,9 +1568,7 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
 
     wHtml += "</tbody></table></div>"
         "<button type='button' data-action='add-scheduler-row'>Add row</button>"
-        "<button type='button' data-action='remove-last-scheduler-row'";
-    if (wCount == 0) wHtml += " disabled";
-    wHtml += ">Remove last row</button>"
+        "<button type='button' data-action='remove-selected-scheduler-rows' disabled>Remove selected rows</button>"
         "<button type='button' data-action='reload-scheduler'>Reload</button>"
         "<button type='button' data-action='save-scheduler' "
         "style='width:100%;margin:8px 0;box-sizing:border-box'>Save</button>"

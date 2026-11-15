@@ -9,7 +9,7 @@
 <style>[data-scheduler] input { display:block; } [data-scheduler] button { display:inline-block; }</style>
 <body style="background:#34495e;color:white;font-family:sans-serif">
 <h1>Scheduler table tests</h1>
-<div data-scheduler>
+<div data-scheduler data-slot-count="8">
 	<div style="width:100%;overflow-x:auto">
 	<table style="width:100%;min-width:1050px;color:white;background:transparent">
 		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th><th>Color</th><th>Message</th><th>Range</th><th>Value</th></tr></thead>
@@ -18,7 +18,7 @@
 	</div>
 	<p>Logging only; no persistence. Reload restores initial firmware rows.</p>
 	<button type="button" data-action="add-scheduler-row">Add row</button>
-	<button type="button" data-action="remove-last-scheduler-row" disabled>Remove last row</button>
+	<button type="button" data-action="remove-selected-scheduler-rows" disabled>Remove selected rows</button>
 	<button type="button" data-action="reload-scheduler">Reload</button>
 	<button type="button" data-action="save-scheduler">Save</button>
 	<span data-scheduler-status role="status"></span>
@@ -78,6 +78,12 @@ if (window.Pickr) {
 	}
 	// Yield an event-loop turn so mutation observers and Pickr's deferred init can finish.
 	const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+	function selectSlot(slot, checked = true) {
+		const input = root.querySelector('tr[data-slot="' + slot + '"] [data-row-selected]');
+		input.checked = checked;
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+	}
+	const allUnselected = () => !root.querySelector('tbody [data-row-selected]:checked');
 	try {
 		// Reproduce the old hidden-only failure under a host display override (not a Pickr API issue).
 		const probe = document.createElement('input');
@@ -87,7 +93,7 @@ if (window.Pickr) {
 		for (let slot = 0; slot < 8; slot++) {
 			const tr = document.createElement('tr');
 			tr.dataset.slot = slot;
-			tr.innerHTML = '<td data-slot-label>' + slot + '</td>' + ['active', 'on', 'from', 'to', 'time'].map(field => {
+			tr.innerHTML = '<td><input type="checkbox" data-row-selected aria-label="Select slot ' + slot + '" style="display:inline-block;width:auto;height:auto;margin:0 6px 0 0;padding:0;box-shadow:none;background:transparent"><span data-slot-label>' + slot + '</span></td>' + ['active', 'on', 'from', 'to', 'time'].map(field => {
 				if (field === 'from' || field === 'to') {
 					return '<td><select data-field="' + field + '">' + ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, value) => '<option value="' + value + '">' + day + '</option>').join('') + '</select></td>';
 				}
@@ -123,10 +129,28 @@ if (window.Pickr) {
 			color: '#12ABEF', message: slot === 0 ? '<b>Grüße 🌈 & "hello"</b>' : '', range: slot % 2, value: slot % 2 ? 35 : 80 }));
 		api.setRows(rows);
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'all slots round-trip');
-		const removeLast = root.querySelector('[data-action="remove-last-scheduler-row"]');
-		check(removeLast.textContent === 'Remove last row' && removeLast.previousElementSibling.dataset.action === 'add-scheduler-row' && !removeLast.closest('table'), 'explicit global Remove last row beside Add below table');
+		const removeSelected = root.querySelector('[data-action="remove-selected-scheduler-rows"]');
+		check(removeSelected.textContent === 'Remove selected rows' && removeSelected.previousElementSibling.dataset.action === 'add-scheduler-row' && !removeSelected.closest('table'), 'explicit global Remove selected rows beside Add below table');
 		check(root.querySelectorAll('thead th').length === 10 && Array.from(root.querySelectorAll('tbody tr[data-slot]')).every(row => row.cells.length === 10) && !root.querySelector('[data-action="remove-scheduler-row"]') && template.content.firstElementChild.cells.length === 10, 'no Action header or per-row action cells, including template');
-		check(!removeLast.disabled, 'Remove last row enabled for populated table');
+		check(allUnselected() && removeSelected.disabled, 'populated table starts unselected with Remove disabled');
+		check(Array.from(root.querySelectorAll('tbody tr[data-slot]')).every(row => {
+			const selection = row.querySelector('[data-row-selected]');
+			return selection.type === 'checkbox' && selection.closest('td') === row.cells[0] &&
+				selection.getAttribute('aria-label') === 'Select slot ' + row.dataset.slot &&
+				selection !== row.querySelector('[data-field="active"]') && !selection.hasAttribute('data-field');
+		}) && !!template.content.querySelector('[data-row-selected]'), 'separate accessible selection in Slot cell for every row and template');
+		removeSelected.click();
+		removeSelected.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		api.removeSelectedRows();
+		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'no selection removal leaves all rows unchanged');
+		selectSlot(2);
+		check(!removeSelected.disabled, 'selecting a row enables Remove');
+		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'selection does not change scheduler JSON or Active');
+		selectSlot(2, false);
+		check(removeSelected.disabled, 'deselecting last selected row disables Remove');
+		selectSlot(2);
+		api.setRows(rows);
+		check(allUnselected() && removeSelected.disabled, 'setRows clears selection even for reused rows');
 		const first = root.querySelector('tr[data-slot="0"]');
 		check(api.getRow(first).active === true, 'checkbox getter');
 		check(first.querySelector('[data-field="time"]').value === '23:59', 'time setter formats HH:MM');
@@ -231,16 +255,31 @@ if (window.Pickr) {
 		window.fetch = async () => ({ ok: false, text: async () => 'Queue unavailable.' });
 		await api.save();
 		check(root.querySelector('[data-scheduler-status]').textContent === 'Queue unavailable.', 'server error feedback');
-		check(!removeLast.disabled, 'Remove last row restored after failed Save');
+		check(removeSelected.disabled, 'failed Save keeps Remove disabled without selection');
+		selectSlot(1);
+		window.fetch = async (url, options) => {
+			submitted = { url, options };
+			return { ok: true, text: async () => 'Queued for logging; not persisted.' };
+		};
+		await api.save();
+		check(JSON.stringify(JSON.parse(submitted.options.body)) === JSON.stringify({ rows }) &&
+			root.querySelector('tr[data-slot="1"] [data-row-selected]').checked && !removeSelected.disabled,
+			'Save with selected row sends only scheduler schema and retains browser selection');
 		let finishSave;
 		window.fetch = () => new Promise(resolve => { finishSave = resolve; });
 		const pendingSave = api.save();
 		check(Array.from(root.querySelectorAll('[data-action]')).every(button => button.disabled), 'all scheduler actions disabled while Save is busy');
-		removeLast.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		selectSlot(1, false);
+		check(removeSelected.disabled, 'deselection during Save keeps Remove disabled');
+		selectSlot(2);
+		check(removeSelected.disabled, 'selection during Save cannot enable Remove');
+		removeSelected.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		api.removeSelectedRows();
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'delegated Remove ignored while busy');
 		finishSave({ ok: true, text: async () => 'Queued for logging; not persisted.' });
 		await pendingSave;
-		check(!removeLast.disabled && root.querySelector('[data-action="add-scheduler-row"]').disabled && !root.querySelector('[data-action="reload-scheduler"]').disabled, 'Save completion restores structural action limits');
+		check(!removeSelected.disabled && root.querySelector('[data-action="add-scheduler-row"]').disabled && !root.querySelector('[data-action="reload-scheduler"]').disabled, 'Save completion restores selected Remove and structural action limits');
+		check(JSON.stringify(JSON.parse(submitted.options.body).rows) === JSON.stringify(rows), 'selected checkboxes never enter Save JSON');
 		window.fetch = async () => ({ ok: false, text: async () => 'Queue unavailable.' });
 		root.querySelector('[data-action="save-scheduler"]').click();
 		await new Promise(resolve => setTimeout(resolve, 0));
@@ -259,11 +298,21 @@ if (window.Pickr) {
 		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7,0', 'Add chooses first free stable slot');
 		check(JSON.stringify(api.getRows().at(-1)) === JSON.stringify({slot:0,active:false,on:false,from:0,to:0,hour:0,minute:0,color:'#FFFFFF',message:'',range:0,value:0}), 'Add creates default values, not cloned edits');
 		check(root.querySelector('[data-action="add-scheduler-row"]').disabled, 'Add disabled at eight rows');
-		removeLast.click();
-		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7', 'global Remove removes last visible row, not highest slot ID');
+		check(allUnselected() && removeSelected.disabled, 'Add leaves rows unselected');
+		const added = root.querySelector('tr[data-slot="0"]');
+		check(added.querySelector('[data-row-selected]').getAttribute('aria-label') === 'Select slot 0' && added.querySelector('[data-slot-label]').textContent === '0', 'Add updates template selection label and visible stable slot');
+		selectSlot(0);
+		removeSelected.click();
+		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7' && removeSelected.disabled, 'single selected removal preserves all other IDs and disables Remove');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		rejects(() => api.addRow(), 'API enforces maximum row count');
 		rejects(() => api.setRows([...rows, rows[0]]), 'setter rejects oversized batch');
+		await Promise.all(pickerReady); await settle();
+		const beforeBatch = destroyedPickers;
+		selectSlot(2); selectSlot(5); selectSlot(6);
+		removeSelected.click();
+		check(api.getRows().map(row => row.slot).join() === '1,3,4,7,0', 'batch removes nonadjacent and adjacent selected rows only, preserving order and IDs');
+		check(destroyedPickers === beforeBatch + 3 && removeSelected.disabled, 'batch disposes each selected Pickr exactly once and clears Remove availability');
 		const sparse = [rows[7], rows[2]];
 		api.setRows(sparse);
 		check(JSON.stringify(api.getRows()) === JSON.stringify(sparse), 'sparse setter/getter preserves IDs, order and extended fields');
@@ -276,20 +325,33 @@ if (window.Pickr) {
 		check(api.getRows().length === 0 && !root.querySelector('[data-action="add-scheduler-row"]').disabled, 'setter supports zero rows and enables Add');
 		await api.save();
 		check(JSON.parse(submitted.options.body).rows.length === 0, 'empty Save submits explicit empty batch');
-		check(removeLast.disabled, 'global Remove disabled when table is empty, including after Save');
-		removeLast.click();
-		removeLast.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		check(removeSelected.disabled, 'global Remove disabled when table is empty, including after Save');
+		removeSelected.click();
+		removeSelected.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		check(api.getRows().length === 0, 'disabled global Remove leaves empty table unchanged');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		check(api.getRows().length === 1 && api.getRows()[0].slot === 0, 'Add works from template after removing all rows');
-		check(!removeLast.disabled, 'Add re-enables global Remove');
-		removeLast.click();
+		check(removeSelected.disabled && allUnselected(), 'Add from empty leaves selection clear and Remove disabled');
+		selectSlot(0);
+		removeSelected.click();
 		check(api.getRows().length === 0, 'Remove supports final row');
-		check(removeLast.disabled, 'removing final row disables global Remove');
+		check(removeSelected.disabled, 'removing final row disables global Remove');
+		api.setRows(rows);
+		await Promise.all(pickerReady); await settle();
+		const beforeAll = destroyedPickers;
+		root.querySelector('tr[data-slot="0"] [data-color-anchor]').click();
+		const allPopup = actualPickers.at(-8).getRoot().app;
+		rows.forEach(row => selectSlot(row.slot));
+		removeSelected.click();
+		check(api.getRows().length === 0 && destroyedPickers === beforeAll + 8 && !allPopup.isConnected, 'select-all removal misses no adjacent rows and disposes all Pickrs including open popup');
+		check(removeSelected.disabled && !root.querySelector('[data-action="add-scheduler-row"]').disabled, 'all-row removal disables Remove and enables Add');
+		root.querySelector('[data-action="add-scheduler-row"]').click();
+		check(api.getRows()[0].slot === 0 && allUnselected(), 'Add after select-all removal restores unselected slot zero');
+		selectSlot(0);
 		const submittedBeforeReload = submitted;
 		root.querySelector('[data-action="reload-scheduler"]').click();
 		check(JSON.stringify(api.getRows()) === JSON.stringify(initial), 'Reload restores full initial firmware snapshot including removed rows and early-edited values');
-		check(!removeLast.disabled, 'Reload re-enables global Remove');
+		check(allUnselected() && removeSelected.disabled, 'Reload clears selection and disables Remove');
 		check(submitted === submittedBeforeReload, 'Reload does not submit or save');
 		await Promise.all(pickerReady); await settle();
 		const activePicker = actualPickers.at(-8);
@@ -324,12 +386,16 @@ if (window.Pickr) {
 		check(JSON.stringify(api.getRows()[0]) === JSON.stringify({slot:0,active:true,on:true,from:3,to:5,hour:19,minute:42,color:'#2244FF',message:'Initial & firmware',range:1,value:35}), 'Reload restores nondefault firmware values for every field');
 		check(storageHiddenUntilInit, 'late and replacement pickers never expose color storage');
 		check(root.querySelectorAll('[data-action="save-scheduler"]').length === 1, 'one scheduler Save button');
+		selectSlot(3);
 		const replacementRoot = root.cloneNode(true);
 		replacementRoot.querySelector('[data-field="message"]').setAttribute('value', 'Later firmware update');
 		const beforeRootReplacement = destroyedPickers;
 		root.replaceWith(replacementRoot);
 		await settle(); await Promise.all(pickerReady); await settle();
 		check(destroyedPickers === beforeRootReplacement + 8, 'whole ESPUI label replacement disposes old pickers');
+		check(!replacementRoot.querySelector('[data-row-selected]:checked') &&
+			replacementRoot.querySelector('[data-action="remove-selected-scheduler-rows"]').disabled,
+			'new ESPUI root starts unselected even when cloned from selected controls');
 		api.reload(replacementRoot);
 		check(JSON.stringify(api.getRows(replacementRoot)) === JSON.stringify(initial), 'whole-label updates cannot overwrite original Reload baseline');
 		await Promise.all(pickerReady); await settle();
@@ -337,9 +403,11 @@ if (window.Pickr) {
 		const summary = document.createElement('p');
 		summary.textContent = passed + ' tests passed.';
 		output.after(summary);
+		document.querySelector('h1').textContent = 'Scheduler table tests: ' + passed + ' passed';
 		document.body.dataset.testResult = 'passed';
 	} catch (error) {
 		output.textContent += '\nFAIL: ' + error.message;
+		document.querySelector('h1').textContent = 'Scheduler table tests: FAIL after ' + passed + ' checks: ' + error.message;
 		document.body.dataset.testResult = 'failed';
 	}
 })();

@@ -146,18 +146,21 @@
             });
             Object.freeze(initialRows);
         }
+        root.querySelectorAll('tbody [data-row-selected]').forEach(input => { input.checked = false; });
         initialized.add(root);
         updateActions(root);
     }
 
-    // Keep structural actions unavailable during Save, then restore row-count limits.
+    // Selection is browser-only state, independent of Active and the scheduler schema.
+    // Keep structural actions unavailable during Save, then restore selection/count limits.
     function updateActions(root) {
         const busy = root.querySelector('[data-action="save-scheduler"]').disabled;
         const count = root.querySelectorAll('tbody tr[data-slot]').length;
+        const selected = root.querySelector('tbody tr[data-slot] [data-row-selected]:checked');
         for (const button of root.querySelectorAll('[data-action]')) {
             switch (button.dataset.action) {
                 case 'add-scheduler-row': button.disabled = busy || count >= capacity(root); break;
-                case 'remove-last-scheduler-row': button.disabled = busy || count === 0; break;
+                case 'remove-selected-scheduler-rows': button.disabled = busy || !selected; break;
                 case 'reload-scheduler': button.disabled = busy; break;
             }
         }
@@ -388,6 +391,7 @@
         const targets = rows.map(row => {
             const element = (!recreate && elements.find(element => Number(element.dataset.slot) === row.slot)) || rowTemplate.cloneNode(true);
             if (!element.querySelector('[data-slot-label]')) throw new Error('Missing scheduler slot label.');
+            if (!element.querySelector('[data-row-selected]')) throw new Error('Missing scheduler row selection.');
             for (const name of fields) {
                 if (!element.querySelector('[data-field="' + name + '"]')) throw new Error('Incomplete scheduler row.');
             }
@@ -401,6 +405,9 @@
         targets.forEach((element, index) => {
             element.dataset.slot = rows[index].slot;
             element.querySelector('[data-slot-label]').textContent = rows[index].slot;
+            const selection = element.querySelector('[data-row-selected]');
+            selection.checked = false;
+            selection.setAttribute('aria-label', 'Select slot ' + rows[index].slot);
             setRow(element, rows[index]);
             root.querySelector('tbody').append(element);
         });
@@ -436,6 +443,16 @@
         }
     }
 
+    // Snapshot the targets before disposing Pickrs/removing nodes so adjacent rows cannot be skipped.
+    function removeSelectedRows(root = document.querySelector('[data-scheduler]')) {
+        prepare(root);
+        if (root.querySelector('[data-action="save-scheduler"]').disabled) return;
+        const selected = Array.from(root.querySelectorAll('tbody tr[data-slot]'))
+            .filter(element => element.querySelector('[data-row-selected]').checked);
+        selected.forEach(removeRow);
+        updateActions(root);
+    }
+
     async function save(root = document.querySelector('[data-scheduler]')) {
         if (!root) throw new Error('Scheduler table not available.');
         const button = root.querySelector('[data-action="save-scheduler"]');
@@ -468,7 +485,7 @@
         }
     }
 
-    window.WordClockScheduler = { getRow, setRow, getRows, setRows, save, reload, addRow, removeRow };
+    window.WordClockScheduler = { getRow, setRow, getRows, setRows, save, reload, addRow, removeRow, removeSelectedRows };
 
     // Delegation survives ESPUI replacing the label or loading it after this script runs.
     document.addEventListener('click', event => {
@@ -481,11 +498,7 @@
                 case 'save-scheduler': save(root); break;
                 case 'reload-scheduler': reload(root); break;
                 case 'add-scheduler-row': addRow(root); break;
-                case 'remove-last-scheduler-row': {
-                    const last = getElements(root).at(-1);
-                    if (last) removeRow(last);
-                    break;
-                }
+                case 'remove-selected-scheduler-rows': removeSelectedRows(root); break;
             }
         } catch (error) {
             root.querySelector('[data-scheduler-status]').textContent = error.message;
@@ -501,6 +514,7 @@
     document.addEventListener('change', event => {
         const element = event.target.closest('[data-scheduler] tr[data-slot]');
         if (!element) return;
+        if (event.target.matches('[data-row-selected]')) updateActions(element.closest('[data-scheduler]'));
         if (event.target.dataset.field === 'range') updateValue(element, true);
         if (event.target.dataset.field === 'color') syncPicker(element);
     });
