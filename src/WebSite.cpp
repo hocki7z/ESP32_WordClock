@@ -1567,11 +1567,16 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
     }
 
     wHtml += "</tbody></table></div>"
-        "<button type='button' data-action='add-scheduler-row'>Add row</button>"
-        "<button type='button' data-action='remove-selected-scheduler-rows' disabled>Remove selected rows</button>"
-        "<button type='button' data-action='reload-scheduler'>Reload</button>"
-        "<button type='button' data-action='save-scheduler' "
-        "style='width:100%;margin:8px 0;box-sizing:border-box'>Save</button>"
+        "<div data-scheduler-toolbar role='group' aria-label='Scheduler actions'>"
+        "<button type='button' data-action='add-scheduler-row' aria-label='Add row' title='Add row'>"
+        "<svg viewBox='0 0 24 24' aria-hidden='true' focusable='false'><path d='M12 5v14M5 12h14'/></svg></button>"
+        "<button type='button' data-action='remove-selected-scheduler-rows' aria-label='Remove selected rows' title='Remove selected rows' disabled>"
+        "<svg viewBox='0 0 24 24' aria-hidden='true' focusable='false'><path d='M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7'/></svg></button>"
+        "<button type='button' data-action='reload-scheduler' aria-label='Reload' title='Reload'>"
+        "<svg viewBox='0 0 24 24' aria-hidden='true' focusable='false'><path d='M20 4v6h-6M20 10a8 8 0 1 0 0 5'/></svg></button>"
+        "<button type='button' data-action='save-scheduler' aria-label='Save' title='Save'>"
+        "<svg viewBox='0 0 24 24' aria-hidden='true' focusable='false'><path d='M19 21H3V3h14l4 4v14h-2ZM7 3v6h10V3M7 21v-8h10v8'/></svg></button>"
+        "</div>"
         "<span data-scheduler-status role='status' style='display:block;white-space:normal'></span></div>";
     return wHtml;
 }

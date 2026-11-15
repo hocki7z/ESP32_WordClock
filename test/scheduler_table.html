@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Scheduler table tests</title>
 <link rel="stylesheet" href="../.pio/libdeps/nodemcu-32s_debug/ESPUI/data/css/normalize.min.css">
 <link rel="stylesheet" href="../.pio/libdeps/nodemcu-32s_debug/ESPUI/data/css/style.min.css">
@@ -17,10 +18,12 @@
 	</table>
 	</div>
 	<p>Logging only; no persistence. Reload restores initial firmware rows.</p>
-	<button type="button" data-action="add-scheduler-row">Add row</button>
-	<button type="button" data-action="remove-selected-scheduler-rows" disabled>Remove selected rows</button>
-	<button type="button" data-action="reload-scheduler">Reload</button>
-	<button type="button" data-action="save-scheduler">Save</button>
+	<div data-scheduler-toolbar role="group" aria-label="Scheduler actions">
+		<button type="button" data-action="add-scheduler-row" aria-label="Add row" title="Add row"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
+		<button type="button" data-action="remove-selected-scheduler-rows" aria-label="Remove selected rows" title="Remove selected rows" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button>
+		<button type="button" data-action="reload-scheduler" aria-label="Reload" title="Reload"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 4v6h-6M20 10a8 8 0 1 0 0 5"/></svg></button>
+		<button type="button" data-action="save-scheduler" aria-label="Save" title="Save"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21H3V3h14l4 4v14h-2ZM7 3v6h10V3M7 21v-8h10v8"/></svg></button>
+	</div>
 	<span data-scheduler-status role="status"></span>
 </div>
 <pre id="results"></pre>
@@ -87,6 +90,39 @@ if (window.Pickr) {
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 	}
 	const allUnselected = () => !root.querySelector('tbody [data-row-selected]:checked');
+	function checkToolbar(tableRoot, state) {
+		const toolbar = tableRoot.querySelector('[data-scheduler-toolbar]');
+		const buttons = Array.from(toolbar.children);
+		const labels = ['Add row', 'Remove selected rows', 'Reload', 'Save'];
+		check(toolbar.getAttribute('role') === 'group' && toolbar.getAttribute('aria-label') === 'Scheduler actions' &&
+			buttons.length === 4 && buttons.every((button, index) => button.tagName === 'BUTTON' &&
+				button.type === 'button' && button.getAttribute('aria-label') === labels[index] && button.title === labels[index]),
+			state + ': all four icon actions have accessible labels and title tooltips');
+		check(buttons.every(button => {
+			const svg = button.querySelector('svg');
+			return !button.textContent.trim() && svg && svg.getAttribute('viewBox') === '0 0 24 24' &&
+				svg.getAttribute('aria-hidden') === 'true' && svg.getAttribute('focusable') === 'false' &&
+				svg.querySelector('path[d]') && svg.getBoundingClientRect().width === 18 &&
+				getComputedStyle(svg).stroke === getComputedStyle(button).color && !svg.querySelector('use,image');
+		}), state + ': visible inline SVG icons use currentColor and are decorative, with no external assets');
+		const css = getComputedStyle(toolbar);
+		const bounds = toolbar.getBoundingClientRect();
+		const rects = buttons.map(button => button.getBoundingClientRect());
+		const size = matchMedia('(max-width:600px)').matches ? 36 : 32;
+		check(css.display === 'flex' && css.justifyContent === 'flex-end' && css.flexWrap === 'wrap' && css.gap === '6px' &&
+			Math.abs(rects.at(-1).right - bounds.right) < 1 && rects.every(rect => rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1),
+			state + ': flex toolbar wraps with a gap and aligns actions to the right');
+		check(rects.every((rect, index) => Math.abs(rect.width - size) < 1 && Math.abs(rect.height - size) < 1 &&
+			getComputedStyle(buttons[index]).padding === '0px' && getComputedStyle(buttons[index]).margin === '0px'),
+			state + ': all actions including Save remain compact ' + size + 'px squares');
+		const status = tableRoot.querySelector('[data-scheduler-status]');
+		check(toolbar.parentElement === tableRoot && !toolbar.closest('table') &&
+			(toolbar.compareDocumentPosition(tableRoot.querySelector('table')) & Node.DOCUMENT_POSITION_PRECEDING) !== 0,
+			state + ': toolbar follows the table outside its scroll container');
+		check(toolbar.nextElementSibling === status && status.getAttribute('role') === 'status' &&
+			getComputedStyle(status).display === 'block' && (!status.textContent || status.getBoundingClientRect().top >= bounds.bottom),
+			state + ': live status stays below the toolbar');
+	}
 	// Assert computed geometry under the selected ESPUI styles, not just CSS text.
 	function checkLayout(tableRoot, state) {
 		const visible = Array.from(tableRoot.querySelectorAll('tbody tr[data-slot]'));
@@ -180,7 +216,16 @@ if (window.Pickr) {
 		api.setRows(rows);
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'all slots round-trip');
 		const removeSelected = root.querySelector('[data-action="remove-selected-scheduler-rows"]');
-		check(removeSelected.textContent === 'Remove selected rows' && removeSelected.previousElementSibling.dataset.action === 'add-scheduler-row' && !removeSelected.closest('table'), 'explicit global Remove selected rows beside Add below table');
+		check(removeSelected.getAttribute('aria-label') === 'Remove selected rows' && removeSelected.previousElementSibling.dataset.action === 'add-scheduler-row' && !removeSelected.closest('table'), 'explicit global Remove selected rows beside Add below table');
+		checkToolbar(root, 'initial toolbar');
+		// A narrow scheduler panel must wrap even on a desktop viewport; no horizontal button overflow.
+		const originalWidth = root.style.width;
+		root.style.width = '90px';
+		checkToolbar(root, 'narrow panel toolbar');
+		const wrappedButtons = root.querySelectorAll('[data-scheduler-toolbar] > button');
+		check(wrappedButtons[2].getBoundingClientRect().top > wrappedButtons[0].getBoundingClientRect().top,
+			'narrow panel wraps actions onto a second right-aligned row');
+		root.style.width = originalWidth;
 		check(root.querySelectorAll('thead th').length === 10 && Array.from(root.querySelectorAll('tbody tr[data-slot]')).every(row => row.cells.length === 10) && !root.querySelector('[data-action="remove-scheduler-row"]') && template.content.firstElementChild.cells.length === 10, 'no Action header or per-row action cells, including template');
 		check(allUnselected() && removeSelected.disabled, 'populated table starts unselected with Remove disabled');
 		check(Array.from(root.querySelectorAll('tbody tr[data-slot]')).every(row => {
@@ -352,6 +397,7 @@ if (window.Pickr) {
 		window.fetch = () => new Promise(resolve => { finishSave = resolve; });
 		const pendingSave = api.save();
 		check(Array.from(root.querySelectorAll('[data-action]')).every(button => button.disabled), 'all scheduler actions disabled while Save is busy');
+		checkToolbar(root, 'Save-busy toolbar');
 		selectSlot(1, false);
 		check(removeSelected.disabled, 'deselection during Save keeps Remove disabled');
 		selectSlot(2);
@@ -364,9 +410,9 @@ if (window.Pickr) {
 		check(!removeSelected.disabled && root.querySelector('[data-action="add-scheduler-row"]').disabled && !root.querySelector('[data-action="reload-scheduler"]').disabled, 'Save completion restores selected Remove and structural action limits');
 		check(JSON.stringify(JSON.parse(submitted.options.body).rows) === JSON.stringify(rows), 'selected checkboxes never enter Save JSON');
 		window.fetch = async () => ({ ok: false, text: async () => 'Queue unavailable.' });
-		root.querySelector('[data-action="save-scheduler"]').click();
+		root.querySelector('[data-action="save-scheduler"] path').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		await new Promise(resolve => setTimeout(resolve, 0));
-		check(!root.querySelector('[data-action="save-scheduler"]').disabled, 'delegated Save click completes');
+		check(!root.querySelector('[data-action="save-scheduler"]').disabled && root.querySelector('[data-scheduler-status]').textContent === 'Queue unavailable.', 'delegated Save SVG path click completes with server feedback');
 		// Removal compacts displayed indices without rebuilding surviving controls.
 		window.fetch = async (url, options) => {
 			submitted = { url, options };
@@ -378,7 +424,7 @@ if (window.Pickr) {
 		check(destroyedPickers === 1 && !removedPopup.isConnected, 'Remove destroys open Pickr and removes popup');
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows.slice(1).map((row, slot) => ({ ...row, slot }))), 'public Remove renumbers survivors while preserving values and order');
 		checkLayout(root, 'after removal');
-		root.querySelector('[data-action="add-scheduler-row"]').click();
+		root.querySelector('[data-action="add-scheduler-row"] svg').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		check(api.getRows().map(row => row.slot).join() === '0,1,2,3,4,5,6,7', 'Add appends slot N after renumbering');
 		check(JSON.stringify(api.getRows().at(-1)) === JSON.stringify({slot:7,active:false,on:false,from:0,to:0,hour:0,minute:0,color:'#FFFFFF',message:'',range:0,value:0}), 'Add creates default values, not cloned edits');
 		check(root.querySelector('[data-action="add-scheduler-row"]').disabled, 'Add disabled at eight rows');
@@ -389,7 +435,7 @@ if (window.Pickr) {
 		checkLayout(root, 'after addition');
 		check(added.querySelector('[data-color-anchor]').value === '0xFFFFFF', 'new row initializes anchor label from default storage');
 		selectSlot(7);
-		removeSelected.click();
+		removeSelected.querySelector('path').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		check(api.getRows().map(row => row.slot).join() === '0,1,2,3,4,5,6' && removeSelected.disabled, 'single selected removal keeps consecutive slots and disables Remove');
 		root.querySelector('[data-action="add-scheduler-row"]').click();
 		rejects(() => api.addRow(), 'API enforces maximum row count');
@@ -504,7 +550,7 @@ if (window.Pickr) {
 		check(api.getRows()[0].slot === 0 && allUnselected(), 'Add after select-all removal restores unselected slot zero');
 		selectSlot(0);
 		const submittedBeforeReload = submitted;
-		root.querySelector('[data-action="reload-scheduler"]').click();
+		root.querySelector('[data-action="reload-scheduler"] path').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		check(JSON.stringify(api.getRows()) === JSON.stringify(initial), 'Reload restores full initial firmware snapshot including removed rows and early-edited values');
 		check(allUnselected() && removeSelected.disabled, 'Reload clears selection and disables Remove');
 		check(submitted === submittedBeforeReload, 'Reload does not submit or save');
@@ -558,6 +604,7 @@ if (window.Pickr) {
 		check(JSON.stringify(api.getRows(replacementRoot)) === JSON.stringify(initial), 'whole-label updates cannot overwrite original Reload baseline');
 		await Promise.all(pickerReady); await settle();
 		checkLayout(replacementRoot, 'whole-label replacement and Reload');
+		checkToolbar(replacementRoot, 'whole-label replacement toolbar');
 		const otherAnchor = document.createElement('button');
 		document.body.append(otherAnchor);
 		const otherPicker = window.Pickr.create({ el: otherAnchor, useAsButton: true, theme: 'monolith', default: '#FFFFFF',

@@ -143,6 +143,33 @@
             width:100px; font-family:monospace; cursor:pointer;
         }
         [data-scheduler] [data-color-status]:empty { display:none; }
+        /* Firmware owns the icons; these scoped rules override ESPUI's large
+           button defaults without affecting other cards or Pickr actions. */
+        [data-scheduler] [data-scheduler-toolbar] {
+            display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap;
+            gap:6px; width:100%; margin:8px 0; box-sizing:border-box; white-space:normal;
+        }
+        [data-scheduler] [data-scheduler-toolbar] > button {
+            display:inline-flex; align-items:center; justify-content:center; flex:0 0 32px;
+            width:32px; height:32px; min-width:32px; min-height:32px; max-width:32px; max-height:32px;
+            margin:0; padding:0; box-sizing:border-box; line-height:1;
+            color:#fff; background:#444857; border:1px solid #808080; border-radius:4px;
+            box-shadow:none; cursor:pointer;
+        }
+        [data-scheduler] [data-scheduler-toolbar] > button:hover:not(:disabled) { background:#565c6e; }
+        [data-scheduler] [data-scheduler-toolbar] > button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+        [data-scheduler] [data-scheduler-toolbar] > button:disabled { opacity:.45; cursor:not-allowed; }
+        [data-scheduler] [data-scheduler-toolbar] svg {
+            display:block; width:18px; height:18px; fill:none; stroke:currentColor;
+            stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+        }
+        [data-scheduler] [data-scheduler-status] { display:block; white-space:normal; }
+        @media (max-width:600px) {
+            [data-scheduler] [data-scheduler-toolbar] > button {
+                flex-basis:36px; width:36px; height:36px;
+                min-width:36px; min-height:36px; max-width:36px; max-height:36px;
+            }
+        }
         /* Pickr emits hidden format buttons; host ESPUI input rules can unhide
            them. Keep this override exclusive to scheduler popups. */
         .wordclock-scheduler-picker .pcr-interaction .pcr-type { display:none !important; }
