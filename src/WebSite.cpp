@@ -268,8 +268,11 @@ void WebSite::HandleControlEvent(const ControlEvent& arEvent)
     /* Scheduler submissions are preview data, not settings changes. Log from this task. */
     if (arEvent.mControlParam.mHandler == ControlHandler::SchedulerSave)
     {
+        if (arEvent.mSchedulerCount == 0)
+            LOG(LOG_DEBUG, "Scheduler: empty batch submitted for logging only; nothing persisted.");
         for (std::size_t wSlot = 0; wSlot < mcSchedulerSlotCount; ++wSlot)
         {
+            if ((arEvent.mSchedulerPresentMask & (1u << wSlot)) == 0) continue;
             const SchedulerTableRow& wrRow = arEvent.mSchedulerRows[wSlot];
             LOG(LOG_DEBUG, "Slot: %u; Active: %u; On: %u; From: %u; To: %u; Hour: %u; Min: %u; Color: %s; Message: %s; Range: %u; Value: %u",
                 static_cast<unsigned>(wSlot), static_cast<unsigned>(wrRow.mActive),
@@ -750,7 +753,7 @@ void WebSite::InitWebUIControls(void)
      */
     const Control::ControlId_t wSchedulerGroup = AddGroupHelper("Scheduler (test)", mWebUIControlID.mSettingsTab, GROUP_CONTROL_COLOR);
     AddLabelControl("", wSchedulerGroup, CSS_STYLE_LABEL_LIGHTER,
-        "Test mode: Save submits all slots for logging only; settings are not persisted.");
+        "Test mode: Save submits the displayed rows for logging only; nothing is persisted. Reload discards browser edits and restores the initial rows.");
 
     const std::array<SchedulerTableRow, mcSchedulerSlotCount> wSchedulerRows = {{
         // Active, On, From day, To day, Hour, Minute, Color, Message, Range, Value (Monday = 0)
@@ -834,14 +837,16 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
         [this](AsyncWebServerRequest* apRequest, JsonVariant& arJson)
         {
             JsonArray wRows = arJson["rows"].as<JsonArray>();
-            if (wRows.isNull() || (wRows.size() != mcSchedulerSlotCount))
+            if (wRows.isNull() || (wRows.size() > mcSchedulerSlotCount))
             {
-                apRequest->send(400, "text/plain", "Expected eight scheduler slots.");
+                apRequest->send(400, "text/plain", "Expected zero to eight unique scheduler slots.");
                 return;
             }
 
             ControlEvent wEvent{};
             wEvent.mControlParam.mHandler = ControlHandler::SchedulerSave;
+            static_assert(mcSchedulerSlotCount <= 8, "Scheduler presence mask must fit in uint8_t");
+            wEvent.mSchedulerCount = static_cast<uint8_t>(wRows.size());
             std::array<bool, mcSchedulerSlotCount> wSeen{};
             for (JsonVariant wValue : wRows)
             {
@@ -866,6 +871,7 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
                     return;
                 }
                 wSeen[wSlot] = true;
+                wEvent.mSchedulerPresentMask |= static_cast<uint8_t>(1u << wSlot);
                 const JsonString wColor = wRow["color"].as<JsonString>();
                 const JsonString wMessage = wRow["message"].as<JsonString>();
                 const unsigned wRange = wRow["range"].as<unsigned>();
@@ -907,7 +913,9 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
                 return;
             }
             mpControlEventNotification->Notify();
-            apRequest->send(202, "text/plain", "All slots queued for logging; settings are not persisted.");
+            apRequest->send(202, "text/plain", wEvent.mSchedulerCount == 0
+                ? "Empty batch queued for logging; nothing is persisted."
+                : "Displayed rows queued for logging; settings are not persisted.");
         }, 8192);
     wpHandler->setMethod(HTTP_POST);
     wpHandler->setMaxContentLength(8192);
@@ -1439,16 +1447,19 @@ String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>
  *
  * @param apRows Slot values, or nullptr for an empty table.
  * @param aRowCount Number of slots; the array index is used as the slot number.
- * @return HTML with one Save button; the custom JavaScript submits a complete snapshot.
+ * @return HTML with one logging-only Save button, Reload and stable-slot row actions.
  *
- * Updating the containing label replaces its inputs and any unsaved browser edits.
+ * Includes a default-row template for adding after the last row is removed. Reload's
+ * initial value snapshot is retained in browser memory across subsequent label updates.
  */
 String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const
 {
     static const char* const wcDays[] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
-    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time", "Color", "Message", "Range", "Value"};
+    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time", "Color", "Message", "Range", "Value", "Action"};
 
-    String wHtml = "<div data-scheduler style='width:100%'><div style='overflow-x:auto;width:100%;max-width:100%'>"
+    String wHtml = "<div data-scheduler data-slot-count='";
+    wHtml += String(static_cast<unsigned>(mcSchedulerSlotCount));
+    wHtml += "' style='width:100%'><div style='overflow-x:auto;width:100%;max-width:100%'>"
         "<table style='width:100%;min-width:1050px;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
         "<thead><tr>";
     for (const char* wpHeader : wcHeaders)
@@ -1459,17 +1470,21 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
     }
     wHtml += "</tr></thead><tbody>";
 
-    if (apRows != nullptr)
+    // Include a detached default-row template even when the firmware renders no rows.
+    const std::size_t wCount = apRows ? (aRowCount < mcSchedulerSlotCount ? aRowCount : mcSchedulerSlotCount) : 0;
+    const SchedulerTableRow wDefaultRow{};
     {
-        for (std::size_t wSlot = 0; wSlot < aRowCount; ++wSlot)
+        for (std::size_t wSlot = 0; wSlot <= wCount; ++wSlot)
         {
-            const SchedulerTableRow& wrRow = apRows[wSlot];
-            const String wSlotText(static_cast<unsigned long>(wSlot));
+            const bool wIsTemplate = (wSlot == wCount);
+            if (wIsTemplate) wHtml += "<template data-scheduler-row-template>";
+            const SchedulerTableRow& wrRow = wIsTemplate ? wDefaultRow : apRows[wSlot];
+            const String wSlotText(static_cast<unsigned long>(wIsTemplate ? 0 : wSlot));
 
             /* Stable data attributes let a future event handler identify each slot and field. */
             wHtml += "<tr data-slot='";
             wHtml += wSlotText;
-            wHtml += "'><td style='padding:3px 4px'>";
+            wHtml += "'><td data-slot-label style='padding:3px 4px'>";
             wHtml += wSlotText;
             wHtml += "</td>";
 
@@ -1522,9 +1537,10 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
                 "aria-label='Time' value='";
             wHtml += wTimeText;
             wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td>";
-            /* Keep native fallback until Pickr init; explicit display survives ESPUI author CSS. */
-            wHtml += "<td><button type='button' data-color-anchor aria-label='Choose color' style='display:none' hidden></button>"
-                "<input type='color' data-field='color' aria-label='Color' value='";
+            /* Text storage can never invoke a native color dialog, even if host CSS unhides it. */
+            wHtml += "<td><button type='button' data-color-anchor aria-label='Choose color' disabled>Color</button>"
+                "<span data-color-status role='status'>Color picker loading…</span>"
+                "<input type='text' data-field='color' aria-label='Color' hidden style='display:none!important' value='";
             wHtml += EscapeHtml(wrRow.mColor);
             wHtml += "'></td><td><input type='text' data-field='message' aria-label='Message' maxlength='64' value='";
             wHtml += EscapeHtml(wrRow.mMessage);
@@ -1542,11 +1558,15 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             wHtml += String(static_cast<unsigned>(wrRow.mValue));
             wHtml += "' style='width:120px'><output data-value-output>";
             wHtml += String(static_cast<unsigned>(wrRow.mValue));
-            wHtml += "</output></td></tr>";
+            wHtml += "</output></td><td><button type='button' data-action='remove-scheduler-row'>Remove</button></td></tr>";
+            if (wIsTemplate) wHtml += "</template>";
         }
     }
 
-    wHtml += "</tbody></table></div><button type='button' data-action='save-scheduler' "
+    wHtml += "</tbody></table></div>"
+        "<button type='button' data-action='add-scheduler-row'>Add row</button>"
+        "<button type='button' data-action='reload-scheduler'>Reload</button>"
+        "<button type='button' data-action='save-scheduler' "
         "style='width:100%;margin:8px 0;box-sizing:border-box'>Save</button>"
         "<span data-scheduler-status role='status' style='display:block;white-space:normal'></span></div>";
     return wHtml;

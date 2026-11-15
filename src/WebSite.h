@@ -110,6 +110,8 @@ private:
 
         /* Owned batch snapshot; never retain request or JSON pointers in the queue. */
         std::array<SchedulerTableRow, mcSchedulerSlotCount> mSchedulerRows{};
+        uint8_t mSchedulerCount = 0;
+        uint8_t mSchedulerPresentMask = 0;
     };
 
     /** @brief Ensure ControlEvent remains trivially copyable */

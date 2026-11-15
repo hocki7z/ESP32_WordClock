@@ -12,10 +12,13 @@
 <div data-scheduler>
 	<div style="width:100%;overflow-x:auto">
 	<table style="width:100%;min-width:1050px;color:white;background:transparent">
-		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th><th>Color</th><th>Message</th><th>Range</th><th>Value</th></tr></thead>
+		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th><th>Color</th><th>Message</th><th>Range</th><th>Value</th><th>Action</th></tr></thead>
 		<tbody></tbody>
 	</table>
 	</div>
+	<p>Logging only; no persistence. Reload restores initial firmware rows.</p>
+	<button type="button" data-action="add-scheduler-row">Add row</button>
+	<button type="button" data-action="reload-scheduler">Reload</button>
 	<button type="button" data-action="save-scheduler">Save</button>
 	<span data-scheduler-status role="status"></span>
 </div>
@@ -26,7 +29,7 @@
 const actualPickers = [];
 const pickerReady = [];
 let destroyedPickers = 0;
-let fallbackUntilInit = true;
+let storageHiddenUntilInit = true;
 // Capture the real scheduled retry so the late-publication test can advance it deterministically.
 const actualSetTimeout = window.setTimeout.bind(window);
 let pickerRetryTask;
@@ -40,15 +43,17 @@ if (window.Pickr) {
 	const create = window.Pickr.create;
 	window.Pickr.create = options => {
 		const picker = create(options);
+		let finished;
+		pickerReady.push(new Promise(resolve => { finished = resolve; }));
 		const destroy = picker.destroyAndRemove.bind(picker);
-		picker.destroyAndRemove = () => { destroyedPickers++; return destroy(); };
+		picker.destroyAndRemove = () => { destroyedPickers++; finished(); return destroy(); };
 		actualPickers.push(picker);
 		picker.on('init', () => {
 			const input = options.el.closest('tr').querySelector('[data-field="color"]');
-			fallbackUntilInit &&= !input.disabled && getComputedStyle(input).display === 'block' &&
-				getComputedStyle(options.el).display === 'none';
+			storageHiddenUntilInit &&= input.type === 'text' && getComputedStyle(input).display === 'none' &&
+				options.el.disabled;
 		});
-		pickerReady.push(new Promise(resolve => picker.on('init', resolve)));
+		picker.on('init', finished);
 		return picker;
 	};
 }
@@ -81,18 +86,38 @@ if (window.Pickr) {
 		for (let slot = 0; slot < 8; slot++) {
 			const tr = document.createElement('tr');
 			tr.dataset.slot = slot;
-			tr.innerHTML = '<td>' + slot + '</td>' + ['active', 'on', 'from', 'to', 'time'].map(field => {
+			tr.innerHTML = '<td data-slot-label>' + slot + '</td>' + ['active', 'on', 'from', 'to', 'time'].map(field => {
 				if (field === 'from' || field === 'to') {
 					return '<td><select data-field="' + field + '">' + ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, value) => '<option value="' + value + '">' + day + '</option>').join('') + '</select></td>';
 				}
 				return '<td><input data-field="' + field + '" type="' + (field === 'time' ? 'time' : 'checkbox') + '" step="60" value="00:00"></td>';
-			}).join('') + '<td><button type="button" data-color-anchor style="display:none" hidden></button><input type="color" data-field="color" value="#ffffff"></td>' +
-				'<td><input type="text" data-field="message" maxlength="64"></td>' +
+			}).join('') + '<td><button type="button" data-color-anchor disabled>Color</button><span data-color-status role="status">Color picker loading…</span><input type="text" hidden style="display:none!important" data-field="color" value="#ffffff"></td>' +
+				'<td><input type="text" data-field="message" maxlength="64" value="' + (slot === 0 ? 'Initial &amp; firmware' : '') + '"></td>' +
 				'<td><select data-field="range"><option value="0">0..100</option><option value="1">20..50</option></select></td>' +
-				'<td><input type="range" data-field="value" min="0" max="100" value="0"><output data-value-output>0</output></td>';
+				'<td><input type="range" data-field="value" min="0" max="100" value="0"><output data-value-output>0</output></td><td><button type="button" data-action="remove-scheduler-row">Remove</button></td>';
+			if (slot === 0) {
+				// Simulate actual firmware defaults (attributes, not browser-only properties).
+				tr.querySelector('[data-field="active"]').setAttribute('checked', '');
+				tr.querySelector('[data-field="on"]').setAttribute('checked', '');
+				tr.querySelector('[data-field="time"]').setAttribute('value', '19:42');
+				tr.querySelector('[data-field="color"]').setAttribute('value', '#2244FF');
+				tr.querySelector('[data-field="from"] option[value="3"]').setAttribute('selected', '');
+				tr.querySelector('[data-field="to"] option[value="5"]').setAttribute('selected', '');
+				tr.querySelector('[data-field="range"] option[value="1"]').setAttribute('selected', '');
+				const slider = tr.querySelector('[data-field="value"]');
+				slider.setAttribute('min', '20'); slider.setAttribute('max', '50'); slider.setAttribute('value', '35');
+			}
 			root.querySelector('tbody').append(tr);
 		}
+		const template = document.createElement('template');
+		template.dataset.schedulerRowTemplate = '';
+		template.content.append(root.querySelector('tr[data-slot="7"]').cloneNode(true));
+		root.querySelector('tbody').append(template);
 		const api = window.WordClockScheduler;
+		// Edit before observer delivery/API access: baseline must still use firmware defaults.
+		root.querySelector('[data-field="message"]').value = 'Early browser edit';
+		const initial = api.getRows();
+		initial[0].message = 'Initial & firmware';
 		const rows = Array.from({ length: 8 }, (_, slot) => ({ slot, active: slot === 0, on: slot === 0, from: 5, to: 6, hour: slot === 0 ? 23 : 0, minute: slot === 0 ? 59 : 0,
 			color: '#12ABEF', message: slot === 0 ? '<b>Grüße 🌈 & "hello"</b>' : '', range: slot % 2, value: slot % 2 ? 35 : 80 }));
 		api.setRows(rows);
@@ -147,11 +172,11 @@ if (window.Pickr) {
 		await settle();
 		check(window.Pickr && actualPickers.length === 8, 'actual bundled Pickr initializes eight anchors');
 		await Promise.all(pickerReady);
-		check(fallbackUntilInit, 'native fallback remains usable until real Pickr init');
+		check(storageHiddenUntilInit, 'text storage stays hidden and button disabled until real Pickr init');
 		const nativeInput = first.querySelector('[data-field="color"]');
 		const colorButton = first.querySelector('[data-color-anchor]');
 		check(getComputedStyle(nativeInput).display === 'none', 'ESPUI CSS cannot expose initialized native color input');
-		check(nativeInput.disabled && nativeInput.getClientRects().length === 0, 'native color input is disabled and has no click target');
+		check(nativeInput.type === 'text' && nativeInput.getClientRects().length === 0 && !root.querySelector('input[type="color"]'), 'no native color input or native popup click target exists');
 		check(getComputedStyle(colorButton).display === 'inline-block' && colorButton.getBoundingClientRect().width > 0, 'scheduler Pickr button is visible under ESPUI CSS');
 		const picker = actualPickers[0];
 		const color = () => picker.getColor().toHEXA().toString().slice(0, 7).toUpperCase();
@@ -163,7 +188,8 @@ if (window.Pickr) {
 		};
 		check(color() === rows[0].color, 'Pickr initial color matches setter');
 		check(picker.getRoot().app.querySelectorAll('.pcr-swatches button').length === 12, 'Pickr has twelve common swatches');
-		check(picker.getRoot().app.dataset.theme === 'monolith', 'Pickr theme matches bundled stylesheet');
+		check(picker.getRoot().app.dataset.theme === 'monolith', 'Pickr theme matches native ESPUI and bundled stylesheet');
+		check(!first.querySelector('[data-color-status]').textContent, 'ready picker clears loading feedback');
 		api.setRow(first, { ...rows[0], color: '#AABBCC' });
 		check(color() === '#AABBCC', 'setter synchronizes actual Pickr');
 		colorButton.click();
@@ -203,40 +229,84 @@ if (window.Pickr) {
 		root.querySelector('[data-action="save-scheduler"]').click();
 		await new Promise(resolve => setTimeout(resolve, 0));
 		check(!root.querySelector('[data-action="save-scheduler"]').disabled, 'delegated Save click completes');
+		// Sparse rows retain slot identities; removal also disposes an open real popup.
+		window.fetch = async (url, options) => {
+			submitted = { url, options };
+			return { ok: true, text: async () => 'Queued for logging; not persisted.' };
+		};
+		picker.show();
+		const removedPopup = picker.getRoot().app;
+		first.querySelector('[data-action="remove-scheduler-row"]').click();
+		check(destroyedPickers === 1 && !removedPopup.isConnected, 'Remove destroys open Pickr and removes popup');
+		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7', 'Remove does not reindex surviving slots');
+		root.querySelector('[data-action="add-scheduler-row"]').click();
+		check(api.getRows().map(row => row.slot).join() === '1,2,3,4,5,6,7,0', 'Add chooses first free stable slot');
+		check(JSON.stringify(api.getRows().at(-1)) === JSON.stringify({slot:0,active:false,on:false,from:0,to:0,hour:0,minute:0,color:'#FFFFFF',message:'',range:0,value:0}), 'Add creates default values, not cloned edits');
+		check(root.querySelector('[data-action="add-scheduler-row"]').disabled, 'Add disabled at eight rows');
+		rejects(() => api.addRow(), 'API enforces maximum row count');
+		rejects(() => api.setRows([...rows, rows[0]]), 'setter rejects oversized batch');
+		const sparse = [rows[7], rows[2]];
+		api.setRows(sparse);
+		check(JSON.stringify(api.getRows()) === JSON.stringify(sparse), 'sparse setter/getter preserves IDs, order and extended fields');
+		const beforeInvalid = JSON.stringify(api.getRows());
+		rejects(() => api.setRows([rows[1], {...rows[6], message:'ä'.repeat(33)}]), 'invalid final row rejected before structural changes');
+		check(JSON.stringify(api.getRows()) === beforeInvalid, 'invalid batch leaves row count, values and identities unchanged');
+		await api.save();
+		check(JSON.stringify(JSON.parse(submitted.options.body).rows) === JSON.stringify(sparse), 'Save sends only sparse displayed slots');
+		api.setRows([]);
+		check(api.getRows().length === 0 && !root.querySelector('[data-action="add-scheduler-row"]').disabled, 'setter supports zero rows and enables Add');
+		await api.save();
+		check(JSON.parse(submitted.options.body).rows.length === 0, 'empty Save submits explicit empty batch');
+		root.querySelector('[data-action="add-scheduler-row"]').click();
+		check(api.getRows().length === 1 && api.getRows()[0].slot === 0, 'Add works from template after removing all rows');
+		root.querySelector('[data-action="remove-scheduler-row"]').click();
+		check(api.getRows().length === 0, 'Remove supports final row');
+		const submittedBeforeReload = submitted;
+		root.querySelector('[data-action="reload-scheduler"]').click();
+		check(JSON.stringify(api.getRows()) === JSON.stringify(initial), 'Reload restores full initial firmware snapshot including removed rows and early-edited values');
+		check(submitted === submittedBeforeReload, 'Reload does not submit or save');
+		await Promise.all(pickerReady); await settle();
+		const activePicker = actualPickers.at(-8);
+		activePicker.show();
+		const reloadedPopup = activePicker.getRoot().app;
+		const destroyedBeforeReload = destroyedPickers;
+		api.reload();
+		check(destroyedPickers === destroyedBeforeReload + 8 && !reloadedPopup.isConnected, 'Reload destroys all current Pickrs including open popup');
+		check(JSON.stringify(api.getRows()) === JSON.stringify(initial), 'repeated Reload does not replace baseline with Save or setter values');
+		await Promise.all(pickerReady); await settle();
+		api.setRows([]);
 		const bundledPickr = window.Pickr;
-		window.Pickr = {}; // A loader placeholder is not a usable Pickr API.
-		const fallback = first.cloneNode(true);
-		fallback.querySelector('[data-color-anchor]').hidden = true;
-		fallback.querySelector('[data-field="color"]').hidden = false;
-		root.querySelector('tbody').append(fallback);
-		await settle();
-		check(!fallback.querySelector('[data-field="color"]').hidden && actualPickers.length === 8, 'native color fallback without Pickr');
-		check(getComputedStyle(fallback.querySelector('[data-color-anchor]')).display === 'none' &&
-			getComputedStyle(fallback.querySelector('[data-field="color"]')).display === 'block' &&
-			!fallback.querySelector('[data-field="color"]').disabled, 'cloned row restores usable fallback and hides inactive button');
+		window.Pickr = {}; // Loader placeholder is not a usable API.
+		api.addRow();
+		const fallback = root.querySelector('tr[data-slot]');
+		check(fallback.querySelector('[data-color-anchor]').disabled && getComputedStyle(fallback.querySelector('[data-field="color"]')).display === 'none', 'missing library disables button without native fallback');
+		check(fallback.querySelector('[data-color-status]').textContent.includes('unavailable'), 'missing library has clear feedback');
 		api.setRow(fallback, { ...rows[0], color: '#334455' });
+		check(typeof pickerRetryTask === 'function', 'unavailable library schedules bounded-work retry');
 		window.Pickr = bundledPickr;
-		// No load event or mutation: publication alone must eventually enhance the fallback.
-		check(typeof pickerRetryTask === 'function', 'unavailable library schedules a retry without requiring another DOM event');
-		clearTimeout(pickerRetryId);
-		pickerRetryTask();
-		await pickerReady[8];
-		await settle();
-		check(actualPickers.length === 9 && fallback.querySelector('[data-field="color"]').hidden, 'late library load enhances native fallback');
-		check(api.getRow(fallback).color === '#334455' && actualPickers[8].getColor().toHEXA().toString().slice(0, 7).toUpperCase() === '#334455', 'setter before deferred Pickr init is preserved and synchronized');
-		check(fallback.querySelector('[data-field="color"]').style.display === 'none' &&
-			fallback.querySelector('[data-color-anchor]').style.display === 'inline-block', 'late initialization explicitly hands off native input to Pickr');
-		fallback.remove(); await settle();
-		check(destroyedPickers === 1, 'detached Pickr destroyed');
-		const replacement = first.cloneNode(true);
-		first.replaceWith(replacement); await settle();
-		await pickerReady[9];
-		await settle();
-		check(fallbackUntilInit, 'late and replacement pickers retain fallback until init');
-		check(replacement.querySelector('[data-field="color"]').disabled &&
-			getComputedStyle(replacement.querySelector('[data-field="color"]')).display === 'none', 'replacement row cannot expose native color popup');
-		check(destroyedPickers === 2 && actualPickers.length === 10, 'replaced ESPUI row disposes and recreates picker');
+		clearTimeout(pickerRetryId); pickerRetryTask();
+		await Promise.all(pickerReady); await settle();
+		check(!fallback.querySelector('[data-color-anchor]').disabled && fallback.querySelector('[data-color-status]').textContent === '', 'late library enables Pickr and clears unavailable feedback');
+		check(actualPickers.at(-1).getColor().toHEXA().toString().slice(0, 7).toUpperCase() === '#334455', 'setter before deferred init is preserved');
+		const beforeReplacement = destroyedPickers;
+		const replacement = fallback.cloneNode(true);
+		fallback.replaceWith(replacement); await settle();
+		await Promise.all(pickerReady); await settle();
+		check(destroyedPickers === beforeReplacement + 1 && !replacement.querySelector('[data-color-anchor]').disabled, 'ESPUI row replacement disposes old picker and initializes new one');
+		api.reload();
+		check(JSON.stringify(api.getRows()) === JSON.stringify(initial), 'DOM replacement does not redefine initial snapshot');
+		check(JSON.stringify(api.getRows()[0]) === JSON.stringify({slot:0,active:true,on:true,from:3,to:5,hour:19,minute:42,color:'#2244FF',message:'Initial & firmware',range:1,value:35}), 'Reload restores nondefault firmware values for every field');
+		check(storageHiddenUntilInit, 'late and replacement pickers never expose color storage');
 		check(root.querySelectorAll('[data-action="save-scheduler"]').length === 1, 'one scheduler Save button');
+		const replacementRoot = root.cloneNode(true);
+		replacementRoot.querySelector('[data-field="message"]').setAttribute('value', 'Later firmware update');
+		const beforeRootReplacement = destroyedPickers;
+		root.replaceWith(replacementRoot);
+		await settle(); await Promise.all(pickerReady); await settle();
+		check(destroyedPickers === beforeRootReplacement + 8, 'whole ESPUI label replacement disposes old pickers');
+		api.reload(replacementRoot);
+		check(JSON.stringify(api.getRows(replacementRoot)) === JSON.stringify(initial), 'whole-label updates cannot overwrite original Reload baseline');
+		await Promise.all(pickerReady); await settle();
 		output.textContent += '\n' + passed + ' tests passed.';
 		const summary = document.createElement('p');
 		summary.textContent = passed + ' tests passed.';

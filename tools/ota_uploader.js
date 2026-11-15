@@ -114,6 +114,58 @@
     const pickers = new Map();
     const encoder = new TextEncoder();
     let pickerRetry;
+    // Keep an owned baseline, not live nodes or the most recent Save/setRows values.
+    // Default DOM values also protect against edits made before the observer first runs.
+    let initialRows;
+    let rowTemplate;
+    const initialized = new WeakSet();
+
+    function capacity(root) {
+        const count = Number(root.dataset.slotCount || slotCount);
+        return Number.isInteger(count) && count >= 0 && count <= slotCount ? count : slotCount;
+    }
+
+    function prepare(root) {
+        if (!root) throw new Error('Scheduler table not available.');
+        if (initialized.has(root)) return;
+        const template = root.querySelector('template[data-scheduler-row-template]');
+        if (!template || !template.content.firstElementChild) throw new Error('Scheduler template not available.');
+        if (!initialRows) {
+            rowTemplate = template.content.firstElementChild.cloneNode(true);
+            initialRows = Array.from(root.querySelectorAll('tbody tr[data-slot]'), element => {
+                const original = element.cloneNode(true);
+                original.querySelectorAll('input').forEach(input => {
+                    input.value = input.defaultValue;
+                    input.checked = input.defaultChecked;
+                });
+                original.querySelectorAll('select').forEach(select => {
+                    const selected = Array.from(select.options).find(option => option.defaultSelected);
+                    select.value = selected ? selected.value : select.options[0].value;
+                });
+                return Object.freeze(getRow(original));
+            });
+            Object.freeze(initialRows);
+        }
+        initialized.add(root);
+        updateAdd(root);
+    }
+
+    function updateAdd(root) {
+        const button = root.querySelector('[data-action="add-scheduler-row"]');
+        if (button) button.disabled = root.querySelectorAll('tbody tr[data-slot]').length >= capacity(root);
+    }
+
+    function disposePicker(element) {
+        const anchor = element.matches('[data-color-anchor]') ? element : element.querySelector('[data-color-anchor]');
+        const state = pickers.get(anchor);
+        if (!state) return;
+        // Invalidate callbacks before hide/destroy (including a pending deferred init).
+        pickers.delete(anchor);
+        state.ready = false;
+        state.open = false;
+        state.picker.hide();
+        state.picker.destroyAndRemove();
+    }
 
     function validMessage(message) {
         if (typeof message !== 'string' || /[\u0000-\u001f\u007f-\u009f]/.test(message)) return false;
@@ -158,11 +210,12 @@
     function refreshPickers() {
         for (const [anchor, state] of pickers) {
             if (!anchor.isConnected) {
-                state.ready = false;
-                state.picker.destroyAndRemove();
-                pickers.delete(anchor);
+                disposePicker(anchor);
             }
         }
+        document.querySelectorAll('[data-scheduler]').forEach(root => {
+            try { prepare(root); } catch { /* Wait for the complete firmware label/template. */ }
+        });
         clearTimeout(pickerRetry);
         pickerRetry = undefined;
         const available = window.Pickr && typeof window.Pickr.create === 'function';
@@ -172,39 +225,47 @@
             const element = anchor.closest('tr[data-slot]');
             const input = element && element.querySelector('[data-field="color"]');
             if (!input) return;
-            // ESPUI replaces label HTML; clones may retain a previous enhancement's styles.
-            // Explicit display also wins over author CSS that overrides the hidden attribute.
-            anchor.hidden = true;
-            anchor.style.display = 'none';
-            input.hidden = false;
-            input.style.display = 'block';
-            input.disabled = false;
-            if (!available) { waitingForLibrary = true; return; }
+            // Never expose a native color input; ESPUI's input display rules override [hidden].
+            input.type = 'text';
+            input.hidden = true;
+            input.style.setProperty('display', 'none', 'important');
+            anchor.hidden = false;
+            anchor.style.display = 'inline-block';
+            anchor.disabled = true;
+            const feedback = element.querySelector('[data-color-status]');
+            const report = message => {
+                if (feedback && feedback.textContent !== message) feedback.textContent = message;
+            };
+            if (!available) {
+                report('Color picker unavailable (ESPUI Pickr not loaded).');
+                waitingForLibrary = true;
+                return;
+            }
             const state = { picker: null, syncing: false, ready: false, open: false };
             try {
                 state.picker = window.Pickr.create({
                     el: anchor, useAsButton: true, theme: 'monolith', default: input.value,
-                    lockOpacity: true, defaultRepresentation: 'HEX',
+                    lockOpacity: true, defaultRepresentation: 'HEX', comparison: true,
                     swatches, components: { preview: true, opacity: false, hue: true,
                         interaction: { hex: true, input: true, save: true, cancel: true } }
                 });
             } catch (error) {
-                return; // Leave the native input visible if enhancement is unavailable.
+                report('Color picker unavailable (initialization failed).');
+                return;
             }
             pickers.set(anchor, state);
             state.picker.on('init', () => {
                 if (pickers.get(anchor) !== state) return;
                 state.ready = true;
                 syncPicker(element);
-                // Hand off only after init: the browser's native picker must no longer be reachable.
-                input.hidden = true;
-                input.style.display = 'none';
-                input.disabled = true;
                 anchor.textContent = 'Color';
-                anchor.hidden = false;
-                anchor.style.display = 'inline-block';
+                anchor.disabled = false;
+                report('');
             }).on('show', () => {
                 if (!state.ready) { state.picker.hide(); return; }
+                for (const other of pickers.values()) {
+                    if (other !== state && other.open) other.picker.hide();
+                }
                 state.open = true;
                 syncPicker(element);
             }).on('save', color => {
@@ -291,10 +352,12 @@
     }
 
     function getElements(root) {
-        if (!root) throw new Error('Scheduler table not available.');
+        prepare(root);
         const elements = Array.from(root.querySelectorAll('tbody tr[data-slot]'));
-        if (elements.length !== slotCount || elements.some((element, index) => Number(element.dataset.slot) !== index)) {
-            throw new Error('Expected eight unique scheduler slots.');
+        const slots = elements.map(element => Number(element.dataset.slot));
+        if (elements.length > capacity(root) || new Set(slots).size !== slots.length ||
+            slots.some(slot => !Number.isInteger(slot) || slot < 0 || slot >= capacity(root))) {
+            throw new Error('Expected zero to ' + capacity(root) + ' unique scheduler slots.');
         }
         return elements;
     }
@@ -304,21 +367,65 @@
     }
 
     // Validate the complete batch before applying any row, avoiding partial updates on bad data.
-    function setRows(rows, root = document.querySelector('[data-scheduler]')) {
-        const elements = getElements(root);
-        if (!Array.isArray(rows) || rows.length !== slotCount) throw new Error('Expected eight scheduler rows.');
-        const ordered = new Array(slotCount);
+    function setRows(rows, root = document.querySelector('[data-scheduler]'), recreate = false) {
+        if (!root) throw new Error('Scheduler table not available.');
+        if (!Array.isArray(rows) || rows.length > capacity(root)) throw new Error('Too many scheduler rows.');
+        const slots = new Set();
         for (const row of rows) {
             validateRow(row);
-            if (ordered[row.slot]) throw new Error('Duplicate scheduler slot.');
-            ordered[row.slot] = row;
+            if (row.slot >= capacity(root) || slots.has(row.slot)) throw new Error('Duplicate or invalid scheduler slot.');
+            slots.add(row.slot);
         }
-        for (const element of elements) {
+        const elements = getElements(root);
+        const targets = rows.map(row => {
+            const element = (!recreate && elements.find(element => Number(element.dataset.slot) === row.slot)) || rowTemplate.cloneNode(true);
+            if (!element.querySelector('[data-slot-label]')) throw new Error('Missing scheduler slot label.');
             for (const name of fields) {
                 if (!element.querySelector('[data-field="' + name + '"]')) throw new Error('Incomplete scheduler row.');
             }
+            return element;
+        });
+        // All data and target shapes have been checked before any live DOM mutation.
+        elements.filter(element => !targets.includes(element)).forEach(element => {
+            disposePicker(element);
+            element.remove();
+        });
+        targets.forEach((element, index) => {
+            element.dataset.slot = rows[index].slot;
+            element.querySelector('[data-slot-label]').textContent = rows[index].slot;
+            setRow(element, rows[index]);
+            root.querySelector('tbody').append(element);
+        });
+        updateAdd(root);
+        refreshPickers();
+    }
+
+    function reload(root = document.querySelector('[data-scheduler]')) {
+        prepare(root);
+        setRows(initialRows, root, true);
+        root.querySelector('[data-scheduler-status]').textContent = 'Initial rows restored; browser edits discarded. Nothing saved.';
+    }
+
+    function addRow(root = document.querySelector('[data-scheduler]')) {
+        const rows = getRows(root);
+        if (rows.length >= capacity(root)) throw new Error('Maximum ' + capacity(root) + ' rows reached.');
+        const used = new Set(rows.map(row => row.slot));
+        let slot = 0;
+        while (used.has(slot)) slot++;
+        setRows([...rows, { slot, active: false, on: false, from: 0, to: 0, hour: 0, minute: 0,
+            color: '#FFFFFF', message: '', range: 0, value: 0 }], root);
+    }
+
+    function removeRow(element) {
+        const root = element.closest('[data-scheduler]');
+        prepare(root);
+        disposePicker(element);
+        element.remove();
+        updateAdd(root);
+        if (!root.querySelector('tbody tr[data-slot]')) {
+            clearTimeout(pickerRetry);
+            pickerRetry = undefined;
         }
-        elements.forEach((element, index) => setRow(element, ordered[index]));
     }
 
     async function save(root = document.querySelector('[data-scheduler]')) {
@@ -331,7 +438,7 @@
         try {
             const rows = getRows(root);
             button.disabled = true;
-            status.textContent = 'Submitting all slots…';
+            status.textContent = 'Submitting displayed rows for logging only…';
             timeout = setTimeout(() => abort.abort(), 10000);
             const response = await fetch('/scheduler/save', {
                 method: 'POST',
@@ -351,12 +458,24 @@
         }
     }
 
-    window.WordClockScheduler = { getRow, setRow, getRows, setRows, save };
+    window.WordClockScheduler = { getRow, setRow, getRows, setRows, save, reload, addRow, removeRow };
 
     // Delegation survives ESPUI replacing the label or loading it after this script runs.
     document.addEventListener('click', event => {
-        const button = event.target.closest('[data-action="save-scheduler"]');
-        if (button) save(button.closest('[data-scheduler]'));
+        const button = event.target.closest('[data-scheduler] [data-action]');
+        if (!button) return;
+        const root = button.closest('[data-scheduler]');
+        try {
+            prepare(root);
+            switch (button.dataset.action) {
+                case 'save-scheduler': save(root); break;
+                case 'reload-scheduler': reload(root); break;
+                case 'add-scheduler-row': addRow(root); break;
+                case 'remove-scheduler-row': removeRow(button.closest('tr[data-slot]')); break;
+            }
+        } catch (error) {
+            root.querySelector('[data-scheduler-status]').textContent = error.message;
+        }
     });
 
     document.addEventListener('input', event => {
