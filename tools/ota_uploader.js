@@ -107,7 +107,121 @@
 /* Scheduler controls are raw label HTML, so their transport is independent of ESPUI callbacks. */
 (() => {
     const slotCount = 8;
-    const fields = ['active', 'on', 'from', 'to', 'time'];
+    const fields = ['active', 'on', 'from', 'to', 'time', 'color', 'message', 'range', 'value'];
+    const presets = [[0, 100], [20, 50]];
+    const swatches = ['#FFFFFF', '#C0C0C0', '#808080', '#000000', '#FF0000', '#800000',
+        '#FFFF00', '#808000', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF'];
+    const pickers = new Map();
+    const encoder = new TextEncoder();
+    let pickerRetry;
+
+    function validMessage(message) {
+        if (typeof message !== 'string' || /[\u0000-\u001f\u007f-\u009f]/.test(message)) return false;
+        // TextEncoder replaces lone surrogates, whereas the device rejects malformed UTF-8.
+        for (const character of message) {
+            const code = character.codePointAt(0);
+            if (code >= 0xD800 && code <= 0xDFFF) return false;
+        }
+        return encoder.encode(message).length <= 64;
+    }
+
+    function updateValue(element, clamp = false) {
+        const range = element.querySelector('[data-field="range"]');
+        const slider = element.querySelector('[data-field="value"]');
+        const output = element.querySelector('[data-value-output]');
+        const bounds = presets[Number(range.value)];
+        if (!bounds || range.value === '') return;
+        const value = Number(slider.value);
+        slider.min = bounds[0];
+        slider.max = bounds[1];
+        if (clamp) slider.value = Math.max(bounds[0], Math.min(bounds[1], value));
+        if (output && output.textContent !== slider.value) output.textContent = slider.value;
+    }
+
+    // Silent updates plus a guard prevent Pickr events recursively committing draft colors.
+    function syncPicker(element) {
+        const anchor = element.querySelector('[data-color-anchor]');
+        const state = pickers.get(anchor);
+        if (!state || !state.ready) return;
+        const color = element.querySelector('[data-field="color"]').value;
+        state.syncing = true;
+        try {
+            state.picker.setColor(color, true);
+            state.picker.applyColor(true);
+            if (anchor.style.backgroundColor !== color) anchor.style.backgroundColor = color;
+        } finally {
+            state.syncing = false;
+        }
+    }
+
+    // Use the bundled Pickr API (https://github.com/simonwep/pickr); keep anchors stable.
+    function refreshPickers() {
+        for (const [anchor, state] of pickers) {
+            if (!anchor.isConnected) {
+                state.ready = false;
+                state.picker.destroyAndRemove();
+                pickers.delete(anchor);
+            }
+        }
+        clearTimeout(pickerRetry);
+        pickerRetry = undefined;
+        const available = window.Pickr && typeof window.Pickr.create === 'function';
+        let waitingForLibrary = false;
+        document.querySelectorAll('[data-scheduler] [data-color-anchor]').forEach(anchor => {
+            if (pickers.has(anchor)) return;
+            const element = anchor.closest('tr[data-slot]');
+            const input = element && element.querySelector('[data-field="color"]');
+            if (!input) return;
+            // ESPUI replaces label HTML; clones may retain a previous enhancement's styles.
+            // Explicit display also wins over author CSS that overrides the hidden attribute.
+            anchor.hidden = true;
+            anchor.style.display = 'none';
+            input.hidden = false;
+            input.style.display = 'block';
+            input.disabled = false;
+            if (!available) { waitingForLibrary = true; return; }
+            const state = { picker: null, syncing: false, ready: false, open: false };
+            try {
+                state.picker = window.Pickr.create({
+                    el: anchor, useAsButton: true, theme: 'monolith', default: input.value,
+                    lockOpacity: true, defaultRepresentation: 'HEX',
+                    swatches, components: { preview: true, opacity: false, hue: true,
+                        interaction: { hex: true, input: true, save: true, cancel: true } }
+                });
+            } catch (error) {
+                return; // Leave the native input visible if enhancement is unavailable.
+            }
+            pickers.set(anchor, state);
+            state.picker.on('init', () => {
+                if (pickers.get(anchor) !== state) return;
+                state.ready = true;
+                syncPicker(element);
+                // Hand off only after init: the browser's native picker must no longer be reachable.
+                input.hidden = true;
+                input.style.display = 'none';
+                input.disabled = true;
+                anchor.textContent = 'Color';
+                anchor.hidden = false;
+                anchor.style.display = 'inline-block';
+            }).on('show', () => {
+                if (!state.ready) { state.picker.hide(); return; }
+                state.open = true;
+                syncPicker(element);
+            }).on('save', color => {
+                // Pickr initialization and setColor() can emit save without a user commit.
+                if (!state.ready || !state.open || state.syncing || !color) return;
+                input.value = color.toHEXA().toString().slice(0, 7);
+                syncPicker(element);
+                state.picker.hide();
+            }).on('cancel', () => state.picker.hide()).on('hide', () => {
+                state.open = false;
+                syncPicker(element);
+            });
+        });
+        // A deferred loader can publish Pickr after its script's load event, with no DOM changes.
+        // Retry only while unenhanced scheduler rows exist; stop once all have an instance.
+        if (waitingForLibrary) pickerRetry = setTimeout(refreshPickers, 250);
+    }
 
     // Reject incomplete rows before updating controls or submitting anything to the device.
     function validateRow(row) {
@@ -120,6 +234,13 @@
                 throw new Error('Invalid ' + field + ' for slot ' + row.slot + '.');
             }
         }
+        if (typeof row.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(row.color)) {
+            throw new Error('Color must be #RRGGBB.');
+        }
+        if (!validMessage(row.message)) throw new Error('Message must be at most 64 UTF-8 bytes without control characters.');
+        if (!Number.isInteger(row.range) || !presets[row.range]) throw new Error('Unknown range preset.');
+        const [min, max] = presets[row.range];
+        if (!Number.isInteger(row.value) || row.value < min || row.value > max) throw new Error('Value outside selected range.');
         return row;
     }
 
@@ -143,7 +264,11 @@
             from: number('from'),
             to: number('to'),
             hour,
-            minute
+            minute,
+            color: field('color').value.toUpperCase(),
+            message: field('message').value,
+            range: number('range'),
+            value: number('value')
         });
     }
 
@@ -156,8 +281,13 @@
         fields.forEach((name, index) => {
             if (name === 'active' || name === 'on') inputs[index].checked = row[name];
             else if (name === 'time') inputs[index].value = String(row.hour).padStart(2, '0') + ':' + String(row.minute).padStart(2, '0');
-            else inputs[index].value = String(row[name]);
+            else if (name !== 'value') inputs[index].value = String(row[name]);
         });
+        // Repair bounds before assigning the value, even if current controls are invalid.
+        updateValue(element);
+        element.querySelector('[data-field="value"]').value = row.value;
+        updateValue(element);
+        syncPicker(element);
     }
 
     function getElements(root) {
@@ -228,4 +358,22 @@
         const button = event.target.closest('[data-action="save-scheduler"]');
         if (button) save(button.closest('[data-scheduler]'));
     });
+
+    document.addEventListener('input', event => {
+        const element = event.target.closest('[data-scheduler] tr[data-slot]');
+        if (!element) return;
+        if (event.target.dataset.field === 'value') updateValue(element);
+        if (event.target.dataset.field === 'color') syncPicker(element);
+    });
+    document.addEventListener('change', event => {
+        const element = event.target.closest('[data-scheduler] tr[data-slot]');
+        if (!element) return;
+        if (event.target.dataset.field === 'range') updateValue(element, true);
+        if (event.target.dataset.field === 'color') syncPicker(element);
+    });
+    // Observe only structural changes. Enhancement runs once per anchor, and never rewrites live outputs.
+    const observer = new MutationObserver(refreshPickers);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('load', refreshPickers, true);
+    refreshPickers();
 })();

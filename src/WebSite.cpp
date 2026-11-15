@@ -64,6 +64,36 @@
  */
 WebSite* WebSite::mpWebSiteInstance = nullptr;
 
+namespace
+{
+/** Validate bounded UTF-8 without accepting malformed encodings or Unicode control characters. */
+bool IsSchedulerMessageValid(const char* apText, std::size_t aLength)
+{
+    if (!apText || aLength > 64) return false;
+    for (std::size_t wIndex = 0; wIndex < aLength;)
+    {
+        const uint8_t wFirst = static_cast<uint8_t>(apText[wIndex++]);
+        uint32_t wCode = wFirst;
+        unsigned wRemaining = 0;
+        uint32_t wMinimum = 0;
+        if (wFirst >= 0xC2 && wFirst <= 0xDF) { wCode &= 0x1F; wRemaining = 1; wMinimum = 0x80; }
+        else if (wFirst >= 0xE0 && wFirst <= 0xEF) { wCode &= 0x0F; wRemaining = 2; wMinimum = 0x800; }
+        else if (wFirst >= 0xF0 && wFirst <= 0xF4) { wCode &= 0x07; wRemaining = 3; wMinimum = 0x10000; }
+        else if (wFirst >= 0x80) return false;
+        if (wIndex + wRemaining > aLength) return false;
+        while (wRemaining-- > 0)
+        {
+            const uint8_t wNext = static_cast<uint8_t>(apText[wIndex++]);
+            if ((wNext & 0xC0) != 0x80) return false;
+            wCode = (wCode << 6) | (wNext & 0x3F);
+        }
+        if (wCode < wMinimum || wCode > 0x10FFFF || (wCode >= 0xD800 && wCode <= 0xDFFF) ||
+            wCode < 0x20 || (wCode >= 0x7F && wCode <= 0x9F)) return false;
+    }
+    return true;
+}
+}
+
 
 /**
  * @brief Constructor
@@ -241,11 +271,12 @@ void WebSite::HandleControlEvent(const ControlEvent& arEvent)
         for (std::size_t wSlot = 0; wSlot < mcSchedulerSlotCount; ++wSlot)
         {
             const SchedulerTableRow& wrRow = arEvent.mSchedulerRows[wSlot];
-            LOG(LOG_DEBUG, "Slot: %u; Active: %u; On: %u; From: %u; To: %u; Hour: %u; Min: %u",
+            LOG(LOG_DEBUG, "Slot: %u; Active: %u; On: %u; From: %u; To: %u; Hour: %u; Min: %u; Color: %s; Message: %s; Range: %u; Value: %u",
                 static_cast<unsigned>(wSlot), static_cast<unsigned>(wrRow.mActive),
                 static_cast<unsigned>(wrRow.mOn), static_cast<unsigned>(wrRow.mFromDay),
                 static_cast<unsigned>(wrRow.mToDay), static_cast<unsigned>(wrRow.mHour),
-                static_cast<unsigned>(wrRow.mMinute));
+                static_cast<unsigned>(wrRow.mMinute), wrRow.mColor, wrRow.mMessage,
+                static_cast<unsigned>(wrRow.mRange), static_cast<unsigned>(wrRow.mValue));
         }
         return;
     }
@@ -722,11 +753,11 @@ void WebSite::InitWebUIControls(void)
         "Test mode: Save submits all slots for logging only; settings are not persisted.");
 
     const std::array<SchedulerTableRow, mcSchedulerSlotCount> wSchedulerRows = {{
-        // Active, On, From day, To day, Hour, Minute (Monday = 0)
-        {true,  true,  0, 4, 18, 30}, // Slot 0: weekdays, ON at 18:30
-        {true,  false, 0, 4, 23,  0}, // Slot 1: weekdays, OFF at 23:00
-        {true,  true,  5, 6, 10,  0}, // Slot 2: weekends, ON at 10:00
-        {true,  false, 5, 6, 23, 30}, // Slot 3: weekends, OFF at 23:30
+        // Active, On, From day, To day, Hour, Minute, Color, Message, Range, Value (Monday = 0)
+        {true,  true,  0, 4, 18, 30, "#FFAA00", "Good evening", 0, 80}, // Slot 0: weekdays, ON at 18:30
+        {true,  false, 0, 4, 23,  0, "#2244FF", "Good night", 1, 20},   // Slot 1: weekdays, OFF at 23:00
+        {true,  true,  5, 6, 10,  0, "#00FF88", "Weekend", 0, 100},    // Slot 2: weekends, ON at 10:00
+        {true,  false, 5, 6, 23, 30, "#FFFFFF", "Sleep well", 1, 35},   // Slot 3: weekends, OFF at 23:30
         {}, {}, {}, {}               // Slots 4–7: inactive
     }};
     AddLabelControl("", wSchedulerGroup, CSS_STYLE_LABEL "display:block;white-space:normal;",
@@ -819,7 +850,9 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
                 if (wRow.isNull() || !wRow["slot"].is<unsigned>() ||
                     !wRow["active"].is<bool>() || !wRow["on"].is<bool>() ||
                     !wRow["from"].is<unsigned>() || !wRow["to"].is<unsigned>() ||
-                    !wRow["hour"].is<unsigned>() || !wRow["minute"].is<unsigned>())
+                    !wRow["hour"].is<unsigned>() || !wRow["minute"].is<unsigned>() ||
+                    !wRow["color"].is<const char*>() || !wRow["message"].is<const char*>() ||
+                    !wRow["range"].is<unsigned>() || !wRow["value"].is<unsigned>())
                 {
                     apRequest->send(400, "text/plain", "Invalid scheduler field types.");
                     return;
@@ -833,6 +866,25 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
                     return;
                 }
                 wSeen[wSlot] = true;
+                const JsonString wColor = wRow["color"].as<JsonString>();
+                const JsonString wMessage = wRow["message"].as<JsonString>();
+                const unsigned wRange = wRow["range"].as<unsigned>();
+                const unsigned wSliderValue = wRow["value"].as<unsigned>();
+                bool wColorValid = (wColor.size() == 7) && (wColor.c_str()[0] == '#');
+                for (std::size_t wIndex = 1; wColorValid && wIndex < 7; ++wIndex)
+                {
+                    const char wDigit = wColor.c_str()[wIndex];
+                    wColorValid = (wDigit >= '0' && wDigit <= '9') ||
+                        (wDigit >= 'a' && wDigit <= 'f') || (wDigit >= 'A' && wDigit <= 'F');
+                }
+                if (!wColorValid || !IsSchedulerMessageValid(wMessage.c_str(), wMessage.size()) ||
+                    wRange > 1 || wSliderValue > (wRange == 1 ? 50u : 100u) ||
+                    wSliderValue < (wRange == 1 ? 20u : 0u))
+                {
+                    apRequest->send(400, "text/plain", "Invalid scheduler color, message, range or value.");
+                    return;
+                }
+                // Explicit member assignments keep the queued snapshot independent of JSON/request storage.
                 auto& wrSnapshot = wEvent.mSchedulerRows[wSlot];
                 wrSnapshot.mActive = wRow["active"].as<bool>();
                 wrSnapshot.mOn = wRow["on"].as<bool>();
@@ -840,6 +892,12 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
                 wrSnapshot.mToDay = wRow["to"].as<uint8_t>();
                 wrSnapshot.mHour = wRow["hour"].as<uint8_t>();
                 wrSnapshot.mMinute = wRow["minute"].as<uint8_t>();
+                memcpy(wrSnapshot.mColor, wColor.c_str(), 7);
+                wrSnapshot.mColor[7] = '\0';
+                memcpy(wrSnapshot.mMessage, wMessage.c_str(), wMessage.size());
+                wrSnapshot.mMessage[wMessage.size()] = '\0';
+                wrSnapshot.mRange = static_cast<uint8_t>(wRange);
+                wrSnapshot.mValue = static_cast<uint8_t>(wSliderValue);
             }
 
             if (!mpControlEventQueue || !mpControlEventNotification ||
@@ -850,9 +908,9 @@ void WebSite::RegisterSchedulerRoutes(AsyncWebServer* apServer)
             }
             mpControlEventNotification->Notify();
             apRequest->send(202, "text/plain", "All slots queued for logging; settings are not persisted.");
-        }, 4096);
+        }, 8192);
     wpHandler->setMethod(HTTP_POST);
-    wpHandler->setMaxContentLength(2048);
+    wpHandler->setMaxContentLength(8192);
     apServer->addHandler(wpHandler);
     mpSchedulerServer = apServer;
 }
@@ -1388,10 +1446,10 @@ String WebSite::BuildHtmlTable(const std::array<std::array<const char*, Columns>
 String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t aRowCount) const
 {
     static const char* const wcDays[] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
-    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time"};
+    static const char* const wcHeaders[] = {"Slot", "Active", "On", "From", "To", "Time", "Color", "Message", "Range", "Value"};
 
     String wHtml = "<div data-scheduler style='width:100%'><div style='overflow-x:auto;width:100%;max-width:100%'>"
-        "<table style='width:100%;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
+        "<table style='width:100%;min-width:1050px;border-collapse:collapse;white-space:nowrap;color:#fff;background:transparent'>"
         "<thead><tr>";
     for (const char* wpHeader : wcHeaders)
     {
@@ -1463,7 +1521,28 @@ String WebSite::BuildSchedulerTable(const SchedulerTableRow* apRows, std::size_t
             wHtml += "<td style='padding:3px 4px'><input type='time' step='60' data-field='time' "
                 "aria-label='Time' value='";
             wHtml += wTimeText;
-            wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td></tr>";
+            wHtml += "' style='width:auto;height:26px;box-sizing:border-box;margin:0;padding:2px;color:#111;background:#fff;box-shadow:none'></td>";
+            /* Keep native fallback until Pickr init; explicit display survives ESPUI author CSS. */
+            wHtml += "<td><button type='button' data-color-anchor aria-label='Choose color' style='display:none' hidden></button>"
+                "<input type='color' data-field='color' aria-label='Color' value='";
+            wHtml += EscapeHtml(wrRow.mColor);
+            wHtml += "'></td><td><input type='text' data-field='message' aria-label='Message' maxlength='64' value='";
+            wHtml += EscapeHtml(wrRow.mMessage);
+            wHtml += "' style='width:180px;color:#111;background:#fff'></td>"
+                "<td><select data-field='range' aria-label='Range' style='width:90px;color:#111;background:#fff'>"
+                "<option value='0'";
+            if (wrRow.mRange == 0) wHtml += " selected";
+            wHtml += ">0..100</option><option value='1'";
+            if (wrRow.mRange == 1) wHtml += " selected";
+            wHtml += ">20..50</option></select></td><td><input type='range' data-field='value' aria-label='Value' min='";
+            wHtml += (wrRow.mRange == 1 ? "20" : "0");
+            wHtml += "' max='";
+            wHtml += (wrRow.mRange == 1 ? "50" : "100");
+            wHtml += "' step='1' value='";
+            wHtml += String(static_cast<unsigned>(wrRow.mValue));
+            wHtml += "' style='width:120px'><output data-value-output>";
+            wHtml += String(static_cast<unsigned>(wrRow.mValue));
+            wHtml += "</output></td></tr>";
         }
     }
 

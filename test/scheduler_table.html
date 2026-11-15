@@ -2,17 +2,57 @@
 <html lang="en">
 <meta charset="utf-8">
 <title>Scheduler table tests</title>
+<link rel="stylesheet" href="../.pio/libdeps/nodemcu-32s_debug/ESPUI/data/css/normalize.min.css">
+<link rel="stylesheet" href="../.pio/libdeps/nodemcu-32s_debug/ESPUI/data/css/style.min.css">
+<link rel="stylesheet" href="../.pio/libdeps/nodemcu-32s_debug/ESPUI/data/css/pickr.min.css">
+<!-- Deliberately stronger than normalize's [hidden]: exercise host-page CSS overrides too. -->
+<style>[data-scheduler] input { display:block; } [data-scheduler] button { display:inline-block; }</style>
 <body style="background:#34495e;color:white;font-family:sans-serif">
 <h1>Scheduler table tests</h1>
 <div data-scheduler>
-	<table style="width:100%;color:white;background:transparent">
-		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th></tr></thead>
+	<div style="width:100%;overflow-x:auto">
+	<table style="width:100%;min-width:1050px;color:white;background:transparent">
+		<thead><tr><th>Slot</th><th>Active</th><th>On</th><th>From</th><th>To</th><th>Time</th><th>Color</th><th>Message</th><th>Range</th><th>Value</th></tr></thead>
 		<tbody></tbody>
 	</table>
+	</div>
 	<button type="button" data-action="save-scheduler">Save</button>
 	<span data-scheduler-status role="status"></span>
 </div>
 <pre id="results"></pre>
+<script src="../.pio/libdeps/nodemcu-32s_debug/ESPUI/data/js/pickr.min.js"></script>
+<script>
+// Record real instances, not mocks, to verify initialization and disposal.
+const actualPickers = [];
+const pickerReady = [];
+let destroyedPickers = 0;
+let fallbackUntilInit = true;
+// Capture the real scheduled retry so the late-publication test can advance it deterministically.
+const actualSetTimeout = window.setTimeout.bind(window);
+let pickerRetryTask;
+let pickerRetryId;
+window.setTimeout = (callback, delay, ...args) => {
+	const id = actualSetTimeout(callback, delay, ...args);
+	if (delay === 250) { pickerRetryTask = callback; pickerRetryId = id; }
+	return id;
+};
+if (window.Pickr) {
+	const create = window.Pickr.create;
+	window.Pickr.create = options => {
+		const picker = create(options);
+		const destroy = picker.destroyAndRemove.bind(picker);
+		picker.destroyAndRemove = () => { destroyedPickers++; return destroy(); };
+		actualPickers.push(picker);
+		picker.on('init', () => {
+			const input = options.el.closest('tr').querySelector('[data-field="color"]');
+			fallbackUntilInit &&= !input.disabled && getComputedStyle(input).display === 'block' &&
+				getComputedStyle(options.el).display === 'none';
+		});
+		pickerReady.push(new Promise(resolve => picker.on('init', resolve)));
+		return picker;
+	};
+}
+</script>
 <script src="../tools/ota_uploader.js"></script>
 <script>
 // Synthetic controls exercise the production JavaScript. Fetch is mocked: no device is contacted.
@@ -30,7 +70,14 @@
 		try { action(); } catch { rejected = true; }
 		check(rejected, name);
 	}
+	// Yield an event-loop turn so mutation observers and Pickr's deferred init can finish.
+	const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 	try {
+		// Reproduce the old hidden-only failure under a host display override (not a Pickr API issue).
+		const probe = document.createElement('input');
+		probe.type = 'color'; probe.hidden = true; root.append(probe);
+		check(getComputedStyle(probe).display === 'block', 'host display override reproduces hidden-only native input exposure');
+		probe.remove();
 		for (let slot = 0; slot < 8; slot++) {
 			const tr = document.createElement('tr');
 			tr.dataset.slot = slot;
@@ -39,11 +86,15 @@
 					return '<td><select data-field="' + field + '">' + ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, value) => '<option value="' + value + '">' + day + '</option>').join('') + '</select></td>';
 				}
 				return '<td><input data-field="' + field + '" type="' + (field === 'time' ? 'time' : 'checkbox') + '" step="60" value="00:00"></td>';
-			}).join('');
+			}).join('') + '<td><button type="button" data-color-anchor style="display:none" hidden></button><input type="color" data-field="color" value="#ffffff"></td>' +
+				'<td><input type="text" data-field="message" maxlength="64"></td>' +
+				'<td><select data-field="range"><option value="0">0..100</option><option value="1">20..50</option></select></td>' +
+				'<td><input type="range" data-field="value" min="0" max="100" value="0"><output data-value-output>0</output></td>';
 			root.querySelector('tbody').append(tr);
 		}
 		const api = window.WordClockScheduler;
-		const rows = Array.from({ length: 8 }, (_, slot) => ({ slot, active: slot === 0, on: slot === 0, from: 5, to: 6, hour: slot === 0 ? 23 : 0, minute: slot === 0 ? 59 : 0 }));
+		const rows = Array.from({ length: 8 }, (_, slot) => ({ slot, active: slot === 0, on: slot === 0, from: 5, to: 6, hour: slot === 0 ? 23 : 0, minute: slot === 0 ? 59 : 0,
+			color: '#12ABEF', message: slot === 0 ? '<b>Grüße 🌈 & "hello"</b>' : '', range: slot % 2, value: slot % 2 ? 35 : 80 }));
 		api.setRows(rows);
 		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'all slots round-trip');
 		const first = root.querySelector('tr[data-slot="0"]');
@@ -64,6 +115,79 @@
 		first.querySelector('[data-field="time"]').value = '12:34:56';
 		rejects(() => api.getRows(), 'reject seconds in minute-resolution schedule');
 		api.setRows(rows);
+		for (const [patch, name] of [
+			[{ color: '#123' }, 'reject short color'], [{ color: '#GG1234' }, 'reject nonhex color'],
+			[{ message: 'ä'.repeat(33) }, 'reject UTF-8 byte overflow'],
+			[{ message: 'bad\nmessage' }, 'reject C0 control'], [{ message: 'bad\u0085' }, 'reject C1 control'],
+			[{ message: '\uD800' }, 'reject unpaired surrogate'], [{ range: 2 }, 'reject unknown preset'],
+			[{ range: 1, value: 19 }, 'reject value below preset'], [{ range: 1, value: 51 }, 'reject value above preset'],
+			[{ value: 1.5 }, 'reject fractional value']
+		]) rejects(() => api.setRow(first, { ...rows[0], ...patch }), name);
+		api.setRow(first, { ...rows[0], message: '🌈'.repeat(16) });
+		check(api.getRow(first).message === '🌈'.repeat(16), 'accept exactly 64 UTF-8 bytes');
+		api.setRows(rows);
+		check(first.querySelector('[data-field="message"]').value === rows[0].message && !first.querySelector('b'), 'message stays literal text, not markup');
+		const range = first.querySelector('[data-field="range"]');
+		const slider = first.querySelector('[data-field="value"]');
+		range.value = '1';
+		range.dispatchEvent(new Event('change', { bubbles: true }));
+		check(slider.min === '20' && slider.max === '50' && slider.value === '50', 'range change clamps upper bound');
+		api.setRow(first, { ...rows[0], value: 0 });
+		range.value = '1';
+		range.dispatchEvent(new Event('change', { bubbles: true }));
+		check(slider.value === '20', 'range change clamps lower bound');
+		slider.value = '42';
+		slider.dispatchEvent(new Event('input', { bubbles: true }));
+		check(first.querySelector('[data-value-output]').textContent === '42', 'slider output updates live');
+		range.value = '';
+		slider.min = '90'; slider.max = '95';
+		first.querySelector('[data-field="message"]').value = 'ä'.repeat(33);
+		api.setRows(rows);
+		check(JSON.stringify(api.getRows()) === JSON.stringify(rows), 'setter repairs invalid range, bounds and message');
+		await settle();
+		check(window.Pickr && actualPickers.length === 8, 'actual bundled Pickr initializes eight anchors');
+		await Promise.all(pickerReady);
+		check(fallbackUntilInit, 'native fallback remains usable until real Pickr init');
+		const nativeInput = first.querySelector('[data-field="color"]');
+		const colorButton = first.querySelector('[data-color-anchor]');
+		check(getComputedStyle(nativeInput).display === 'none', 'ESPUI CSS cannot expose initialized native color input');
+		check(nativeInput.disabled && nativeInput.getClientRects().length === 0, 'native color input is disabled and has no click target');
+		check(getComputedStyle(colorButton).display === 'inline-block' && colorButton.getBoundingClientRect().width > 0, 'scheduler Pickr button is visible under ESPUI CSS');
+		const picker = actualPickers[0];
+		const color = () => picker.getColor().toHEXA().toString().slice(0, 7).toUpperCase();
+		const draft = value => {
+			// setColor() is a committing Pickr API; exercise the real draft text input instead.
+			const input = picker.getRoot().app.querySelector('.pcr-result');
+			input.value = value;
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+		};
+		check(color() === rows[0].color, 'Pickr initial color matches setter');
+		check(picker.getRoot().app.querySelectorAll('.pcr-swatches button').length === 12, 'Pickr has twelve common swatches');
+		check(picker.getRoot().app.dataset.theme === 'monolith', 'Pickr theme matches bundled stylesheet');
+		api.setRow(first, { ...rows[0], color: '#AABBCC' });
+		check(color() === '#AABBCC', 'setter synchronizes actual Pickr');
+		colorButton.click();
+		check(picker.isOpen() && picker.getRoot().app.classList.contains('visible'), 'scheduler button opens actual monolith Pickr popup');
+		draft('#FF0000');
+		check(api.getRow(first).color === '#AABBCC', 'draft color does not commit');
+		picker.getRoot().app.querySelector('.pcr-save').click();
+		check(api.getRow(first).color === '#FF0000', 'Pickr Save commits selected color');
+		picker.show(); draft('#00FF00');
+		picker.getRoot().app.querySelector('.pcr-cancel').click();
+		check(api.getRow(first).color === '#FF0000' && color() === '#FF0000', 'Pickr Cancel discards draft');
+		picker.show(); draft('#0000FF'); picker.hide();
+		check(api.getRow(first).color === '#FF0000' && color() === '#FF0000', 'Pickr hide discards draft');
+		api.setRows(rows);
+		// Structural notifications must not recreate instances or continually mutate the DOM.
+		let mutations = 0;
+		const monitor = new MutationObserver(records => { mutations += records.length; });
+		monitor.observe(document.documentElement, { childList: true, subtree: true });
+		const marker = document.createElement('span'); root.append(marker);
+		await settle();
+		const settledMutations = mutations;
+		await settle(); monitor.disconnect(); marker.remove();
+		check(actualPickers.length === 8, 'observer initializes each anchor only once');
+		check(mutations === settledMutations, 'observer settles without mutation loop');
 		let submitted;
 		window.fetch = async (url, options) => {
 			submitted = { url, options };
@@ -79,9 +203,48 @@
 		root.querySelector('[data-action="save-scheduler"]').click();
 		await new Promise(resolve => setTimeout(resolve, 0));
 		check(!root.querySelector('[data-action="save-scheduler"]').disabled, 'delegated Save click completes');
+		const bundledPickr = window.Pickr;
+		window.Pickr = {}; // A loader placeholder is not a usable Pickr API.
+		const fallback = first.cloneNode(true);
+		fallback.querySelector('[data-color-anchor]').hidden = true;
+		fallback.querySelector('[data-field="color"]').hidden = false;
+		root.querySelector('tbody').append(fallback);
+		await settle();
+		check(!fallback.querySelector('[data-field="color"]').hidden && actualPickers.length === 8, 'native color fallback without Pickr');
+		check(getComputedStyle(fallback.querySelector('[data-color-anchor]')).display === 'none' &&
+			getComputedStyle(fallback.querySelector('[data-field="color"]')).display === 'block' &&
+			!fallback.querySelector('[data-field="color"]').disabled, 'cloned row restores usable fallback and hides inactive button');
+		api.setRow(fallback, { ...rows[0], color: '#334455' });
+		window.Pickr = bundledPickr;
+		// No load event or mutation: publication alone must eventually enhance the fallback.
+		check(typeof pickerRetryTask === 'function', 'unavailable library schedules a retry without requiring another DOM event');
+		clearTimeout(pickerRetryId);
+		pickerRetryTask();
+		await pickerReady[8];
+		await settle();
+		check(actualPickers.length === 9 && fallback.querySelector('[data-field="color"]').hidden, 'late library load enhances native fallback');
+		check(api.getRow(fallback).color === '#334455' && actualPickers[8].getColor().toHEXA().toString().slice(0, 7).toUpperCase() === '#334455', 'setter before deferred Pickr init is preserved and synchronized');
+		check(fallback.querySelector('[data-field="color"]').style.display === 'none' &&
+			fallback.querySelector('[data-color-anchor]').style.display === 'inline-block', 'late initialization explicitly hands off native input to Pickr');
+		fallback.remove(); await settle();
+		check(destroyedPickers === 1, 'detached Pickr destroyed');
+		const replacement = first.cloneNode(true);
+		first.replaceWith(replacement); await settle();
+		await pickerReady[9];
+		await settle();
+		check(fallbackUntilInit, 'late and replacement pickers retain fallback until init');
+		check(replacement.querySelector('[data-field="color"]').disabled &&
+			getComputedStyle(replacement.querySelector('[data-field="color"]')).display === 'none', 'replacement row cannot expose native color popup');
+		check(destroyedPickers === 2 && actualPickers.length === 10, 'replaced ESPUI row disposes and recreates picker');
+		check(root.querySelectorAll('[data-action="save-scheduler"]').length === 1, 'one scheduler Save button');
 		output.textContent += '\n' + passed + ' tests passed.';
+		const summary = document.createElement('p');
+		summary.textContent = passed + ' tests passed.';
+		output.after(summary);
+		document.body.dataset.testResult = 'passed';
 	} catch (error) {
 		output.textContent += '\nFAIL: ' + error.message;
+		document.body.dataset.testResult = 'failed';
 	}
 })();
 </script>
